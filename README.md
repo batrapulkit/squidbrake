@@ -188,6 +188,28 @@ only in that browser. The page shows:
 - the full record for any event: input, output, error, metadata, the rule that blocked it, timings
 - filters are kept in the URL, so a view like `/dashboard?status=denied&range=7d` can be bookmarked or shared
 
+## FAQ
+
+### How is Squidbrake different from Claude Code's built-in allow/ask permissions?
+
+Claude Code's built-in permissions control actions for an individual agent. Squidbrake provides **centralized rules for a whole team**, with approvals from your **phone or Slack**, history checks, an **audit trail**, and support across multiple agents.
+
+### What happens if Squidbrake is down?
+
+Squidbrake **fails closed**. Guarded tool calls are blocked if the gateway is unreachable, rather than being allowed through.
+
+### Does my data leave my machine?
+
+No. Squidbrake is **self-hosted** and runs on your laptop or your own server. Your data stays in your environment.
+
+### Does Squidbrake use an LLM to make decisions?
+
+No. Squidbrake uses **deterministic rules and checks**. There is no LLM in the decision path.
+
+### Can an agent get around Squidbrake?
+
+An agent cannot bypass Squidbrake through tools that are connected to the gateway. An agent could still use a tool that **isn't connected to Squidbrake**. See [`SECURITY.md`](SECURITY.md) for the security model and limitations.
+
 ## Querying
 
 | Endpoint | |
