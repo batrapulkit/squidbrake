@@ -230,7 +230,9 @@ def test_keystore_first_run_and_cli(capsys):
     assert ks.identify(created["agent"]) == "agent" and not ks.can_approve("agent")
     assert ks.identify("gw_wrong") is None and ks.identify("") is None
 
+    before = ks.path.stat()
     bob = ks.add("bob", approver=True)
+    os.utime(ks.path, ns=(before.st_atime_ns, before.st_mtime_ns))  # both writes in the same clock tick
     assert ks.identify(bob) == "bob" and ks.can_approve("bob")  # live, no restart
     with pytest.raises(ValueError):
         ks.add("bob")

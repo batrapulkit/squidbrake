@@ -111,6 +111,16 @@ def _hash(secret: str) -> str:
     return hashlib.sha256(secret.encode()).hexdigest()
 
 
+def _file_sig(path: Path) -> tuple[int, int, int] | None:
+    """What a hot-reloaded file's reload is keyed on; None if it's missing. mtime alone misses a second write
+    in the same clock tick (common on Windows), so size and inode (new on every os.replace) count too."""
+    try:
+        st = path.stat()
+    except FileNotFoundError:
+        return None
+    return st.st_mtime_ns, st.st_size, st.st_ino
+
+
 class KeyStore:
     """Who may call the gateway, and who may approve.
 
@@ -126,7 +136,7 @@ class KeyStore:
         self.path, self.disabled = path, disabled
         self.from_env = bool(env_keys.strip())
         self._lock = threading.Lock()
-        self._mtime: float | None = -1.0
+        self._sig: tuple | None = ()  # never equal to a real signature or None
         self._by_hash: dict[str, str] = {}
         self._info: dict[str, dict] = {}
         self.approvers: set[str] = set()
@@ -153,11 +163,8 @@ class KeyStore:
     def _maybe_reload(self) -> None:
         if self.from_env or self.disabled:
             return
-        try:
-            mtime = self.path.stat().st_mtime
-        except FileNotFoundError:
-            mtime = None
-        if mtime == self._mtime:
+        sig = _file_sig(self.path)
+        if sig == self._sig:
             return
         with self._lock:
             try:
@@ -167,7 +174,7 @@ class KeyStore:
                 self.approvers = {name for name, i in self._info.items() if i["approver"]}
             except Exception:
                 log.exception("failed to read %s, keeping previous keys", self.path)
-            self._mtime = mtime
+            self._sig = sig
 
     def identify(self, secret: str) -> str | None:
         if self.disabled:
@@ -537,7 +544,7 @@ class Policy:
 
     def __init__(self, path: Path):
         self.path = path
-        self._mtime: float | None = -1.0
+        self._sig: tuple | None = ()  # never equal to a real signature or None
         self._lock = threading.Lock()
         self.default = "allow"
         self.default_reason = "default allow"
@@ -546,17 +553,14 @@ class Policy:
         self.upstreams: dict[str, str] = {}
 
     def _maybe_reload(self) -> None:
-        try:
-            mtime = self.path.stat().st_mtime
-        except FileNotFoundError:
-            mtime = None
-        if mtime == self._mtime:
+        sig = _file_sig(self.path)
+        if sig == self._sig:
             return
         with self._lock:
-            if mtime == self._mtime:
+            if sig == self._sig:
                 return
             try:
-                data = (yaml.safe_load(self.path.read_text(encoding="utf-8")) if mtime else None) or {}
+                data = (yaml.safe_load(self.path.read_text(encoding="utf-8")) if sig else None) or {}
                 rules = []
                 for i, r in enumerate(data.get("rules") or []):
                     m = r.get("match") or {}
@@ -592,7 +596,7 @@ class Policy:
             except Exception:
                 # A broken edit must never take the gateway down: keep serving the last good rules.
                 log.exception("failed to load %s, keeping previous rules", self.path)
-            self._mtime = mtime
+            self._sig = sig
 
     DEFAULT_RULE = {"timeout_seconds": APPROVAL_TIMEOUT, "on_timeout": "deny", "approvers": None}
 
