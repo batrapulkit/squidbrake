@@ -222,6 +222,18 @@ pip install pytest && pytest -q
 python tests/e2e_business_scenario.py
 ```
 
+## FAQ
+
+**How is this different from Claude Code's built-in permissions?** Squidbrake centralizes rules for a whole team, supports remote approvals from a phone or Slack, checks history, keeps an audit trail, and works across agents.
+
+**What happens if Squidbrake is down?** It fails closed, so connected tools do not run unless you explicitly configure `fail_open=True`.
+
+**Does my data leave my machine?** No. Squidbrake is self-hosted.
+
+**Does an LLM decide whether a tool may run?** No. Decisions come from deterministic rules and explicit approvals.
+
+**Can an agent get around it?** Only through tool paths that are not connected to Squidbrake. Connect every available path; see [SECURITY.md](SECURITY.md) for the security model.
+
 ## Contributing, security, license
 
 - [CONTRIBUTING.md](CONTRIBUTING.md): setup and guidelines
