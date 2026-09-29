@@ -1474,7 +1474,8 @@ def event_context(row, limit: int = 15) -> list[dict]:
         start = (datetime.fromisoformat(row.created_at.replace("Z", "+00:00")) - timedelta(hours=1)).isoformat().replace("+00:00", "Z")
         scope = and_(events.c.source == row.source, events.c.created_at >= start)
     with engine.connect() as conn:
-        rows = conn.execute(select(events).where(scope, events.c.created_at < row.created_at, events.c.id != row.id)
+        # <= : created_at is millisecond-precise, so a step taken in the same millisecond still counts as "before".
+        rows = conn.execute(select(events).where(scope, events.c.created_at <= row.created_at, events.c.id != row.id)
                             .order_by(events.c.created_at.desc()).limit(limit)).all()
     return [{"id": r.id, "created_at": r.created_at, "name": r.name, "status": r.status, "decision": r.decision,
              "input": json.loads(r.input) if r.input else None, "output": _output_preview(r.output),
