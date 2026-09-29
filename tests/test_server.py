@@ -312,6 +312,7 @@ rules:
         assert decide("stripe.payments_refund", small) == "allow", small
     assert decide("band", {"order": {"total": 10}}) == "deny"
     assert decide("band", {"order": {"total": 20}}) == "allow"
+    assert decide("band", {"order": {"total": -5000}}) == "allow"  # a range keeps negatives out
 
     rules.write_text("rules: [{ action: deny, match: { input: { amount: { bigger: 5 } } } }]")
     os.utime(rules, (time.time(), time.time() + 5))
