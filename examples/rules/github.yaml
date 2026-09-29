@@ -1,0 +1,23 @@
+# Example policy for an MCP server wrapped with `connect.py wrap --app github`.
+# Tool names use the `<app>.<tool>` form. Adjust patterns to the server's tool list.
+default: review
+default_reason: GitHub changes require approval
+
+rules:
+  - id: block-destructive-github-actions
+    action: deny
+    reason: Repository deletion and force pushes are not allowed
+    match:
+      name: ["github.*delete*repo*", "github.*force*push*"]
+
+  - id: allow-github-reads
+    action: allow
+    reason: Read-only GitHub operation
+    match:
+      name: ["github.*get*", "github.*list*", "github.*read*", "github.*search*", "github.*view*"]
+
+  - id: review-github-publishing
+    action: review
+    reason: Publishing an issue or pull request requires approval
+    match:
+      name: ["github.*create*issue*", "github.*create*pull*", "github.*create*pr*"]

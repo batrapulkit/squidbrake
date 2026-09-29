@@ -96,6 +96,9 @@ With the gateway running, one command per agent (use the `.venv` Python that `st
   (`data/shop.db`, created with sample customers / products / orders; set `DB_PATH` to use your own).
   Reads run immediately, `UPDATE`/`DELETE`/`INSERT`/`ALTER` wait for your approval, and `DROP`/`TRUNCATE` are blocked.
 
+Wrapping a GitHub or Stripe MCP server? Start with the commented example policies in
+[`examples/rules/`](examples/rules/) and adjust their tool-name patterns to the server's tool list.
+
 Things to ask the agent, then watch the dashboard:
 
 - "Show me the top 5 customers by revenue" (runs)

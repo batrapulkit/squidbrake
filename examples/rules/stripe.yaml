@@ -1,0 +1,18 @@
+# Example policy for an MCP server wrapped with `connect.py wrap --app stripe`.
+# Tool names use the `<app>.<tool>` form. Adjust patterns to the server's tool list.
+default: review
+default_reason: Stripe changes require approval
+
+rules:
+  - id: allow-stripe-reads
+    action: allow
+    reason: Read-only Stripe operation
+    match:
+      name: ["stripe.*get*", "stripe.*list*", "stripe.*retrieve*", "stripe.*search*"]
+
+  - id: review-stripe-money-out
+    action: review
+    reason: Refunds and payouts require finance approval
+    approvers: ["role:finance"]
+    match:
+      name: ["stripe.*refund*", "stripe.*payout*"]
