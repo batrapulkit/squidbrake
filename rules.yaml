@@ -7,6 +7,9 @@
 # match fields (all optional, all must match):
 #   kind, name, source, client, session_id   glob pattern or list of globs (case-insensitive), e.g. "shell*"
 #   input_regex                              regex searched in the JSON of the call's input
+#   input                                    number checks on input fields: {field: {op: number}}, ops gt gte lt lte eq ne,
+#                                            e.g. input: { amount: { lte: 50 } }; "a.b" reaches nested fields; a missing
+#                                            or non-numeric field doesn't match
 # action: allow | deny | review
 #
 # review = hold the call until a person approves or rejects it (dashboard, phone, Slack).
@@ -72,6 +75,13 @@ rules:
     approvers: ["role:finance", "role:admin"]
     match:
       name: ["*transfer*", "*wire*", "*payout*"]
+
+  - id: allow-small-refunds
+    action: allow
+    reason: Small refund - runs on its own
+    match:
+      name: ["*refund*"]
+      input: { amount: { lte: 50 } }   # in your API's units - Stripe sends cents, so 50 dollars is 5000 there
 
   - id: approve-refunds
     action: review

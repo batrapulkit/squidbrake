@@ -288,6 +288,36 @@ def test_bad_rules_keep_previous(c):
     os.utime(RULES, (time.time(), time.time() + 40))
 
 
+def test_match_input_numbers(tmp_path):
+    rules = tmp_path / "rules.yaml"
+    rules.write_text("""
+default: allow
+rules:
+  - id: big-refunds
+    action: review
+    match: { name: "*.payments_refund", input: { amount: { gt: 100 } } }
+  - id: band
+    action: deny
+    match: { name: "band", input: { order.total: { gte: 10, lt: 20 } } }
+""")
+    p = server.Policy(rules)
+
+    def decide(name, input):
+        return p.evaluate(kind="tool_call", name=name, source=None, client="t", session_id=None, input=input)[0]
+
+    assert decide("stripe.payments_refund", {"amount": 250}) == "review"
+    assert decide("stripe.payments_refund", {"amount": "100.50"}) == "review"
+    assert decide("stripe.payments_refund", '{"amount": 101}') == "review"
+    for small in ({"amount": 100}, {"amount": 5}, {}, {"amount": "lots"}, {"amount": True}, None, "not json"):
+        assert decide("stripe.payments_refund", small) == "allow", small
+    assert decide("band", {"order": {"total": 10}}) == "deny"
+    assert decide("band", {"order": {"total": 20}}) == "allow"
+
+    rules.write_text("rules: [{ action: deny, match: { input: { amount: { bigger: 5 } } } }]")
+    os.utime(rules, (time.time(), time.time() + 5))
+    assert decide("stripe.payments_refund", {"amount": 250}) == "review"  # bad op: previous rules kept
+
+
 def test_proxy(c):
     seen = {}
 

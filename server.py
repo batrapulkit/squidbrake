@@ -34,6 +34,7 @@ import hashlib
 import hmac
 import json
 import logging
+import operator
 import os
 import re
 import secrets
@@ -496,6 +497,43 @@ class Policy:
     """rules.yaml, hot-reloaded whenever the file changes. First matching rule wins."""
 
     MATCH_FIELDS = ("kind", "name", "source", "client", "session_id")
+    INPUT_OPS = {"gt": operator.gt, "gte": operator.ge, "lt": operator.lt, "lte": operator.le,
+                 "eq": operator.eq, "ne": operator.ne}
+
+    @classmethod
+    def _input_conds(cls, spec: Any) -> list[tuple[str, Any, float]]:
+        """match.input {field: {op: number}} -> [(field, op_fn, number)]. Dotted fields reach into nested objects."""
+        if not spec:
+            return []
+        if not isinstance(spec, dict) or not all(isinstance(c, dict) and c for c in spec.values()):
+            raise ValueError("match.input must look like {field: {gt: 100}}")
+        conds = []
+        for field, ops in spec.items():
+            for op, value in ops.items():
+                if op not in cls.INPUT_OPS or isinstance(value, bool) or not isinstance(value, (int, float)):
+                    raise ValueError(f"match.input.{field}: use {'/'.join(cls.INPUT_OPS)} with a number")
+                conds.append((str(field), cls.INPUT_OPS[op], value))
+        return conds
+
+    @staticmethod
+    def _input_number(input: Any, field: str) -> float | None:
+        """The number at `field` in the call's input, or None if missing / not a number."""
+        if isinstance(input, str):
+            try:
+                input = json.loads(input)
+            except ValueError:
+                return None
+        for part in field.split("."):
+            if not isinstance(input, dict) or part not in input:
+                return None
+            input = input[part]
+        if isinstance(input, bool):
+            return None
+        try:
+            n = float(input)  # numeric strings like "120.50" count too
+        except (TypeError, ValueError):
+            return None
+        return n if n == n else None  # NaN never matches
 
     def __init__(self, path: Path):
         self.path = path
@@ -529,6 +567,7 @@ class Policy:
                         "reason": r.get("reason", ""),
                         "globs": {f: ([m[f]] if isinstance(m[f], str) else list(m[f])) for f in self.MATCH_FIELDS if f in m},
                         "input_regex": re.compile(m["input_regex"], re.I | re.S) if m.get("input_regex") else None,
+                        "input_conds": self._input_conds(m.get("input")),
                         # review-only options
                         "timeout_seconds": int(r.get("timeout_seconds", APPROVAL_TIMEOUT)),
                         "on_timeout": r.get("on_timeout", "deny"),
@@ -574,6 +613,9 @@ class Policy:
                     input_text = input if isinstance(input, str) else json.dumps(input, default=str, ensure_ascii=False)
                 if not rule["input_regex"].search(input_text):
                     continue
+            # A missing or non-numeric field never matches, so the call falls through to later rules.
+            if not all((n := self._input_number(input, f)) is not None and op(n, v) for f, op, v in rule["input_conds"]):
+                continue
             return rule["action"], rule["reason"] or f"matched rule {rule['id']}", rule["id"], rule
         return self.default, self.default_reason, None, self.DEFAULT_RULE
 
