@@ -8,7 +8,7 @@ rules:
     action: allow
     reason: Read-only Stripe operation
     match:
-      name: ["stripe.*get*", "stripe.*list*", "stripe.*retrieve*", "stripe.*search*"]
+      name: ["stripe.list_*", "stripe.retrieve_*", "stripe.search_*"]
 
   - id: review-stripe-money-out
     action: review

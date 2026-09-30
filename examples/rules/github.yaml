@@ -14,7 +14,7 @@ rules:
     action: allow
     reason: Read-only GitHub operation
     match:
-      name: ["github.*get*", "github.*list*", "github.*search*", "github.*view*"]
+      name: ["github.get_*", "github.list_*", "github.search_*"]
 
   - id: review-github-publishing
     action: review
