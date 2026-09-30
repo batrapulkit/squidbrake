@@ -153,6 +153,8 @@ header .spacer { flex: 1; }
 .aq li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 16px; padding: 10px 8px; border-top: 1px solid var(--grid); }
 .aq li:first-child { border-top: 0; }
 .aq li.shortcut-selected { background: var(--hover-col); outline: 2px solid var(--accent); outline-offset: -2px; }
+.aq .arm { grid-column: 1 / -1; font-size: 13px; font-weight: 600; color: var(--text-primary); background: var(--surface-2);
+  border-left: 3px solid var(--warning); border-radius: 6px; padding: 6px 10px; }
 .aq .who { font-size: 12.5px; color: var(--text-secondary); }
 .aq .why { font-size: 13px; }
 .aq .inp { grid-column: 1 / -1; font: 12px/1.4 var(--mono); color: var(--text-secondary); background: var(--surface-2);
@@ -607,9 +609,9 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   <h3>Approval queue shortcuts</h3>
   <table class="mini-table">
     <tbody>
-      <tr><td><kbd>j</kbd></td><td>Next waiting request</td></tr>
+      <tr><td><kbd>j</kbd></td><td>Select the next waiting request (nothing is selected until you choose)</td></tr>
       <tr><td><kbd>k</kbd></td><td>Previous waiting request</td></tr>
-      <tr><td><kbd>a</kbd></td><td>Approve the selected request</td></tr>
+      <tr><td><kbd>a</kbd></td><td>Approve the selected request: press <kbd>a</kbd> twice within 3 seconds</td></tr>
       <tr><td><kbd>r</kbd></td><td>Reject: focus the note field, then press Enter to reject (Esc to cancel)</td></tr>
       <tr><td><kbd>?</kbd></td><td>Show this list</td></tr>
     </tbody>
@@ -656,7 +658,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   FILTERS.forEach((k) => { if (params.get(k)) state.f[k] = params.get(k); });
   let rows = [], nextBefore = null, selectedId = null, lastStats = null, gen = 0, liveBusy = false;
   let me = null, queue = [], drawerEvent = null, view = "activity";
-  let shortcutQueueId = null, shortcutIndexHint = 0;
+  let shortcutQueueId = null, shortcutIndexHint = 0, approveArm = null, queueIds = [];   // approveArm: {id, timer} while waiting for the second `a`
   const linkedEvent = params.get("event");  // /dashboard?event=<id> (webhook links) opens that event
 
   const store = {
@@ -1098,8 +1100,9 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
       try {
         await apiPost(`/v1/events/${encodeURIComponent(e.id)}/${outcome}`, { note: note.value.trim() || null });
         toast(`${outcome === "approve" ? "Approved" : "Rejected"} ${e.name}`);
-        shortcutIndexHint = Math.max(0, queue.findIndex((q) => q.id === e.id));
+        shortcutIndexHint = Math.max(0, queue.findIndex((q) => q.id === e.id));   // the next `j` lands on the request that moved up
         queue = queue.filter((q) => q.id !== e.id);
+        shortcutQueueId = null; cancelApprove();   // never carry a selection over to the next request
         renderQueue();
         if (drawerEvent && drawerEvent.id === e.id) refreshDrawer();
         live();
@@ -1130,20 +1133,42 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
       li.setAttribute("aria-selected", String(on));
     });
   }
-  function selectQueueIndex(i) {
-    if (!queue.length) { shortcutQueueId = null; return; }
-    shortcutQueueId = queue[Math.max(0, Math.min(i, queue.length - 1))].id;
+  // Only the person picks a request (j/k or a click); the dashboard never selects one for them.
+  function setQueueSelection(id) {
+    if (approveArm && approveArm.id !== id) cancelApprove();
+    shortcutQueueId = id;
     updateShortcutSelection();
+  }
+  function selectQueueIndex(i) {
+    if (!queue.length) { setQueueSelection(null); return; }
+    setQueueSelection(queue[Math.max(0, Math.min(i, queue.length - 1))].id);
+    shortcutIndexHint = 0;
     const li = queueRow(shortcutQueueId);
     if (li) li.scrollIntoView({ block: "nearest" });
   }
   function moveQueueSelection(dir) {
     const i = queue.findIndex((q) => q.id === shortcutQueueId);
-    selectQueueIndex(i < 0 ? 0 : Math.max(0, Math.min(i + dir, queue.length - 1)));
+    if (i >= 0) selectQueueIndex(Math.max(0, Math.min(i + dir, queue.length - 1)));
+    else selectQueueIndex(dir > 0 ? shortcutIndexHint : shortcutIndexHint - 1);   // nothing selected: start at the top, or just after the last decision
+  }
+  // Approving takes two presses of `a` on the same request within APPROVE_CONFIRM_MS.
+  const APPROVE_CONFIRM_MS = 3000;
+  function cancelApprove() {
+    if (!approveArm) return;
+    clearTimeout(approveArm.timer);
+    const li = queueRow(approveArm.id);
+    if (li) li.querySelectorAll(".arm").forEach((n) => n.remove());
+    approveArm = null;
   }
   function approveSelected() {
-    const btn = queueRow(shortcutQueueId) && queueRow(shortcutQueueId).querySelector(".btn.approve");
-    if (btn && !btn.disabled) btn.click();
+    const id = shortcutQueueId, li = queueRow(id);
+    const btn = li && li.querySelector(".btn.approve");
+    if (!btn || btn.disabled) return;
+    if (approveArm && approveArm.id === id) { cancelApprove(); btn.click(); return; }   // second press: approve
+    cancelApprove();
+    const q = queue.find((x) => x.id === id);
+    li.append(el("div", { class: "arm", role: "status", text: `Press a again to approve ${q ? q.name : "this request"}` }));
+    approveArm = { id, timer: setTimeout(cancelApprove, APPROVE_CONFIRM_MS) };
   }
   function focusRejectNote() {
     const note = queueRow(shortcutQueueId) && queueRow(shortcutQueueId).querySelector(".acts input");
@@ -1168,7 +1193,15 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     $("#aqCount").textContent = queue.length;
     const keys = " · j/k move · a approve · r reject · ? shortcuts";
     $("#aqHint").textContent = me && !me.can_approve ? `Viewing as "${me.client}" (not an approver)` + keys.replace(" · a approve · r reject", "") : "oldest deadline first" + keys;
-    if (!queue.some((q) => q.id === shortcutQueueId)) shortcutQueueId = queue.length ? queue[Math.min(shortcutIndexHint, queue.length - 1)].id : null;
+    // No automatic selection. If the selected request is gone (someone else decided it, or it timed out), just deselect.
+    if (shortcutQueueId && !queue.some((q) => q.id === shortcutQueueId)) {
+      shortcutIndexHint = Math.max(0, queueIds.indexOf(shortcutQueueId));
+      shortcutQueueId = null;
+    }
+    const ids = queue.map((q) => q.id);
+    if (ids.join("|") !== queueIds.join("|")) cancelApprove();   // any change to the queue cancels a pending approval
+    queueIds = ids;
+    if (approveArm && (approveArm.id !== shortcutQueueId || !queueRow(approveArm.id))) cancelApprove();
     document.title = queue.length ? `(${queue.length}) Needs approval · Squidbrake` : "Squidbrake";
     // Rows are reused across refreshes, but rebuilt when the viewer (API key) changes,
     // because the approve/reject controls depend on who is looking.
@@ -1180,7 +1213,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
       let li = list.querySelector(`li[data-id="${CSS.escape(e.id)}"]`);
       if (!li) {
         li = el("li", { "data-id": e.id, "data-viewer": viewer, "aria-selected": "false",
-            onclick: (ev) => { if (!ev.target.closest("button, input, select, textarea, a")) { shortcutQueueId = e.id; updateShortcutSelection(); } } },
+            onclick: (ev) => { if (!ev.target.closest("button, input, select, textarea, a")) setQueueSelection(e.id); } },
           el("div", {},
             el("div", {}, el("button", { class: "pill-link mono", text: e.name, title: "Open details", onclick: () => openDrawer(e.id) })),
             el("div", { class: "why" }, e.reason || "", e.rule_id ? el("span", { class: "muted mono", text: `  · ${e.rule_id}` }) : null),
@@ -1201,6 +1234,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
 
   // ---------- drawer
   async function openDrawer(id) {
+    cancelApprove();
     selectedId = id;
     document.querySelectorAll("#rows tr").forEach((tr) => tr.classList.toggle("sel", tr.dataset.id === id));
     const d = $("#drawer");
@@ -1384,6 +1418,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   document.addEventListener("keydown", (ev) => {
     if (ev.key === "Escape" && selectedId && !$("#keyDlg").open) closeDrawer();
     if (ev.key === "/" && document.activeElement === document.body) { ev.preventDefault(); $("#q").focus(); }
+    if (approveArm && !ev.repeat && (ev.key !== "a" || shortcutsBlocked(ev))) cancelApprove();   // any other key cancels a pending approval
     if (ev.repeat || shortcutsBlocked(ev)) return;   // never while typing, in a dialog, or with Ctrl/Cmd/Alt held
     if (ev.key === "?") { ev.preventDefault(); $("#shortcutDlg").showModal(); return; }
     if (view !== "activity" || !queue.length) return;
