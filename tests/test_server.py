@@ -119,6 +119,19 @@ def test_dashboard_served(c):
     assert c.get("/", follow_redirects=False).headers["location"] == "/dashboard"
 
 
+def test_dashboard_approval_shortcuts(c):
+    """The approval-queue shortcuts (j/k/a/r/?) ship in the dashboard and are guarded."""
+    html = c.get("/dashboard").text.replace("\r\n", "\n")   # tolerate CRLF checkouts on Windows
+    for key in ('ev.key === "j"', 'ev.key === "k"', 'ev.key === "a"', 'ev.key === "r"', 'ev.key === "?"'):
+        assert key in html
+    assert 'id="shortcutDlg"' in html
+    # they must not fire while typing, in a dialog, or with a modifier held (Ctrl+R must still reload)
+    guard = html[html.index("function shortcutsBlocked"):]
+    guard = guard[:guard.index("}\n")]
+    for needle in ("isTypingTarget", "ev.ctrlKey", "ev.metaKey", "dialog[open]"):
+        assert needle in guard
+    assert 'ev.repeat || shortcutsBlocked(ev)' in html
+
 def _held(c, name, headers=H):
     d = c.post("/v1/events", headers=headers, json={"name": name, "input": {"amount": 50}}).json()
     assert d["decision"] == "review" and d["status"] == "awaiting_approval" and d["approval_deadline"]
