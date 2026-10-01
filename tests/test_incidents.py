@@ -1,4 +1,4 @@
-"""Every incident in incidents/scenarios.py must be stopped the way incidents/README.md says (shipped rules.yaml)."""
+"""Every incident must match the stopped/not-stopped outcome documented for the shipped rules.yaml."""
 import os
 import sys
 import tempfile
@@ -29,9 +29,17 @@ def outcomes():
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=[s["id"] for s in SCENARIOS])
-def test_incident_is_stopped(outcomes, scenario):
+def test_incident_matches_expected_outcome(outcomes, scenario):
+    import replay
     results = outcomes[scenario["id"]]
     assert results, "every scenario needs at least one expected step"
     for r in results:
         assert r["ok"], (r["tool"], r["input"], r["decision"], r["rule_id"], r["reason"], r["expected"])
-        assert r["decision"] in ("deny", "review")        # never simply allowed
+    expected = scenario.get("expected_outcome", "stopped")
+    assert expected in ("stopped", "not_stopped")
+    assert replay.outcome(results) == expected
+    if expected == "not_stopped":
+        assert scenario.get("not_stopped_because"), "document why the gateway cannot stop this incident"
+        assert any(r["outcome"] == "not_stopped" for r in results)
+    else:
+        assert all(r["decision"] in ("deny", "review") for r in results), "an expected stop was allowed"

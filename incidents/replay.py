@@ -47,12 +47,26 @@ def replay(client, headers: dict, approver: dict, scenario: dict) -> list[dict]:
             checks.append(e["reason_has"] in (d.get("reason") or ""))
         if e.get("signal"):
             checks.append(any(s["check"] == e["signal"] for s in d.get("signals") or []))
+        outcome = "not_stopped" if d["decision"] == "allow" else "stopped"
+        if d["decision"] == "review":
+            if step.get("after_approval"):
+                # Model a person approving the legitimate-looking call. The described side effect is data only:
+                # it happens beyond the gateway in the real incident and is never executed by this replay.
+                approved = client.post(f"/v1/events/{d['event_id']}/approve", headers=approver,
+                                       json={"note": "synthetic incident replay"}).json()
+                outcome = "not_stopped" if approved.get("decision") == "allow" else "stopped"
+            else:   # tidy up: nothing should stay waiting
+                client.post(f"/v1/events/{d['event_id']}/reject", headers=approver, json={"note": "incident replay"})
         results.append({"tool": step["tool"], "input": step["input"], "decision": d["decision"],
                         "rule_id": d.get("rule_id"), "reason": d.get("reason"), "signals": d.get("signals") or [],
+                        "after_approval": step.get("after_approval"), "outcome": outcome,
                         "expected": e, "ok": all(checks)})
-        if d["decision"] == "review":   # tidy up: nothing should stay waiting
-            client.post(f"/v1/events/{d['event_id']}/reject", headers=approver, json={"note": "incident replay"})
     return results
+
+
+def outcome(results: list[dict]) -> str:
+    """Return the scenario outcome: one unstopped harmful action makes the incident not stopped."""
+    return "not_stopped" if any(r["outcome"] == "not_stopped" for r in results) else "stopped"
 
 
 def run_all(client, headers: dict, approver: dict) -> list[tuple[dict, list[dict]]]:
@@ -79,17 +93,31 @@ def main() -> int:
         pass
     with TestClient(server.app) as client:
         outcomes = run_all(client, {}, {})
-    failed = 0
+    failed_checks = 0
+    failed_outcomes = 0
+    stopped = 0
+    not_stopped = 0
     for s, results in outcomes:
         print(f"\n{s['title']} ({s['when']})\n  {s['source']}")
         for r in results:
             mark = "✓" if r["ok"] else "✗"
-            failed += not r["ok"]
+            failed_checks += not r["ok"]
             what = r["input"].get("command") or r["input"].get("query") or f"{r['tool']} {r['input']}"
             print(f"  {mark} {VERB[r['decision']]}: {str(what)[:90]}\n      {r['reason'][:160]}")
-    print(f"\n{sum(len(r) for _, r in outcomes) - failed} of {sum(len(r) for _, r in outcomes)} harmful actions "
-          f"stopped as expected across {len(outcomes)} incidents.")
-    return 1 if failed else 0
+            if r["outcome"] == "not_stopped":
+                detail = r["after_approval"] or "the gateway allowed the harmful action"
+                print(f"      NOT STOPPED: {detail}")
+        actual = outcome(results)
+        expected = s.get("expected_outcome", "stopped")
+        failed_outcomes += actual != expected
+        stopped += sum(r["outcome"] == "stopped" for r in results)
+        not_stopped += sum(r["outcome"] == "not_stopped" for r in results)
+    total = stopped + not_stopped
+    matched = total - failed_checks
+    outcome_matches = len(outcomes) - failed_outcomes
+    print(f"\n{stopped} of {total} harmful actions stopped across {len(outcomes)} incidents; "
+          f"{not_stopped} not stopped. {matched} action checks and {outcome_matches} expected outcomes matched.")
+    return 1 if failed_checks or failed_outcomes else 0
 
 
 if __name__ == "__main__":
