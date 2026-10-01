@@ -1,0 +1,49 @@
+# Checked against the official Slack-hosted MCP server at https://mcp.slack.com/mcp on 2026-10-01.
+# Version checked: Slack-hosted rolling release (Slack publishes no semantic server version); checked 2026-10-01.
+# Tool names use the <app>.<tool> form produced by `connect.py wrap --app slack`.
+default: review
+default_reason: Slack changes require approval
+
+rules:
+  - id: block-destructive-slack-actions
+    action: deny
+    reason: Deleting Slack messages or channels and archiving channels are not allowed
+    match:
+      name: ["slack.*delete*", "slack.*archive*"]
+
+  - id: allow-slack-reads
+    action: allow
+    reason: Read-only Slack operation
+    match:
+      name:
+        - "slack.slack_list_user_channels"
+        - "slack.slack_search_channels"
+        - "slack.slack_search_public"
+        - "slack.slack_search_public_and_private"
+        - "slack.slack_search_users"
+        - "slack.slack_read_channel"
+        - "slack.slack_read_thread"
+        - "slack.slack_read_user_profile"
+        - "slack.slack_list_channel_members"
+        - "slack.slack_get_reactions"
+        - "slack.slack_read_canvas"
+        - "slack.slack_read_file"
+        - "slack.slack_read_list"
+
+  - id: review-slack-messages-and-reactions
+    action: review
+    reason: Posting, replying, or reacting in Slack needs your approval
+    match:
+      name:
+        - "slack.slack_send_message"
+        - "slack.slack_send_message_draft"
+        - "slack.slack_schedule_message"
+        - "slack.slack_add_reaction"
+
+  - id: review-slack-invites
+    action: review
+    reason: Inviting people or starting a new Slack conversation needs your approval
+    match:
+      name:
+        - "slack.*invite*"
+        - "slack.slack_create_conversation"
