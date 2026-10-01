@@ -545,6 +545,38 @@ rules:
     assert decide("stripe.payments_refund", {"amount": 250}) == "review"  # bad op: previous rules kept
 
 
+def test_slack_example_policy():
+    rules = Path(__file__).resolve().parents[1] / "examples" / "rules" / "slack.yaml"
+    p = server.Policy(rules)
+
+    def decide(name):
+        return p.evaluate(kind="mcp", name=name, source=None, client="test", session_id=None, input={})
+
+    for name in (
+        "slack.slack_list_user_channels",
+        "slack.slack_read_channel",
+        "slack.slack_search_public",
+        "slack.slack_search_users",
+        "slack.slack_read_user_profile",
+    ):
+        assert decide(name)[0] == "allow", name
+
+    for name in (
+        "slack.slack_send_message",
+        "slack.slack_add_reaction",
+        "slack.slack_invite_to_conversation",
+        "slack.slack_create_conversation",
+    ):
+        assert decide(name)[0] == "review", name
+
+    for name in (
+        "slack.slack_delete_message",
+        "slack.slack_delete_channel",
+        "slack.slack_archive_channel",
+    ):
+        assert decide(name)[0] == "deny", name
+
+
 def test_proxy(c):
     seen = {}
 

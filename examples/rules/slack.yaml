@@ -1,5 +1,5 @@
-# Checked against the official Slack-hosted MCP server at https://mcp.slack.com/mcp on 2026-10-01.
-# Version checked: Slack-hosted rolling release (Slack publishes no semantic server version); checked 2026-10-01.
+# Example policy for the official Slack MCP server at https://mcp.slack.com/mcp.
+# The hosted server does not publish a version; tool names use its published MCP docs.
 # Tool names use the <app>.<tool> form produced by `connect.py wrap --app slack`.
 default: review
 default_reason: Slack changes require approval
