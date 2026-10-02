@@ -1,7 +1,7 @@
 """
 Check a Squidbrake evidence file on any machine, without trusting the server that produced it.
 
-    python verify.py squidbrake-evidence-20261001.json
+    python verify.py squidbrake-evidence-20261001.json [--json]
 
 Download the file from the dashboard (Reports > Tamper check > Download evidence) or GET /v1/audit/export.json.
 Only the Python standard library is needed. It checks that:
@@ -111,12 +111,31 @@ def report(result: dict) -> str:
     return "\n".join(lines)
 
 
+def json_report(result: dict) -> dict:
+    """The same verdict as report(), as one object a script can read (records = audit entries checked)."""
+    if "chain" not in result:
+        return {"ok": False, "records": 0, "problems": [{"record": None, "problem": result["message"]}]}
+    c, e, r = result["chain"], result["events"], result["rules"]
+    problems = []
+    if not c["ok"]:
+        problems.append({"record": c["first_bad_seq"], "problem": c["message"]})
+    for x in e["changed"]:
+        problems.append({"record": x["event"], "problem": f"its {x['field']} was changed after the fact"})
+    for fp in r["missing"]:
+        problems.append({"record": fp, "problem": "the rules version that made a decision is missing from the file"})
+    for fp in r["mismatched"]:
+        problems.append({"record": fp, "problem": "the rules text doesn't match its fingerprint"})
+    return {"ok": result["ok"], "records": c["entries"], "problems": problems}
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     try:
         sys.stdout.reconfigure(encoding="utf-8")  # the check marks, on Windows consoles too
     except (AttributeError, ValueError):
         pass
+    as_json = "--json" in argv
+    argv = [a for a in argv if a != "--json"]
     if len(argv) != 1:
         print(__doc__.strip())
         return 2
@@ -124,10 +143,14 @@ def main(argv: list[str] | None = None) -> int:
         with open(argv[0], encoding="utf-8") as f:
             data = json.load(f)
     except (OSError, ValueError) as e:
-        print(f"✗ can't read {argv[0]}: {e}")
+        message = f"can't read {argv[0]}: {e}"
+        if as_json:
+            print(json.dumps({"ok": False, "records": 0, "problems": [{"record": None, "problem": message}]}))
+        else:
+            print("✗ " + message)
         return 2
     result = verify(data)
-    print(report(result))
+    print(json.dumps(json_report(result)) if as_json else report(result))
     return 0 if result["ok"] else 1
 
 

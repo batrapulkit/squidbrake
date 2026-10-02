@@ -716,6 +716,38 @@ def test_evidence_export_checks_offline(c, org, tmp_path):
     assert verify.main([str(f)]) == 1
 
 
+def _evidence_file(c, org, tmp_path, data):
+    f = tmp_path / f"evidence-{time.time_ns()}.json"
+    f.write_text(json.dumps(data), encoding="utf-8")
+    return f
+
+
+def test_json_flag_prints_valid_json_for_a_good_file(c, org, tmp_path, capsys):
+    import verify
+    c.post("/v1/events", headers=org["agent"], json={"name": "shell.exec", "input": {"cmd": "ls"}})
+    data = c.get("/v1/audit/export.json", headers=org["viewer"]).json()
+    f = _evidence_file(c, org, tmp_path, data)
+    assert verify.main([str(f), "--json"]) == 0            # the exit code doesn't change
+    out = json.loads(capsys.readouterr().out)              # ... and the output is one JSON object
+    assert out["ok"] is True and out["records"] == len(data["entries"]) and out["problems"] == []
+
+
+def test_json_flag_prints_valid_json_for_a_tampered_file(c, org, tmp_path, capsys):
+    import copy
+    import verify
+    c.post("/v1/events", headers=org["agent"], json={"name": "shell.exec", "input": {"cmd": "ls"}})
+    data = c.get("/v1/audit/export.json", headers=org["viewer"]).json()
+    bad = copy.deepcopy(data)                               # an action's input rewritten in the file
+    victim = next(e for e in bad["events"] if e["output"] is None and e["input"])
+    victim["input"] = victim["input"][:-1] + ', "tampered": true}'
+    f = _evidence_file(c, org, tmp_path, bad)
+    assert verify.main([str(f), "--json"]) == 1            # the exit code doesn't change
+    out = json.loads(capsys.readouterr().out)              # ... and the output is one JSON object
+    assert out["ok"] is False and out["records"] == len(bad["entries"])
+    assert out["problems"] and all("record" in p and "problem" in p for p in out["problems"])
+    assert victim["id"] in [p["record"] for p in out["problems"]]   # the problem names the record it was found in
+
+
 def test_reports_and_export(c, org):
     eid = c.post("/v1/events", headers=org["agent"], json={"name": "payments.refund", "source": "support-bot"}).json()["event_id"]
     c.post(f"/v1/events/{eid}/approve", headers=org["finance-lead"])

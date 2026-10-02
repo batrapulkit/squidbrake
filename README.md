@@ -348,6 +348,8 @@ python verify.py squidbrake-evidence-20261001-0930.json
 It confirms the chain is unbroken, that every recorded action still matches the fingerprint taken when it happened
 (so rows edited in the database are caught, not just edits to the log), and that every decision's rules version is
 in the file. `verify.py` needs only the Python standard library. The dashboard's tamper check runs the same checks live.
+Add `--json` for one machine-readable object (`ok`, the number of records checked, and a list of problems with the
+record each one was found in) for CI; the exit code stays 0/1 either way.
 
 ## Behaviour notes
 
