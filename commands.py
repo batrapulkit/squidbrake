@@ -280,6 +280,12 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         return [], [f"runs code built at run time ({prog}), which can't be read before it runs"]
 
     # ---- catastrophic
+    if prog == "diskutil" and lower[1:2] in (["erasedisk"], ["erasevolume"], ["secureerase"]):
+        cmd.kind, cmd.why = "catastrophic", f"erases a disk or volume ({' '.join(words[:3])})"
+        return [cmd], []
+    if prog == "tmutil" and lower[1:2] == ["delete"]:
+        cmd.kind, cmd.why = "irreversible", f"deletes Time Machine backups ({' '.join(words[:3])})"
+        return [cmd], []
     if prog.startswith("mkfs") or prog in ("wipefs", "diskpart", "format", "fdisk", "sfdisk", "parted", "gdisk"):
         if prog != "format" or any(re.match(r"^[a-z]:$", w, re.I) for w in lower[1:]):
             cmd.kind, cmd.why = "catastrophic", f"formats or repartitions a disk ({' '.join(words[:3])})"

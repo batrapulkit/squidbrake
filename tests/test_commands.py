@@ -24,6 +24,8 @@ def kind(line):
     'powershell -Command "Remove-Item -Recurse -Force C:\\Users"', "echo $(rm -rf ~)", "echo `rm -rf /`",
     "npx rimraf /", "timeout 5 sudo rm -rf /", "busybox rm -rf /", "busybox sh -c 'rm -rf ~'", "watch -n 1 rm -rf ~/", "watch -n 5 \"rm -rf ~/\"",
     "dd if=/dev/zero of=/dev/sda bs=1M", "mkfs.ext4 /dev/sdb1", "wipefs -a /dev/sda", "format D:", "chmod -R 777 /",
+    "diskutil eraseDisk JHFS+ X disk2", "diskutil eraseVolume APFS X disk2s1", "diskutil secureErase 0 disk2",
+    "sudo /usr/sbin/diskutil eraseDisk APFS X disk2",
 ])
 def test_catastrophic(line):
     assert kind(line) == "catastrophic", commands.read(line).summary()
@@ -42,6 +44,7 @@ def test_catastrophic(line):
     "az group delete -n rg", 'psql -c "DROP TABLE users"', 'mysql -e "TRUNCATE orders"',
     'sqlite3 app.db "DELETE FROM users;"', "docker system prune -af", "docker volume rm data",
     "docker compose down -v", "npm publish", "gh repo delete me/repo --yes", "shutdown -h now", "crontab -r",
+    "tmutil delete /Volumes/Backup/x", "tmutil delete -d /Volumes/Backup -t 2026-01-01-120000",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -98,6 +101,14 @@ def test_summary_explains():
     assert "home folder" in commands.read("rm -rf ~/").summary()
     assert "whole drive" in commands.read("rmdir /s /q d:\\").summary()
     assert "remote" in commands.read("git push --force").summary()
+    assert "disk" in commands.read("diskutil eraseDisk APFS X disk2").summary()
+    assert "backup" in commands.read("tmutil delete /Volumes/Backup/x").summary()
+
+
+@pytest.mark.parametrize("line", ["diskutil list", "diskutil info disk2", "tmutil listbackups",
+                                 "diskutil info eraseDisk", "tmutil latestbackup"])
+def test_macos_disk_inspection_is_not_destructive(line):
+    assert kind(line) not in ("catastrophic", "irreversible")
 
 
 def test_command_of():
