@@ -1315,11 +1315,17 @@ def notify_approval_needed(row: dict) -> None:
     def send():
         if cfg["slack_webhook"]:
             try:
-                httpx.post(cfg["slack_webhook"], timeout=10, json={
-                    "text": f":raised_hand: *{title}*\n{body}\n<{link}|Review and approve or reject> (expires {expires})",
-                    "event": {k: row[k] for k in ("id", "name", "kind", "source", "session_id", "client",
-                                                  "rule_id", "reason", "approval_deadline")},
-                }).raise_for_status()
+                if "discord.com/api/webhooks/" in cfg["slack_webhook"]:
+                    payload = {
+                        "content": f"**{title}**\n{body}\n[Review and approve or reject]({link}) (expires {expires})",
+                    }
+                else:
+                    payload = {
+                        "text": f":raised_hand: *{title}*\n{body}\n<{link}|Review and approve or reject> (expires {expires})",
+                        "event": {k: row[k] for k in ("id", "name", "kind", "source", "session_id", "client",
+                                                      "rule_id", "reason", "approval_deadline")},
+                    }
+                httpx.post(cfg["slack_webhook"], timeout=10, json=payload).raise_for_status()
             except Exception:
                 log.exception("Slack/webhook notification failed for event %s", row["id"])
         if cfg["ntfy_topic"]:

@@ -541,9 +541,9 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
             Anyone who knows the topic can see the notifications, so keep it random.</span>
           <span class="inline"><input name="ntfy_topic" placeholder="leave empty to turn off" pattern="[A-Za-z0-9_-]{0,64}">
             <button type="button" class="btn" id="genTopic">Generate private topic</button></span></label>
-        <label class="full">Slack incoming webhook
-          <span class="hint">Slack → Apps → Incoming Webhooks → Add to a channel, then paste the URL. Leave empty to turn off.</span>
-          <input name="slack_webhook" placeholder="https://hooks.slack.com/services/…"></label>
+        <label class="full">Slack or Discord incoming webhook
+          <span class="hint">Paste a Slack or Discord webhook URL. Discord formatting is detected automatically. Leave empty to turn off.</span>
+          <input name="slack_webhook" placeholder="Webhook URL"></label>
         <label>One-tap links approve as
           <select name="notify_as" id="notifyAs"></select>
           <span class="hint">Whoever can see the notification can use its link, so pick the person who owns that phone / channel.</span></label>
