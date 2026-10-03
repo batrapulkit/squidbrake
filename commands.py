@@ -280,9 +280,16 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         return [], [f"runs code built at run time ({prog}), which can't be read before it runs"]
 
     # ---- catastrophic
-    if prog == "diskutil" and lower[1:2] in (["erasedisk"], ["erasevolume"], ["secureerase"]):
-        cmd.kind, cmd.why = "catastrophic", f"erases a disk or volume ({' '.join(words[:3])})"
-        return [cmd], []
+    if prog == "diskutil":
+        if lower[1:2] in (["erasedisk"], ["erasevolume"], ["secureerase"], ["zerodisk"], ["randomdisk"], ["reformat"]):
+            cmd.kind, cmd.why = "catastrophic", f"erases a disk or volume ({' '.join(words[:3])})"
+            return [cmd], []
+        if lower[1:2] == ["partitiondisk"]:
+            cmd.kind, cmd.why = "catastrophic", f"formats or repartitions a disk ({' '.join(words[:3])})"
+            return [cmd], []
+        if lower[1:2] == ["apfs"] and lower[2:3] in (["deletecontainer"], ["deletevolume"]):
+            cmd.kind, cmd.why = "catastrophic", f"deletes an APFS container or volume ({' '.join(words[:3])})"
+            return [cmd], []
     if prog == "tmutil" and lower[1:2] == ["delete"]:
         cmd.kind, cmd.why = "irreversible", f"deletes Time Machine backups ({' '.join(words[:3])})"
         return [cmd], []

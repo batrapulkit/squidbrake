@@ -25,6 +25,9 @@ def kind(line):
     "npx rimraf /", "timeout 5 sudo rm -rf /", "busybox rm -rf /", "busybox sh -c 'rm -rf ~'", "watch -n 1 rm -rf ~/", "watch -n 5 \"rm -rf ~/\"",
     "dd if=/dev/zero of=/dev/sda bs=1M", "mkfs.ext4 /dev/sdb1", "wipefs -a /dev/sda", "format D:", "chmod -R 777 /",
     "diskutil eraseDisk JHFS+ X disk2", "diskutil eraseVolume APFS X disk2s1", "diskutil secureErase 0 disk2",
+    "diskutil zeroDisk disk2", "diskutil randomDisk disk2",
+    "diskutil partitionDisk disk2 1 GPT APFS X 100%", "diskutil reformat disk2s1",
+    "diskutil apfs deleteContainer disk2", "diskutil apfs deleteVolume disk2s1",
     "sudo /usr/sbin/diskutil eraseDisk APFS X disk2",
     "Format-Volume -DriveLetter D", "Clear-Disk -Number 1 -RemoveData", "Format-Volume D",
     "Get-Partition -DriveLetter D | Format-Volume", "Get-Disk 1 | Clear-Disk",
@@ -106,10 +109,14 @@ def test_summary_explains():
     assert "whole drive" in commands.read("rmdir /s /q d:\\").summary()
     assert "remote" in commands.read("git push --force").summary()
     assert "disk" in commands.read("diskutil eraseDisk APFS X disk2").summary()
+    assert "disk" in commands.read("diskutil zeroDisk disk2").summary()
+    assert "repartition" in commands.read("diskutil partitionDisk disk2 1 GPT APFS X 100%").summary()
+    assert "APFS" in commands.read("diskutil apfs deleteContainer disk2").summary()
     assert "backup" in commands.read("tmutil delete /Volumes/Backup/x").summary()
 
 
-@pytest.mark.parametrize("line", ["diskutil list", "diskutil info disk2", "tmutil listbackups",
+@pytest.mark.parametrize("line", ["diskutil list", "diskutil info disk2", "diskutil apfs list",
+                                 "diskutil verifyDisk disk2", "tmutil listbackups",
                                  "diskutil info eraseDisk", "tmutil latestbackup"])
 def test_macos_disk_inspection_is_not_destructive(line):
     assert kind(line) not in ("catastrophic", "irreversible")
