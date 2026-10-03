@@ -283,7 +283,7 @@ Rules with `action: review` hold the call until a person approves or rejects it:
   and **a key can never approve its own request**. So give people their own keys, separate from the agents' keys.
 - If nobody decides before the deadline, `on_timeout` applies and `decided_by` is recorded as `timeout`.
 - Every decision is stored on the event with who decided, when, and their note.
-- Set `APPROVAL_WEBHOOK_URL` (plus `PUBLIC_URL`) to get a Slack-style message with a link to the event
+- Set `APPROVAL_WEBHOOK_URL` (plus `PUBLIC_URL`) to get a Slack- or Discord-formatted message with a link to the event
   whenever something needs approval.
 - Through the HTTP proxy, a held request stays open until it's decided, so the caller's HTTP
   timeout must be longer than the rule's `timeout_seconds`.
