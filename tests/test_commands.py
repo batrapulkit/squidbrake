@@ -26,6 +26,7 @@ def kind(line):
     "dd if=/dev/zero of=/dev/sda bs=1M", "mkfs.ext4 /dev/sdb1", "wipefs -a /dev/sda", "format D:", "chmod -R 777 /",
     "diskutil eraseDisk JHFS+ X disk2", "diskutil eraseVolume APFS X disk2s1", "diskutil secureErase 0 disk2",
     "sudo /usr/sbin/diskutil eraseDisk APFS X disk2",
+    "Format-Volume -DriveLetter D", "Clear-Disk -Number 1 -RemoveData",
 ])
 def test_catastrophic(line):
     assert kind(line) == "catastrophic", commands.read(line).summary()
@@ -45,6 +46,8 @@ def test_catastrophic(line):
     'sqlite3 app.db "DELETE FROM users;"', "docker system prune -af", "docker volume rm data",
     "docker compose down -v", "npm publish", "gh repo delete me/repo --yes", "shutdown -h now", "crontab -r",
     "tmutil delete /Volumes/Backup/x", "tmutil delete -d /Volumes/Backup -t 2026-01-01-120000",
+    "vssadmin delete shadows /all /quiet", "reg delete HKLM\\Software\\X /f", "cipher /w:C",
+    "Clear-Content important.txt",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -108,6 +111,12 @@ def test_summary_explains():
 @pytest.mark.parametrize("line", ["diskutil list", "diskutil info disk2", "tmutil listbackups",
                                  "diskutil info eraseDisk", "tmutil latestbackup"])
 def test_macos_disk_inspection_is_not_destructive(line):
+    assert kind(line) not in ("catastrophic", "irreversible")
+
+
+@pytest.mark.parametrize("line", ["Get-Volume", "vssadmin list shadows", "reg query HKLM\\Software\\X",
+                                 "vssadmin list shadows /for=C:", "reg export HKLM\\X backup.reg"])
+def test_windows_inspection_is_not_destructive(line):
     assert kind(line) not in ("catastrophic", "irreversible")
 
 

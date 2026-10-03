@@ -286,6 +286,15 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
     if prog == "tmutil" and lower[1:2] == ["delete"]:
         cmd.kind, cmd.why = "irreversible", f"deletes Time Machine backups ({' '.join(words[:3])})"
         return [cmd], []
+    if prog == "vssadmin" and lower[1:2] == ["delete"]:
+        cmd.kind, cmd.why = "irreversible", f"deletes Volume Shadow Copy restore points ({' '.join(words[:3])})"
+        return [cmd], []
+    if prog == "reg" and lower[1:2] == ["delete"]:
+        cmd.kind, cmd.why = "irreversible", f"deletes registry keys and their values ({' '.join(words[:3])})"
+        return [cmd], []
+    if prog == "cipher" and any(w.lower().startswith("/w") for w in lower[1:]):
+        cmd.kind, cmd.why = "irreversible", f"overwrites free disk space so deleted data can't be recovered ({' '.join(words[:2])})"
+        return [cmd], []
     if prog.startswith("mkfs") or prog in ("wipefs", "diskpart", "format", "fdisk", "sfdisk", "parted", "gdisk"):
         if prog != "format" or any(re.match(r"^[a-z]:$", w, re.I) for w in lower[1:]):
             cmd.kind, cmd.why = "catastrophic", f"formats or repartitions a disk ({' '.join(words[:3])})"
@@ -296,6 +305,9 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
     if prog in ("chmod", "chown", "chgrp") and ("-r" in {f.lower() for f in _flags(words)} or "--recursive" in lower) \
             and any(_is_catastrophic_target(p) for p in _positional(words)):
         cmd.kind, cmd.why = "catastrophic", f"changes permissions on the whole system ({' '.join(words)})"
+        return [cmd], []
+    if prog in ("format-volume", "clear-disk") and any(w.startswith("-") for w in words[1:]):
+        cmd.kind, cmd.why = "catastrophic", f"wipes a whole disk ({' '.join(words[:3])})"
         return [cmd], []
 
     # ---- deleting files
@@ -384,7 +396,7 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
     if prog == "crontab" and "-r" in lower:
         cmd.kind, cmd.why = "irreversible", "deletes every scheduled job (crontab -r)"
         return [cmd], []
-    if prog == "truncate" or (prog == "mv" and any(w in ("/dev/null", "nul") for w in lower[1:])):
+    if prog == "truncate" or prog == "clear-content" or (prog == "mv" and any(w in ("/dev/null", "nul") for w in lower[1:])):
         cmd.kind, cmd.why = "irreversible", f"empties or discards files ({' '.join(words[:3])})"
         return [cmd], []
 
