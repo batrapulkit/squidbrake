@@ -299,6 +299,16 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
     if prog == "reg" and lower[1:2] == ["delete"]:
         cmd.kind, cmd.why = "irreversible", f"deletes registry keys and their values ({' '.join(words[:3])})"
         return [cmd], []
+    if prog == "wmic" and lower[1:2] == ["shadowcopy"] and "delete" in lower[2:]:
+        cmd.kind, cmd.why = "irreversible", f"deletes Volume Shadow Copy restore points ({' '.join(words[:3])})"
+        return [cmd], []
+    if prog == "wbadmin" and lower[1:3] == ["delete", "catalog"]:
+        cmd.kind, cmd.why = "irreversible", f"deletes the Windows backup catalog, so backups can't be restored ({' '.join(words[:3])})"
+        return [cmd], []
+    if prog == "bcdedit" and "recoveryenabled" in lower \
+            and any(w in ("no", "false", "0") for w in lower[lower.index("recoveryenabled") + 1:]):
+        cmd.kind, cmd.why = "irreversible", f"switches off Windows recovery at boot ({' '.join(words[:5])})"
+        return [cmd], []
     if prog == "cipher" and any(w.lower().startswith("/w") for w in lower[1:]):
         cmd.kind, cmd.why = "irreversible", f"overwrites free disk space so deleted data can't be recovered ({' '.join(words[:2])})"
         return [cmd], []
@@ -404,7 +414,7 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
     if prog == "crontab" and "-r" in lower:
         cmd.kind, cmd.why = "irreversible", "deletes every scheduled job (crontab -r)"
         return [cmd], []
-    if prog == "truncate" or prog == "clear-content" or (prog == "mv" and any(w in ("/dev/null", "nul") for w in lower[1:])):
+    if prog == "truncate" or prog in ("clear-content", "clc") or (prog == "mv" and any(w in ("/dev/null", "nul") for w in lower[1:])):
         cmd.kind, cmd.why = "irreversible", f"empties or discards files ({' '.join(words[:3])})"
         return [cmd], []
 

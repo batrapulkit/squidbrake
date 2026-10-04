@@ -52,6 +52,10 @@ def test_catastrophic(line):
     "tmutil delete /Volumes/Backup/x", "tmutil delete -d /Volumes/Backup -t 2026-01-01-120000",
     "vssadmin delete shadows /all /quiet", "reg delete HKLM\\Software\\X /f", "cipher /w:C",
     "Clear-Content important.txt",
+    "clc file.txt",
+    "wmic shadowcopy delete",
+    "wbadmin delete catalog -quiet",
+    "bcdedit /set {default} recoveryenabled no",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -123,7 +127,8 @@ def test_macos_disk_inspection_is_not_destructive(line):
 
 
 @pytest.mark.parametrize("line", ["Get-Volume", "vssadmin list shadows", "reg query HKLM\\Software\\X",
-                                 "vssadmin list shadows /for=C:", "reg export HKLM\\X backup.reg", "Format-Volume -?"])
+                                 "vssadmin list shadows /for=C:", "reg export HKLM\\X backup.reg", "Format-Volume -?",
+                                 "wmic shadowcopy list", "wbadmin get versions", "bcdedit /enum"])
 def test_windows_inspection_is_not_destructive(line):
     assert kind(line) not in ("catastrophic", "irreversible")
 
