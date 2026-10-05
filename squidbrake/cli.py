@@ -9,6 +9,8 @@ The `squidbrake` command (installed with pip):
   squidbrake agent-hook AGENT        the hook for cursor, codex, gemini-cli, vscode, antigravity
   squidbrake lockdown --url URL      policy files IT pushes to every machine so agents can't skip the gateway
   squidbrake evidence --days 90      a printable evidence pack for your auditor
+  squidbrake shell-guard install --shell bash|zsh|powershell   guard the lines you type or paste into your terminal
+  squidbrake shell-guard check "LINE"  exit code 0 run, 1 block, 2 ask (used by the snippet above)
   squidbrake undo [ID]               list, or put back, what an agent deleted or overwrote
   squidbrake proxy --app NAME -- CMD an MCP server that checks every call to the app's MCP server CMD first
                                      (same as: python gateway_proxy.py ...)
@@ -49,6 +51,12 @@ def main() -> int:
         import agent_hook
         agent_hook.main()
         return 0
+    if argv[:1] == ["shell-guard"]:  # check a line typed into your own terminal (see shell_guard.py)
+        try:
+            import shell_guard
+        except Exception:  # a broken install must never block a command: exit 1 means "block"
+            return 0 if argv[1:2] == ["check"] else 1
+        return shell_guard.main(argv[1:])
     if argv[:1] == ["undo"]:  # list or restore what an agent deleted or overwrote (see undo.py)
         import undo
         return undo.main(argv[1:])

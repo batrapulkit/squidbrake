@@ -236,6 +236,26 @@ Shell tools (Claude Code's `Bash` and `PowerShell`, or any tool matching `comman
 Command checks apply even when a rule allows the tool, and `read_only: allow` only relaxes the `default` (never a
 rule or a warning). Configure them under `command_checks:` in `rules.yaml`.
 
+## Terminal guard
+
+Commands people paste from ChatGPT, a forum or a README never pass an agent hook. This puts the same command reader
+([`commands.py`](commands.py)) in front of your own shell: catastrophic lines are blocked, irreversible or unreadable
+ones (`git push --force`, `curl ... | sh`) ask `Run it anyway? [y/N]`, everything else runs without a word. It works
+offline, nothing is sent anywhere, and if the guard itself fails your command still runs.
+
+```bash
+squidbrake shell-guard install --shell bash >> ~/.bashrc        # then open a new terminal
+squidbrake shell-guard install --shell zsh  >> ~/.zshrc
+```
+
+```powershell
+if (!(Test-Path $PROFILE)) { New-Item -ItemType File -Force $PROFILE }
+squidbrake shell-guard install --shell powershell | Add-Content $PROFILE
+```
+
+`install` only prints the snippet; it never edits a file, so read it first. Scripts and CI (non-interactive shells) are
+never blocked or prompted. Check one line by hand: `squidbrake shell-guard check "rm -rf ~/"` (exit code 0 run, 1 block, 2 ask).
+
 ## Prompt injection, caught without a model
 
 The attacks that actually happened to agents (a GitHub issue, a support ticket or a web page telling the agent to send
