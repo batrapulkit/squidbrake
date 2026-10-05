@@ -128,3 +128,30 @@ def test_status_flags_an_untrusted_codex_hook(tmp_path, monkeypatch, capsys):
         code = e.code
     out = capsys.readouterr().out
     assert code == 1 and "NOT TRUSTED" in out and "/hooks" in out and "NOT REACHABLE" in out
+
+
+def test_status_checks_the_dashboard_the_hooks_use(tmp_path, monkeypatch, capsys):
+    """A hosted dashboard: status checks that URL and the hooks' key, not localhost."""
+    home = _home(tmp_path, monkeypatch)
+    (home / ".cursor").mkdir()
+    monkeypatch.setattr(connect.shutil, "which", lambda name: None)
+    connect.main(["agents", "--agent", "cursor", "--url", "https://co.app.example.test", "--key", "gw_hooked_key", "--yes"])
+    seen = []
+
+    class R:
+        def __init__(self, code): self.status_code = code
+
+    def get(url, headers=None, timeout=None):
+        seen.append((url, (headers or {}).get("X-Gateway-Key")))
+        return R(401 if url.endswith("/v1/me") else 200)
+    import httpx
+    monkeypatch.setattr(httpx, "get", get)
+    try:
+        connect.main(["status"])
+    except SystemExit as e:
+        code = e.code
+    out = capsys.readouterr().out
+    assert ("https://co.app.example.test/health", None) in seen
+    assert ("https://co.app.example.test/v1/me", "gw_hooked_key") in seen
+    assert "co.app.example.test: running" in out and "REJECTED" in out and "start it: squidbrake" not in out
+    assert code == 1 and "gw_hooked_key" not in out

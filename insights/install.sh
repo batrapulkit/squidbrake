@@ -1,52 +1,109 @@
 #!/usr/bin/env sh
 # Squidbrake installer for macOS / Linux.
 #   curl -fsSL <server>/install.sh | sh
+# With SQUIDBRAKE_URL and SQUIDBRAKE_AGENT_KEY set (a hosted dashboard), it also connects every agent on this computer.
 # With SQUIDBRAKE_PILOT and SQUIDBRAKE_PILOT_SERVER set, it also offers to join that pilot (it asks first).
-set -e
-printf '\nInstalling Squidbrake (brakes for AI agents)...\n\n'
+#
+# It installs Squidbrake in its own folder and never depends on pipx or Homebrew versions:
+#   1. a Python 3.10+ already here  -> its own virtual environment in ~/.squidbrake/app
+#   2. otherwise (macOS ships 3.9)   -> uv, which brings its own Python (uv is installed first if it isn't here)
+# Running it again upgrades Squidbrake in place.
+set -u
+APP="${SQUIDBRAKE_APP_DIR:-$HOME/.squidbrake/app}"
+BIN="${SQUIDBRAKE_BIN_DIR:-$HOME/.local/bin}"
+SB=""
 
-PY=$(command -v python3 || command -v python || true)
-if [ -z "$PY" ] || ! "$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'; then
-  echo "Python 3.10 or newer is needed: https://www.python.org/downloads/ (macOS: brew install python)"
-  exit 1
-fi
+say()  { printf '%s\n' "$*"; }
+ok()   { printf '  [OK] %s\n' "$*"; }
+fail() { printf '\n  [X] %s\n\n' "$*"; exit 1; }
+works() { [ -n "$1" ] && [ -x "$1" ] && "$1" --version >/dev/null 2>&1; }
+new_enough() { [ -n "$1" ] && "$1" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' >/dev/null 2>&1; }
 
-if command -v pipx >/dev/null 2>&1; then
-  PIPX="pipx"
-elif command -v brew >/dev/null 2>&1; then
-  brew install pipx >/dev/null && PIPX="pipx"
-else
-  "$PY" -m pip install --user --quiet pipx 2>/dev/null || "$PY" -m pip install --user --quiet --break-system-packages pipx
-  PIPX="$PY -m pipx"
-fi
-(cd /tmp && $PIPX install --force squidbrake && $PIPX ensurepath >/dev/null 2>&1 || true)
+say ""
+say "Installing Squidbrake (brakes for AI agents)..."
+say ""
+mkdir -p "$BIN"
 
-SB="$HOME/.local/bin/squidbrake"
-[ -x "$SB" ] || SB="squidbrake"
-printf '\nInstalled: %s\n' "$("$SB" --version)"
-
-if [ -n "$SQUIDBRAKE_URL" ] && [ -n "$SQUIDBRAKE_AGENT_KEY" ]; then
-  # a hosted dashboard: nothing to run locally, just route Claude Code through it
-  case "$SQUIDBRAKE_AGENT_KEY" in *YOUR_AGENT_KEY*)
-    echo "Put your agent key (from your start page) in place of gw_YOUR_AGENT_KEY and run it again."; exit 1 ;; esac
-  if ! curl -fsS -m 20 -H "X-Gateway-Key: $SQUIDBRAKE_AGENT_KEY" "$SQUIDBRAKE_URL/v1/me" >/dev/null; then
-    echo "Couldn't reach your dashboard with that key. Check the key and run it again."; exit 1
+# ---- 1. a Python 3.10+ that's already here: a private virtual environment
+PY=""
+for c in python3.13 python3.12 python3.11 python3.10 python3 python \
+         /opt/homebrew/bin/python3 /usr/local/bin/python3 "$HOME/.pyenv/shims/python3"; do
+  p=$(command -v "$c" 2>/dev/null || true)
+  if new_enough "$p"; then PY="$p"; break; fi
+done
+[ "${SQUIDBRAKE_INSTALL_WITH:-}" = uv ] && PY=""     # support / tests: go straight to uv
+if [ -n "$PY" ]; then
+  say "Using $("$PY" --version 2>&1) at $PY"
+  if "$PY" -m venv --clear "$APP" >/dev/null 2>&1 \
+     && "$APP/bin/python" -m pip install --quiet --disable-pip-version-check --upgrade pip >/dev/null 2>&1 \
+     && "$APP/bin/python" -m pip install --quiet --disable-pip-version-check --upgrade squidbrake; then
+    ln -sf "$APP/bin/squidbrake" "$BIN/squidbrake"
+    works "$BIN/squidbrake" && SB="$BIN/squidbrake"
   fi
-  printf '\n  [OK] Your dashboard answers.\n'
+  [ -n "$SB" ] || say "That Python couldn't make a virtual environment; trying uv instead."
+fi
+
+# ---- 2. uv, which brings its own Python
+if [ -z "$SB" ]; then
+  UV=$(command -v uv 2>/dev/null || true)
+  [ -z "$UV" ] && [ -x "$HOME/.local/bin/uv" ] && UV="$HOME/.local/bin/uv"
+  [ -z "$UV" ] && [ -x "$HOME/.cargo/bin/uv" ] && UV="$HOME/.cargo/bin/uv"
+  if [ -z "$UV" ]; then
+    command -v curl >/dev/null 2>&1 || fail "Squidbrake needs Python 3.10+ or uv, and curl to fetch uv. Install Python from https://www.python.org/downloads/ and run this again."
+    say "Installing uv (Astral's Python installer), which brings its own Python..."
+    curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 sh >/dev/null 2>&1 || true
+    [ -x "$HOME/.local/bin/uv" ] && UV="$HOME/.local/bin/uv"
+    [ -z "$UV" ] && [ -x "$HOME/.cargo/bin/uv" ] && UV="$HOME/.cargo/bin/uv"
+    [ -n "$UV" ] || fail "Couldn't install uv. Install Python 3.10+ from https://www.python.org/downloads/ and run this again."
+  fi
+  say "Using uv at $UV"
+  (cd /tmp && UV_TOOL_BIN_DIR="$BIN" "$UV" tool install --quiet --force --python-preference managed --python 3.12 squidbrake) \
+    || fail "Installing Squidbrake with uv failed (see the lines above). Send them to whoever sent you this link."
+  works "$BIN/squidbrake" && SB="$BIN/squidbrake"
+fi
+
+[ -n "$SB" ] || fail "Squidbrake didn't install. Send the lines above to whoever sent you this link."
+say ""
+ok "Installed: $("$SB" --version)"
+
+# The squidbrake command in new terminals: add the folder to the shell's startup file once
+[ -n "${SQUIDBRAKE_NO_PATH:-}" ] || case ":$PATH:" in *":$BIN:"*) ;; *)
+  for rc in "$HOME/.zshrc" "$HOME/.bashrc"; do
+    if [ -f "$rc" ] || [ "$rc" = "$HOME/.zshrc" -a "$(uname)" = "Darwin" ]; then
+      grep -qs "$BIN" "$rc" || printf '\n# Squidbrake\nexport PATH="%s:$PATH"\n' "$BIN" >> "$rc"
+    fi
+  done ;;
+esac
+
+if [ -n "${SQUIDBRAKE_URL:-}" ] && [ -n "${SQUIDBRAKE_AGENT_KEY:-}" ]; then
+  # a hosted dashboard: nothing to run locally, just route the agents through it
+  case "$SQUIDBRAKE_AGENT_KEY" in *YOUR_AGENT_KEY*)
+    fail "Put your agent key (from your start page) in place of gw_YOUR_AGENT_KEY and run it again." ;; esac
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsS -m 20 -H "X-Gateway-Key: $SQUIDBRAKE_AGENT_KEY" "$SQUIDBRAKE_URL/v1/me" >/dev/null 2>&1 \
+      || fail "Couldn't reach your dashboard with that key. Check you used the AGENT key from your start page, and run it again."
+  fi
+  ok "Your dashboard answers."
   if command -v claude >/dev/null 2>&1 || [ -d "$HOME/.claude" ]; then
-    "$SB" connect claude-code --url "$SQUIDBRAKE_URL" --key "$SQUIDBRAKE_AGENT_KEY" --yes --hook-only >/dev/null
-    printf '  [OK] Claude Code: every tool call (commands, edits, web, MCP) goes through it.\n'
+    "$SB" connect claude-code --url "$SQUIDBRAKE_URL" --key "$SQUIDBRAKE_AGENT_KEY" --yes --hook-only >/dev/null 2>&1 \
+      && ok "Claude Code: every tool call (commands, edits, web, MCP) goes through it." \
+      || say "  [!] Claude Code couldn't be connected; run: squidbrake connect claude-code --url $SQUIDBRAKE_URL --key YOUR_AGENT_KEY"
   fi
   # every other coding agent installed here: its terminal commands and file actions (hooks) ...
-  "$SB" connect agents --agent all --url "$SQUIDBRAKE_URL" --key "$SQUIDBRAKE_AGENT_KEY" --yes | sed 's/^/  /'
+  "$SB" connect agents --agent all --url "$SQUIDBRAKE_URL" --key "$SQUIDBRAKE_AGENT_KEY" --yes 2>&1 | sed 's/^/  /'
   # ... and its own MCP servers (GitHub, Stripe, databases...) go through it too
-  "$SB" connect guard --agent all --url "$SQUIDBRAKE_URL" --key "$SQUIDBRAKE_AGENT_KEY" --yes | sed 's/^/  /'
-  printf '\nLast step: close and reopen your agents (Claude Code, Cursor, ...), then work as usual.\nYour dashboard: %s/dashboard\n\n' "$SQUIDBRAKE_URL"
+  "$SB" connect guard --agent all --url "$SQUIDBRAKE_URL" --key "$SQUIDBRAKE_AGENT_KEY" --yes 2>&1 | sed 's/^/  /'
+  say ""
+  say "Last step: quit and reopen your agents (Cursor: Cmd+Q, then open it again), then work as usual."
+  say "Your dashboard: $SQUIDBRAKE_URL/dashboard"
+  say "To use the squidbrake command yourself (squidbrake connect status), open a new terminal window first."
+  say ""
   exit 0
 fi
 
-if [ -n "$SQUIDBRAKE_PILOT" ] && [ -n "$SQUIDBRAKE_PILOT_SERVER" ]; then
-  "$SB" pilot join "$SQUIDBRAKE_PILOT" --server "$SQUIDBRAKE_PILOT_SERVER" </dev/tty
+if [ -n "${SQUIDBRAKE_PILOT:-}" ] && [ -n "${SQUIDBRAKE_PILOT_SERVER:-}" ]; then
+  if [ -r /dev/tty ]; then "$SB" pilot join "$SQUIDBRAKE_PILOT" --server "$SQUIDBRAKE_PILOT_SERVER" </dev/tty
+  else "$SB" pilot join "$SQUIDBRAKE_PILOT" --server "$SQUIDBRAKE_PILOT_SERVER"; fi
 fi
 
 cat <<'EOF'
@@ -54,7 +111,7 @@ cat <<'EOF'
 Next:
   1. Open a new terminal (so the 'squidbrake' command is found) and run:  squidbrake
      It prints your keys (save them) and opens the dashboard. Keep that window open.
-  2. In another terminal, connect Claude Code:  squidbrake connect claude-code
-  3. Restart Claude Code and work as usual. Watch it at http://localhost:8080/dashboard
+  2. In another terminal, connect your agents:  squidbrake connect all
+  3. Restart your agents and work as usual. Watch it at http://localhost:8080/dashboard
 
 EOF

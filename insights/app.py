@@ -318,8 +318,11 @@ def delete_pilot(code: str):
 @app.get("/v1/admin/provision", dependencies=[Depends(admin)])
 def provision_queue():
     with db() as c:
-        rows = c.execute("SELECT code, subdomain, state FROM pilots WHERE hosted=1").fetchall()
-    return {"domain": HOSTED_DOMAIN, "pilots": [dict(r) | {"dashboard": dashboard_url(r["subdomain"])} for r in rows]}
+        # keys_ready: the keys arrived here (and may since have been shown to the founder and forgotten)
+        rows = c.execute("SELECT code, subdomain, state, (admin_key IS NOT NULL OR keys_revealed_at IS NOT NULL) AS keys_ready "
+                         "FROM pilots WHERE hosted=1").fetchall()
+    return {"domain": HOSTED_DOMAIN, "pilots": [dict(r) | {"keys_ready": bool(r["keys_ready"]),
+                                                          "dashboard": dashboard_url(r["subdomain"])} for r in rows]}
 
 
 class ProvisionedIn(BaseModel):
@@ -336,9 +339,10 @@ def provisioned(p: ProvisionedIn):
         if p.state == "deleted":
             _forget(c, p.code)
         elif p.state == "running":
+            # New keys (a recreated gateway) replace the old ones, so the start page shows them again
             c.execute("UPDATE pilots SET state='running', error=NULL, admin_key=COALESCE(?, admin_key), "
-                      "agent_key=COALESCE(?, agent_key) WHERE code=? AND state != 'deleting'",
-                      (p.admin_key, p.agent_key, p.code))
+                      "agent_key=COALESCE(?, agent_key), keys_revealed_at=CASE WHEN ? IS NULL THEN keys_revealed_at END "
+                      "WHERE code=? AND state != 'deleting'", (p.admin_key, p.agent_key, p.admin_key, p.code))
         else:
             c.execute("UPDATE pilots SET state='failed', error=? WHERE code=?", (p.error, p.code))
     return {"ok": True}

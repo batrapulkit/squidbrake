@@ -545,15 +545,36 @@ def codex_hook_trust(timeout: float = 20) -> str | None:
     return next((s for s in statuses if s not in ("trusted", "managed")), "trusted")
 
 
+def _hooked_gateway() -> tuple[str, str] | None:
+    """(url, key) the installed hooks point at, so status checks a hosted dashboard, not localhost."""
+    files = [settings_path(None)] + [t["file"] for t in hook_agents().values()]
+    for f in files:
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace") if f.exists() else ""
+        except OSError:
+            continue
+        if m := re.search(r"--url\s+(\S+?)\s+--key\s+(gw_[A-Za-z0-9_\-]+)", text):
+            return m.group(1).strip('"\''), m.group(2)
+    return None
+
+
 def status(args) -> int:
     """Which agents here go through Squidbrake, and whether each one will really run the hook."""
+    hooked = _hooked_gateway()
+    url = args.url or (hooked[0] if hooked else "http://localhost:8080")
+    key = args.key or (hooked[1] if hooked and url == hooked[0] else None)
+    hosted = not url.startswith(("http://localhost", "http://127.0.0.1"))
     try:
         import httpx
-        up = httpx.get(f"{args.url}/health", timeout=3).status_code == 200
+        up = httpx.get(f"{url}/health", timeout=8).status_code == 200
+        accepted = None if not key else httpx.get(f"{url}/v1/me", headers={"X-Gateway-Key": key}, timeout=8).status_code == 200
     except Exception:
-        up = False
-    print(f"gateway       {args.url}: {'running' if up else 'NOT REACHABLE (start it: squidbrake)'}")
-    problems = 0 if up else 1
+        up, accepted = False, None
+    print(f"gateway       {url}: {'running' if up else 'NOT REACHABLE' + ('' if hosted else ' (start it: squidbrake)')}")
+    if accepted is False:
+        print("              the key in your agents' hooks is REJECTED: run the install command from your start page "
+              "again with your current agent key")
+    problems = 0 if up and accepted is not False else 1
     claude = settings_path(None)
     if (Path.home() / ".claude").exists() or shutil.which("claude"):
         hooked = claude.exists() and "claude_hook.py" in claude.read_text(encoding="utf-8", errors="replace")
@@ -636,7 +657,8 @@ def main(argv: list[str] | None = None) -> None:
     sub = p.add_subparsers(dest="cmd", required=True)
     for name in ("all", "status", "claude-code", "mcp", "wrap", "guard", "agents"):
         s = sub.add_parser(name)
-        s.add_argument("--url", default="http://localhost:8080", help="the gateway's address")
+        s.add_argument("--url", default=None if name == "status" else "http://localhost:8080",
+                       help="the gateway's address" + (" (default: the one your agents' hooks use)" if name == "status" else ""))
         s.add_argument("--key")
         if name == "status":
             pass
@@ -671,7 +693,7 @@ def main(argv: list[str] | None = None) -> None:
             s.add_argument("--install", action="store_true", help="antigravity: write it into its config")
             s.add_argument("command", nargs=argparse.REMAINDER, help="-- then the app's MCP server command")
     args = p.parse_args(argv)
-    args.url = args.url.rstrip("/")
+    args.url = args.url.rstrip("/") if args.url else None
     if args.cmd == "mcp":
         args.agent = args.name
     if args.cmd == "status":

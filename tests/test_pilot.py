@@ -108,16 +108,27 @@ def test_hosted_pilot_lifecycle(insights):
     assert insights.get("/v1/caddy/ask", params={"domain": "hosted-co.app.example.com.attacker.io"}).status_code == 404
     # the provisioner sees it, starts it and reports the keys; the keys are never in the admin overview
     q = insights.get("/v1/admin/provision", headers=admin).json()["pilots"]
-    assert any(p["code"] == code and p["state"] == "requested" for p in q)
+    assert any(p["code"] == code and p["state"] == "requested" and p["keys_ready"] is False for p in q)
     assert insights.get("/v1/admin/provision").status_code == 401
     assert insights.post("/v1/admin/provisioned", json={"code": code, "state": "running"}).status_code == 401
     insights.post("/v1/admin/provisioned", headers=admin, json={"code": code, "state": "running",
                                                                 "admin_key": "gw_admin_xyz", "agent_key": "gw_agent_xyz"})
     overview = insights.get("/v1/admin/overview", headers=admin).text
     assert "gw_admin_xyz" not in overview and "gw_agent_xyz" not in overview
-    # the founder's page shows them once
-    k = insights.post(f"/v1/pilot/{code}/keys").json()
+    # the provisioner learns the keys arrived (a gateway whose keys never did gets recreated), never the keys
+    q = insights.get("/v1/admin/provision", headers=admin).json()["pilots"]
+    assert any(p["code"] == code and p["keys_ready"] is True for p in q) and "gw_admin_xyz" not in str(q)
+    # once shown and forgotten here, the keys still count as delivered: the gateway must not be recreated
+    k = insights.post(f"/v1/pilot/{code}/keys").json()                                 # the founder's page shows them once
     assert k["admin_key"] == "gw_admin_xyz" and k["agent_key"] == "gw_agent_xyz" and k["dashboard"] == dash
+    q = insights.get("/v1/admin/provision", headers=admin).json()["pilots"]
+    assert any(p["code"] == code and p["keys_ready"] is True for p in q)
+    assert insights.post(f"/v1/pilot/{code}/keys").status_code == 409                   # shown once
+    # a recreated gateway's new keys can be shown again
+    insights.post("/v1/admin/provisioned", headers=admin, json={"code": code, "state": "running",
+                                                                "admin_key": "gw_admin_new", "agent_key": "gw_agent_new"})
+    assert insights.post(f"/v1/pilot/{code}/keys").json()["agent_key"] == "gw_agent_new"
+    insights.post("/v1/admin/provisioned", headers=admin, json={"code": code, "state": "running"})   # a plain tick
     assert insights.post(f"/v1/pilot/{code}/keys").status_code == 409
     # slots are limited (HOSTED_MAX=2 here)
     insights.post("/v1/admin/pilots", headers=admin, json={"company": "Second", "hosted": True})

@@ -1,39 +1,77 @@
 # Squidbrake installer for Windows (PowerShell).
 #   irm <server>/install.ps1 | iex
 # With $env:SQUIDBRAKE_PILOT and $env:SQUIDBRAKE_PILOT_SERVER set, it also offers to join that pilot (it asks first).
-$ErrorActionPreference = "Stop"
+# It installs Squidbrake in its own folder and never depends on pipx versions:
+#   1. a Python 3.10+ already here  -> its own virtual environment in %USERPROFILE%\.squidbrake\app
+#   2. otherwise                     -> uv, which brings its own Python (uv is installed first if it isn't here)
+# Running it again upgrades Squidbrake in place.
+$ErrorActionPreference = "Continue"
 Write-Host "`nInstalling Squidbrake (brakes for AI agents)...`n" -ForegroundColor Cyan
+function Fail($msg) { Write-Host "`n  [X] $msg`n" -ForegroundColor Red; throw "Squidbrake install stopped" }
+function Works($exe) { if (-not $exe -or -not (Test-Path $exe)) { return $false }; & $exe --version *> $null; return ($LASTEXITCODE -eq 0) }
 
-$py = $null
-foreach ($c in @("py", "python", "python3")) {
-    $cmd = Get-Command $c -ErrorAction SilentlyContinue
-    if ($cmd -and $cmd.Source -notlike "*WindowsApps*") { $py = $cmd.Source; break }
-}
-if (-not $py -and (Get-Command winget -ErrorAction SilentlyContinue)) {
-    Write-Host "Python isn't installed: installing Python 3.12 with winget (a minute or two)..." -ForegroundColor Cyan
-    winget install --id Python.Python.3.12 --scope user --silent --accept-package-agreements --accept-source-agreements | Out-Null
-    $env:Path = [Environment]::GetEnvironmentVariable("Path", "User") + ";" + [Environment]::GetEnvironmentVariable("Path", "Machine")
-    $cand = Join-Path $env:LOCALAPPDATA "Programs\Python\Python312\python.exe"
-    if (Test-Path $cand) { $py = $cand }
-}
-if (-not $py) {
-    Write-Host "Python 3.10 or newer is needed. Install it from https://www.python.org/downloads/" -ForegroundColor Yellow
-    Write-Host "(tick 'Add python.exe to PATH'), open a new PowerShell window, and run this again."
-    return
-}
-$ok = & $py -c "import sys; print(int(sys.version_info >= (3, 10)))"
-if ($ok -ne "1") { Write-Host "Python 3.10 or newer is needed (found an older one at $py)." -ForegroundColor Yellow; return }
+$app = if ($env:SQUIDBRAKE_APP_DIR) { $env:SQUIDBRAKE_APP_DIR } else { Join-Path $env:USERPROFILE ".squidbrake\app" }
+$bin = if ($env:SQUIDBRAKE_BIN_DIR) { $env:SQUIDBRAKE_BIN_DIR } else { Join-Path $env:USERPROFILE ".local\bin" }
+New-Item -ItemType Directory -Force -Path $bin | Out-Null
+$sb = $null
 
-Push-Location $env:TEMP          # a folder named 'pipx' in the current directory would shadow the module
 try {
-    & $py -m pip install --user --upgrade --quiet --disable-pip-version-check pipx
-    & $py -m pipx install --force squidbrake | Out-Host
-    & $py -m pipx ensurepath | Out-Null
-} finally { Pop-Location }
+    # ---- 1. a Python 3.10+ that's already here: a private virtual environment
+    $py = $null
+    $cands = @()
+    foreach ($v in @("3.13", "3.12", "3.11", "3.10")) { $cands += ,@("py", "-$v") }
+    foreach ($c in @("python", "python3")) { $cands += ,@($c) }
+    foreach ($c in $cands) {
+        $cmd = Get-Command $c[0] -ErrorAction SilentlyContinue
+        if (-not $cmd -or $cmd.Source -like "*WindowsApps*") { continue }
+        $exe = & $cmd.Source @($c | Select-Object -Skip 1) -c "import sys; print(sys.executable if sys.version_info >= (3, 10) else '')" 2>$null
+        if ($LASTEXITCODE -eq 0 -and $exe) { $py = "$exe".Trim(); break }
+    }
+    if ($env:SQUIDBRAKE_INSTALL_WITH -eq "uv") { $py = $null }     # support / tests: go straight to uv
+    if ($py) {
+        Write-Host "Using $(& $py --version 2>&1) at $py"
+        & $py -m venv --clear $app 2>$null
+        $vpy = Join-Path $app "Scripts\python.exe"
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $vpy)) {
+            & $vpy -m pip install --quiet --disable-pip-version-check --upgrade pip 2>$null | Out-Null
+            & $vpy -m pip install --quiet --disable-pip-version-check --upgrade squidbrake
+            $exe = Join-Path $app "Scripts\squidbrake.exe"
+            if (Works $exe) {
+                # a small launcher in a folder on PATH, so the venv's python.exe never shadows anyone's Python
+                Set-Content -Path (Join-Path $bin "squidbrake.cmd") -Value "@`"$exe`" %*" -Encoding ascii
+                $sb = $exe
+            }
+        }
+        if (-not $sb) { Write-Host "That Python couldn't make a virtual environment; trying uv instead." }
+    }
 
-$sb = Join-Path $env:USERPROFILE ".local\bin\squidbrake.exe"
-if (-not (Test-Path $sb)) { $sb = "squidbrake" }
-Write-Host "`nInstalled: $(& $sb --version)" -ForegroundColor Green
+    # ---- 2. uv, which brings its own Python
+    if (-not $sb) {
+        $uv = (Get-Command uv -ErrorAction SilentlyContinue).Source
+        if (-not $uv -and (Test-Path (Join-Path $bin "uv.exe"))) { $uv = Join-Path $bin "uv.exe" }
+        if (-not $uv) {
+            Write-Host "Installing uv (Astral's Python installer), which brings its own Python..."
+            $env:UV_NO_MODIFY_PATH = "1"; $env:UV_INSTALL_DIR = $bin
+            try { Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression *> $null } catch { }
+            if (Test-Path (Join-Path $bin "uv.exe")) { $uv = Join-Path $bin "uv.exe" }
+            if (-not $uv) { Fail "Couldn't install uv. Install Python 3.10+ from https://www.python.org/downloads/ (tick 'Add python.exe to PATH') and run this again." }
+        }
+        Write-Host "Using uv at $uv"
+        $env:UV_TOOL_BIN_DIR = $bin
+        Push-Location $env:TEMP
+        try { & $uv tool install --quiet --force --python-preference managed --python 3.12 squidbrake } finally { Pop-Location }
+        if ($LASTEXITCODE -ne 0) { Fail "Installing Squidbrake with uv failed (see the lines above). Send them to whoever sent you this link." }
+        if (Works (Join-Path $bin "squidbrake.exe")) { $sb = Join-Path $bin "squidbrake.exe" }
+    }
+    if (-not $sb) { Fail "Squidbrake didn't install. Send the lines above to whoever sent you this link." }
+} catch { return }
+
+# The squidbrake command in new windows: add the folder to the user's PATH once
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+if (-not $env:SQUIDBRAKE_NO_PATH -and ($userPath -split ";") -notcontains $bin) {
+    [Environment]::SetEnvironmentVariable("Path", (($userPath.TrimEnd(";") + ";" + $bin).TrimStart(";")), "User")
+}
+Write-Host "`n  [OK] Installed: $(& $sb --version)" -ForegroundColor Green
 
 if ($env:SQUIDBRAKE_URL -and $env:SQUIDBRAKE_AGENT_KEY) {
     # a hosted dashboard: nothing to run locally, just route Claude Code through it
@@ -44,7 +82,7 @@ if ($env:SQUIDBRAKE_URL -and $env:SQUIDBRAKE_AGENT_KEY) {
     try {
         $me = Invoke-RestMethod "$($env:SQUIDBRAKE_URL)/v1/me" -Headers @{ "X-Gateway-Key" = $env:SQUIDBRAKE_AGENT_KEY } -TimeoutSec 20
     } catch {
-        Write-Host "`nCouldn't reach your dashboard with that key ($($_.Exception.Message)). Check the key and run it again." -ForegroundColor Yellow
+        Write-Host "`nCouldn't reach your dashboard with that key ($($_.Exception.Message)). Check you used the AGENT key from your start page, and run it again." -ForegroundColor Yellow
         return
     }
     Write-Host "`n  [OK] Your dashboard answers (signed in as '$($me.client)')." -ForegroundColor Green
@@ -56,8 +94,9 @@ if ($env:SQUIDBRAKE_URL -and $env:SQUIDBRAKE_AGENT_KEY) {
     & $sb connect agents --agent all --url $env:SQUIDBRAKE_URL --key $env:SQUIDBRAKE_AGENT_KEY --yes | ForEach-Object { Write-Host "  $_" }
     # ... and its own MCP servers (GitHub, Stripe, databases...) go through it too
     & $sb connect guard --agent all --url $env:SQUIDBRAKE_URL --key $env:SQUIDBRAKE_AGENT_KEY --yes | ForEach-Object { Write-Host "  $_" }
-    Write-Host "`nLast step: close and reopen your agents (Claude Code, Cursor, ...), then work as usual."
-    Write-Host "Your dashboard: $($env:SQUIDBRAKE_URL)/dashboard`n"
+    Write-Host "`nLast step: quit and reopen your agents (Claude Code, Cursor, ...), then work as usual."
+    Write-Host "Your dashboard: $($env:SQUIDBRAKE_URL)/dashboard"
+    Write-Host "To use the squidbrake command yourself (squidbrake connect status), open a new PowerShell window first.`n"
     return
 }
 
@@ -68,5 +107,5 @@ if ($env:SQUIDBRAKE_PILOT -and $env:SQUIDBRAKE_PILOT_SERVER) {
 Write-Host "`nNext:" -ForegroundColor Cyan
 Write-Host "  1. Open a NEW PowerShell window (so the 'squidbrake' command is found) and run:  squidbrake"
 Write-Host "     It prints your keys (save them) and opens the dashboard. Keep that window open."
-Write-Host "  2. In another window, connect Claude Code:  squidbrake connect claude-code"
-Write-Host "  3. Restart Claude Code and work as usual. Watch it at http://localhost:8080/dashboard`n"
+Write-Host "  2. In another window, connect your agents:  squidbrake connect all"
+Write-Host "  3. Restart your agents and work as usual. Watch it at http://localhost:8080/dashboard`n"

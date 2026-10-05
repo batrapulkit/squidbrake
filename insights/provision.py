@@ -54,6 +54,12 @@ def state(name):
 def start(p):
     name = "sbp-" + p["subdomain"]
     existing = state(name)
+    if existing and p.get("keys_ready") is False:
+        # Its keys never reached the start page (a first start that failed), so nobody can use it: start clean.
+        log("recreating", name, "(its keys were never captured)")
+        docker("rm", "-f", name, check=False)
+        docker("volume", "rm", name, check=False)
+        existing = None
     if existing == "false":
         docker("start", name)
     if existing:
@@ -97,7 +103,8 @@ def tick():
                 remove(p)
             elif p["state"] == "failed" and time.time() - last_failure.get(p["code"], 0) < 300:
                 continue
-            elif p["state"] in ("requested", "failed") or (p["state"] == "running" and state("sbp-" + p["subdomain"]) != "true"):
+            elif p["state"] in ("requested", "failed") or (p["state"] == "running" and (
+                    p.get("keys_ready") is False or state("sbp-" + p["subdomain"]) != "true")):
                 start(p)
         except Exception as e:
             last_failure[p["code"]] = time.time()
