@@ -40,7 +40,6 @@ def check(line: str) -> tuple[str, str]:
 
 BASH = r'''# Squidbrake terminal guard: checks each command line before it runs. Add to ~/.bashrc.
 if [[ $- == *i* ]] && command -v squidbrake >/dev/null 2>&1; then
-  shopt -s extdebug
   __sb_armed=0
   __sb_arm() { __sb_armed=1; }
   __sb_debug() {
@@ -59,12 +58,15 @@ if [[ $- == *i* ]] && command -v squidbrake >/dev/null 2>&1; then
     fi
     return 0
   }
+  # Installed at the first prompt, when the rest of your rc files have loaded. trap -p can't see a DEBUG trap from inside
+  # a sourced file or a function, so this check is a plain PROMPT_COMMAND string. If one is already set (VS Code shell
+  # integration, bash-preexec, atuin...) it is left alone: replacing it would break that tool.
+  __sb_install='if [[ -z $__sb_done ]]; then __sb_done=1; if [[ -n $(trap -p DEBUG) ]]; then echo "Squidbrake: a DEBUG trap is already set (VS Code shell integration, bash-preexec...), so the terminal guard is off in this bash." >&2; else shopt -s extdebug; trap __sb_debug DEBUG; fi; fi'
   if [[ "$(declare -p PROMPT_COMMAND 2>/dev/null)" == "declare -a"* ]]; then
-    PROMPT_COMMAND+=(__sb_arm)
+    PROMPT_COMMAND+=("$__sb_install" __sb_arm)
   else
-    PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND;}__sb_arm"
+    PROMPT_COMMAND="${PROMPT_COMMAND:+$PROMPT_COMMAND;}$__sb_install;__sb_arm"
   fi
-  trap '__sb_debug' DEBUG
 fi
 '''
 

@@ -254,7 +254,7 @@ squidbrake shell-guard install --shell powershell | Add-Content $PROFILE
 ```
 
 `install` only prints the snippet; it never edits a file, so read it first. Scripts and CI (non-interactive shells) are
-never blocked or prompted. Check one line by hand: `squidbrake shell-guard check "rm -rf ~/"` (exit code 0 run, 1 block, 2 ask).
+never blocked or prompted. Each Enter starts Python, which adds about 150 ms. If bash already has a `DEBUG` trap (VS Code's shell integration, bash-preexec), the snippet leaves it alone and prints a warning. Check one line by hand: `squidbrake shell-guard check "rm -rf ~/"` (exit code 0 run, 1 block, 2 ask).
 
 ## Prompt injection, caught without a model
 

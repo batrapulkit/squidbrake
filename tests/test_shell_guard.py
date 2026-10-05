@@ -65,6 +65,12 @@ def test_snippets_use_the_right_hooks():
     assert "Set-PSReadLineKeyHandler -Key Enter" in shell_guard.POWERSHELL
 
 
+def test_bash_snippet_leaves_an_existing_debug_trap_alone():
+    bash = shell_guard.BASH
+    look, warn, install = "$(trap -p DEBUG)", "a DEBUG trap is already set", "trap __sb_debug DEBUG"
+    assert bash.index(look) < bash.index(warn) < bash.index(install)   # look first, warn instead of replacing
+
+
 def test_install_needs_a_known_shell():
     assert cli("shell-guard", "install").returncode == 64
     assert cli("shell-guard", "install", "--shell", "fish").returncode == 64
