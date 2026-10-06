@@ -112,7 +112,8 @@ cat <<'EOF'
 
 Next:
   1. Open a new terminal (so the 'squidbrake' command is found) and run:  squidbrake
-     It prints your keys (save them) and opens the dashboard. Keep that window open.
+     It prints your keys (save them), starts Squidbrake in the background and opens the dashboard.
+     It starts again by itself whenever you log in. (Turn it off: squidbrake service stop)
   2. In another terminal, connect your agents:  squidbrake connect all
   3. Restart your agents and work as usual. Watch it at http://localhost:8080/dashboard
 

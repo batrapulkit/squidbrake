@@ -1,6 +1,7 @@
 @echo off
 rem Squidbrake for Windows: double-click this file, or run "start.bat --port 9000".
-rem The first run installs everything into .venv; later runs start straight away.
+rem The first run installs everything into .venv. Squidbrake then runs in the background and starts again at every
+rem login; "start.bat --foreground" runs it in this window instead. Stop it: .venv\Scripts\python service.py stop
 setlocal
 cd /d "%~dp0"
 title Squidbrake
@@ -30,8 +31,9 @@ if errorlevel 1 (
 copy /y requirements.txt .venv\installed.txt >nul
 
 :run
-".venv\Scripts\python.exe" server.py %*
+".venv\Scripts\python.exe" service.py start %*
 if errorlevel 1 pause
+if not errorlevel 1 timeout /t 8
 exit /b
 
 :nopython

@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
 # Squidbrake for macOS / Linux:  ./start.sh   (or ./start.sh --port 9000)
-# The first run installs everything into .venv; later runs start straight away.
+# The first run installs everything into .venv. Squidbrake then runs in the background and starts again at every
+# login (launchd on macOS, a systemd user service on Linux); ./start.sh --foreground runs it in this window instead.
+# Stop it and take the service out: .venv/bin/python service.py stop
 set -e
 cd "$(dirname "$0")"
 
@@ -29,4 +31,4 @@ if ! cmp -s requirements.txt .venv/installed.txt; then
   cp requirements.txt .venv/installed.txt
 fi
 
-exec "$VPY" server.py "$@"
+exec "$VPY" service.py start "$@"

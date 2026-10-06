@@ -117,6 +117,7 @@ if ($env:SQUIDBRAKE_PILOT -and $env:SQUIDBRAKE_PILOT_SERVER) {
 
 Write-Host "`nNext:" -ForegroundColor Cyan
 Write-Host "  1. Open a NEW PowerShell window (so the 'squidbrake' command is found) and run:  squidbrake"
-Write-Host "     It prints your keys (save them) and opens the dashboard. Keep that window open."
+Write-Host "     It prints your keys (save them), starts Squidbrake in the background and opens the dashboard."
+Write-Host "     It starts again by itself whenever you log in. (Turn it off: squidbrake service stop)"
 Write-Host "  2. In another window, connect your agents:  squidbrake connect all"
 Write-Host "  3. Restart your agents and work as usual. Watch it at http://localhost:8080/dashboard`n"

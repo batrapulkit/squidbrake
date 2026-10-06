@@ -1,7 +1,9 @@
 """
 The `squidbrake` command (installed with pip):
 
-  squidbrake                         start the gateway (same as: python server.py)
+  squidbrake                         start the gateway in the background, and again at every login (see service.py)
+  squidbrake service status | stop   is the background service running / stop it and take it out
+  squidbrake run                     run the gateway in this window instead (same as: python server.py)
   squidbrake connect all             connect every AI agent on this computer (same as: python connect.py ...)
   squidbrake connect claude-code     connect one agent
   squidbrake connect status          which agents are covered (and whether Codex has trusted the hook)
@@ -84,6 +86,12 @@ def main() -> int:
         import gateway_proxy
         gateway_proxy.main()
         return 0
+    if argv[:1] == ["service"]:
+        import service
+        return service.main(argv[1:])
+    if not argv or (argv[0].startswith("-") and argv[0] not in ("-h", "--help")):
+        import service   # `squidbrake` or `squidbrake --port 9000`: install the background service and start it
+        return service.main(["start", *argv])
     import server
     return server.main(argv)
 
