@@ -1,8 +1,13 @@
 """
-Keep the gateway running in the background, started again whenever you log in and whenever it stops.
+Optionally keep the gateway running in the background, started again whenever you log in and whenever it stops.
+Nothing is installed without a yes: adding a login item can trip the endpoint security tools many companies run.
 
-  python service.py start [RUN OPTIONS]   install the service for this computer and start it (what `squidbrake`,
-                                          start.sh and start.bat do). RUN OPTIONS go to `server.py run`, e.g. --port 9000
+  python service.py start [RUN OPTIONS]   what `squidbrake`, start.sh and start.bat do. The first time, in a terminal,
+                                          it asks once whether to run in the background (Enter means no) and
+                                          remembers the answer. No terminal (scripts, CI) means no, and nothing is
+                                          remembered. RUN OPTIONS go to `server.py run`, e.g. --port 9000
+  python service.py start --background    install the service and start it, without asking
+  python service.py start --foreground    run in this window, without asking
   python service.py stop                  stop it and take the service out (it no longer starts at login)
   python service.py status                is it installed, and is the gateway answering
 
@@ -10,8 +15,8 @@ Keep the gateway running in the background, started again whenever you log in an
   Linux    ~/.config/systemd/user/squidbrake.service              (systemd)   log: journalctl --user -u squidbrake
   Windows  HKCU\\...\\CurrentVersion\\Run, value Squidbrake         (at login)  log: ~/.squidbrake/squidbrake.log
 
-Set SQUIDBRAKE_FOREGROUND=1 (or pass --foreground) to run in this window instead, as before. Docker and Linux
-machines without a systemd user session also run in the foreground.
+SQUIDBRAKE_BACKGROUND=1 or 0 answers the question for unattended installs; SQUIDBRAKE_FOREGROUND=1 is the same as
+--foreground. Docker and Linux machines without a systemd user session always run in the foreground.
 """
 from __future__ import annotations
 
@@ -24,6 +29,7 @@ import sys
 import time
 import urllib.request
 import webbrowser
+from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -257,18 +263,102 @@ def _foreground(run_args: list[str]) -> int:
     return subprocess.call([sys.executable, str(SERVER), "run", *run_args], cwd=str(HERE))
 
 
+def _installed(kind: str) -> bool:
+    return {"launchd": _launchd_installed, "systemd": _systemd_installed, "windows": _win_installed}[kind]()
+
+
+def _where(kind: str) -> str:
+    return {"launchd": f"a LaunchAgent, {_plist_path()}",
+            "systemd": f"a systemd user service, {_unit_path()}",
+            "windows": rf"a login item, HKCU\{RUN_KEY}, value {RUN_VALUE}"}[kind]
+
+
+def _choice_path() -> Path:
+    return state_dir() / "background.json"
+
+
+def _saved_choice() -> bool | None:
+    try:
+        return bool(json.loads(_choice_path().read_text(encoding="utf-8"))["background"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _save_choice(background: bool) -> None:
+    try:
+        _choice_path().parent.mkdir(parents=True, exist_ok=True)
+        _choice_path().write_text(json.dumps({"background": background,
+                                              "asked": datetime.now(timezone.utc).date().isoformat()}, indent=2),
+                                  encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _interactive() -> bool:
+    try:
+        return sys.stdin.isatty() and sys.stdout.isatty()
+    except (AttributeError, ValueError):
+        return False
+
+
+def _ask(kind: str) -> bool | None:
+    print("\nSquidbrake can keep running in the background, so your agents are never blocked because it's down.")
+    print(f"That adds {_where(kind)},")
+    print("which starts it at every login and again if it stops. Turn it off any time: " + _cli("stop"))
+    try:
+        answer = input("Run Squidbrake in the background? [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return None
+    return answer in ("y", "yes")
+
+
+def wants_background(kind: str) -> bool:
+    """Only ever True after a yes: --background, SQUIDBRAKE_BACKGROUND=1, or the question asked once."""
+    env = os.getenv("SQUIDBRAKE_BACKGROUND", "").strip().lower()
+    if env in ("1", "yes", "true", "on"):
+        return True
+    if env in ("0", "no", "false", "off"):
+        return False
+    saved = _saved_choice()
+    if saved is not None:
+        if saved and not _installed(kind):   # taken out by hand: don't put it back without asking
+            print(f"The background service isn't installed. Running in this window; to put it back: "
+                  f"{_cli('start --background')}\n")
+            return False
+        return saved
+    if _installed(kind):                    # installed before the question existed
+        return True
+    if not _interactive():
+        return False
+    yes = _ask(kind)
+    if yes is not None:
+        _save_choice(yes)
+    if not yes:
+        print(f"Running in this window. To run in the background later: {_cli('start --background')}\n")
+    return bool(yes)
+
+
 def start(run_args: list[str]) -> int:
     if "--foreground" in run_args:
         return _foreground([a for a in run_args if a != "--foreground"])
+    explicit = "--background" in run_args
+    run_args = [a for a in run_args if a != "--background"]
     kind = backend()
     if kind is None:
+        if explicit:
+            print("A background service isn't available here (Docker, or no systemd user session). "
+                  "Running in this window.", file=sys.stderr)
+        return _foreground(run_args)
+    if explicit:
+        _save_choice(True)
+    elif not wants_background(kind):
         return _foreground(run_args)
     port = _port(run_args)
     busy = _answering(port)
     # First start: make the keys here, where the person can see them (the service's output only goes to its log).
     subprocess.call([sys.executable, str(SERVER), "init"], cwd=str(HERE))
-    first = not (_launchd_installed() if kind == "launchd" else _systemd_installed() if kind == "systemd"
-                 else _win_installed())
+    first = not _installed(kind)
     try:
         log = {"launchd": _launchd_install, "systemd": _systemd_install, "windows": _win_install}[kind](run_args)
     except Exception as e:
@@ -299,30 +389,32 @@ def start(run_args: list[str]) -> int:
 def stop() -> int:
     kind = backend() or ("systemd" if sys.platform.startswith("linux") else None)
     removed = {"launchd": _launchd_remove, "systemd": _systemd_remove, "windows": _win_remove}.get(kind, lambda: False)()
+    _save_choice(False)
     print("Stopped Squidbrake and took out the background service. It won't start at login any more."
           if removed else "The background service wasn't installed; nothing to stop.")
-    print(f"Start it again with: {_cli('start')}")
+    print(f"Run in this window: {_cli('start')}   In the background again: {_cli('start --background')}")
     return 0
 
 
 def status(run_args: list[str]) -> int:
     kind = backend()
-    installed = {"launchd": _launchd_installed, "systemd": _systemd_installed, "windows": _win_installed}.get(
-        kind, lambda: False)()
+    installed = bool(kind) and _installed(kind)
     port = _port(run_args)
     up = _answering(port)
     where = {"launchd": "launchd (macOS)", "systemd": "systemd user service", "windows": "Windows, at login"}.get(
         kind, "not available here (runs in the foreground)")
     print(f"background service  {'installed' if installed else 'not installed'}  ({where})")
     print(f"gateway             {'answering' if up else 'NOT answering'} on http://localhost:{port}")
-    if not installed:
-        print(f"Install it with: {_cli('start')}")
+    if not installed and kind:
+        print(f"Install it with: {_cli('start --background')}")
     return 0 if up else 1
 
 
 def _cli(sub: str) -> str:
     if os.getenv("SQUIDBRAKE_CLI") == "squidbrake":
-        return "squidbrake" if sub == "start" else f"squidbrake service {sub}"
+        if sub.startswith("start"):
+            return "squidbrake" if sub == "start" else f"squidbrake {sub}"
+        return f"squidbrake service {sub}"
     return f"{sys.executable} {HERE / 'service.py'} {sub}"
 
 

@@ -82,7 +82,7 @@ manager approves or rejects them. If the editor asks whether to allow tasks that
 ```bash
 pipx install squidbrake           # or: pip install squidbrake
 squidbrake connect all            # every AI agent on this computer now goes through it
-squidbrake                        # start it in the background (and at every login): opens the dashboard
+squidbrake                        # start it: opens the dashboard (asks once about running in the background)
 ```
 
 `connect all` finds the agents you have (Claude Code, Cursor, Codex, Gemini CLI, VS Code Copilot, Antigravity) and
@@ -114,10 +114,13 @@ The first start installs everything, prints an **admin** key (for the dashboard)
 (shown once, so save them), and opens `http://localhost:8080/dashboard`. No configuration needed; every
 setting in `.env.example` is optional.
 
-Squidbrake then keeps running in the background: it starts again whenever you log in and comes back if it
-stops, so your agents (which fail closed) are never locked out. macOS uses launchd, Linux a systemd user service,
-Windows a login entry. `squidbrake service status` checks it, `squidbrake service stop` turns it off, and
-`squidbrake run` (or `./start.sh --foreground`) runs it in the window instead. Docker restarts by itself already.
+The first start in a terminal also asks once whether to keep Squidbrake running in the background, so your agents
+(which fail closed) are never locked out because it's down. Enter means no; nothing is installed without a yes,
+and scripts or CI are never asked. A yes adds a login item: a LaunchAgent on macOS, a systemd user service on
+Linux, a `Run` registry value on Windows (some endpoint security tools flag these, so check with IT first).
+`squidbrake start --background` installs it without asking (or set `SQUIDBRAKE_BACKGROUND=1` for unattended
+installs), `squidbrake service status` checks it, `squidbrake service stop` takes it out, and `squidbrake run`
+(or `./start.sh --foreground`) always runs in the window. Docker restarts by itself already.
 
 Keys: `python server.py add-key NAME [--approver]`, `python server.py remove-key NAME`, `python server.py keys`.
 Changes apply immediately, no restart needed. (Inside Docker, prefix with `docker compose exec gateway`.)

@@ -1,9 +1,11 @@
 """
 The `squidbrake` command (installed with pip):
 
-  squidbrake                         start the gateway in the background, and again at every login (see service.py)
+  squidbrake                         start the gateway; the first time it asks once whether to keep it running in
+                                     the background and at every login (Enter means no; see service.py)
+  squidbrake start --background      install the background service and start it, without asking
   squidbrake service status | stop   is the background service running / stop it and take it out
-  squidbrake run                     run the gateway in this window instead (same as: python server.py)
+  squidbrake run                     run the gateway in this window (same as: python server.py)
   squidbrake connect all             connect every AI agent on this computer (same as: python connect.py ...)
   squidbrake connect claude-code     connect one agent
   squidbrake connect status          which agents are covered (and whether Codex has trusted the hook)
@@ -89,8 +91,11 @@ def main() -> int:
     if argv[:1] == ["service"]:
         import service
         return service.main(argv[1:])
+    if argv[:1] == ["start"]:
+        import service
+        return service.main(argv)
     if not argv or (argv[0].startswith("-") and argv[0] not in ("-h", "--help")):
-        import service   # `squidbrake` or `squidbrake --port 9000`: install the background service and start it
+        import service   # `squidbrake` or `squidbrake --port 9000`: asks once before installing anything
         return service.main(["start", *argv])
     import server
     return server.main(argv)
