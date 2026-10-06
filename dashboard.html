@@ -65,18 +65,24 @@
 [hidden] { display: none !important; }
 html, body { margin: 0; }
 body {
-  background: var(--page);
+  background:
+    radial-gradient(900px 320px at 0% -8%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 60%),
+    var(--page);
   color: var(--text-primary);
   font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 button, input, select { font: inherit; color: inherit; }
-.wrap { max-width: 1320px; margin: 0 auto; padding: 20px 24px 48px; }
+.wrap { max-width: 1320px; margin: 0 auto; padding: 28px 24px 56px; }
 @media (max-width: 640px) { .wrap { padding: 14px 16px 40px; } }
 
 /* header */
-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
-header h1 { font-size: 18px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+header h1 { display: flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 680; margin: 0; letter-spacing: -0.03em; }
+header h1::before {
+  content: "S"; width: 26px; height: 26px; border-radius: 8px; background: var(--accent); color: #fff;
+  display: grid; place-items: center; font-size: 14px; font-weight: 750; letter-spacing: 0;
+}
 .conn { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12.5px; }
 .conn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--neutral); }
 .conn.ok .dot { background: var(--good); }
@@ -94,7 +100,11 @@ header .spacer { flex: 1; }
 .toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 13px; cursor: pointer; user-select: none; }
 
 /* filter row */
-.filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+.filters {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px;
+  background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 8px;
+  box-shadow: var(--shadow);
+}
 .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface-1); }
 .seg button { border: 0; background: none; padding: 6px 12px; cursor: pointer; color: var(--text-secondary); }
 .seg button + button { border-left: 1px solid var(--border); }
@@ -190,6 +200,11 @@ header .spacer { flex: 1; }
 #chart .hovercol { fill: transparent; }
 #chart .hovercol.on { fill: var(--hover-col); }
 .empty { color: var(--text-muted); text-align: center; padding: 40px 12px; font-size: 13px; }
+#noRows.empty {
+  background: var(--surface-1); border: 1px dashed var(--border); border-radius: 16px;
+  margin: 4px 0 8px; padding: 48px 20px;
+}
+#noRows .empty-title { color: var(--text-primary); font-size: 16px; font-weight: 650; letter-spacing: -0.02em; margin-bottom: 4px; }
 .tip {
   position: absolute; pointer-events: none; background: var(--surface-1); border: 1px solid var(--border);
   border-radius: 8px; padding: 8px 10px; font-size: 12.5px; box-shadow: 0 4px 16px rgba(0,0,0,.12);
@@ -238,17 +253,127 @@ table.events tr.fresh td { animation: flash 1.6s ease-out; }
 .pill-link:hover { color: var(--accent); }
 .foot { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; color: var(--text-muted); font-size: 12.5px; gap: 8px; flex-wrap: wrap; }
 
+/* agents + chains */
+.chain-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.chain-title h2 { color: var(--text-primary); font-size: 15px; letter-spacing: -0.02em; }
+.agent-strip { display: flex; gap: 8px; overflow-x: auto; padding: 0 2px 12px; }
+.agent-chip {
+  display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--border); background: var(--surface-1);
+  border-radius: 999px; padding: 4px 12px 4px 4px; cursor: pointer; white-space: nowrap; color: var(--text-primary);
+  box-shadow: var(--shadow);
+}
+.agent-chip:hover { background: var(--surface-2); }
+.agent-chip[aria-pressed="true"] { border-color: var(--accent); background: var(--hover-col); }
+.agent-chip .ct { color: var(--text-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.avatar {
+  --h: 210; --hl: 38%;
+  width: 36px; height: 36px; border-radius: 12px; flex: none; display: inline-grid; place-items: center;
+  background: linear-gradient(160deg, hsl(var(--h) 62% calc(var(--hl) + 8%)), hsl(var(--h) 52% var(--hl)));
+  color: #fff; font-weight: 700; font-size: 13px; letter-spacing: .02em;
+  font-family: system-ui, sans-serif; vertical-align: middle;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.28);
+}
+.avatar.sm { width: 24px; height: 24px; border-radius: 8px; font-size: 10px; }
+#eventsCard { background: transparent; border: 0; box-shadow: none; }
+#eventsCard .card-head { padding: 2px 2px 10px; flex-wrap: wrap; align-items: center; }
+#eventsCard .foot { padding-left: 2px; padding-right: 2px; }
+#callsWrap { background: var(--surface-1); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); }
+.chains { display: flex; flex-direction: column; gap: 12px; padding: 0 0 4px; }
+.chain {
+  --h: 210; --chain-bg: var(--surface-1);
+  min-width: 0;
+  border: 1px solid var(--border); border-radius: 16px; background: var(--chain-bg);
+  box-shadow: var(--shadow);
+  border-left: 4px solid hsl(var(--h) 52% 46%); padding: 16px 16px 12px;
+}
+.chain.fresh { animation: flash 1.6s ease-out; }
+.chain.loose { border-left-style: dashed; }
+.chain.awaiting_approval { --chain-bg: color-mix(in srgb, var(--warning) 12%, var(--surface-1)); }
+.chain.denied { --chain-bg: color-mix(in srgb, var(--critical) 8%, var(--surface-1)); }
+.chain.failed { --chain-bg: color-mix(in srgb, var(--serious) 9%, var(--surface-1)); }
+.chain-head { display: flex; gap: 12px; align-items: flex-start; }
+.chain-id { min-width: 0; flex: 1; }
+.chain-name { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-weight: 650; font-size: 15px; letter-spacing: -0.02em; }
+.chain-name .agent-name { border: 0; background: none; padding: 0; cursor: pointer; font: inherit; font-weight: 650; color: inherit; }
+.chain-name .agent-name:hover { color: var(--accent); }
+.chain-meta { font-size: 12.5px; color: var(--text-secondary); margin-top: 3px; display: flex; flex-wrap: wrap; gap: 0; align-items: center; }
+.chain-side { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; align-items: center; }
+.tally {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-variant-numeric: tabular-nums;
+  color: var(--text-secondary); background: color-mix(in srgb, var(--chain-bg) 70%, var(--surface-2));
+  border-radius: 999px; padding: 2px 8px 2px 3px;
+}
+.tally i {
+  font-style: normal; width: 16px; height: 16px; border-radius: 50%; display: inline-grid; place-items: center;
+  font-size: 9px; font-weight: 700; color: #fff; background: var(--c, var(--neutral));
+}
+.tally.completed { --c: var(--good); }
+.tally.failed { --c: var(--serious); }
+.tally.denied { --c: var(--critical); }
+.tally.pending { --c: var(--neutral); }
+.tally.awaiting_approval { --c: var(--warning); }
+.tally.awaiting_approval i { color: #3d2c00; }
+.loose-note { font-size: 12px; color: var(--text-muted); margin-top: 6px; }
+.flow { display: flex; align-items: flex-start; gap: 0; overflow-x: auto; padding: 14px 2px 4px; }
+.flow .edge { width: 36px; flex: none; align-self: flex-start; height: 2px; margin-top: 10px; background: var(--border); }
+.flow .edge::after { content: none; }
+.node {
+  position: relative; flex: 0 0 124px; min-width: 104px; border: 0; background: transparent;
+  border-radius: 10px; padding: 26px 6px 4px; text-align: center; cursor: pointer;
+}
+.node::before {
+  content: ""; position: absolute; top: 2px; left: 50%; transform: translateX(-50%);
+  width: 16px; height: 16px; border-radius: 50%; background: var(--c, var(--neutral));
+  box-shadow: 0 0 0 4px var(--chain-bg); z-index: 1;
+}
+.node:hover .nm { color: var(--accent); }
+.node.sel::before { outline: 2px solid var(--accent); outline-offset: 3px; }
+.node .nm { display: block; font-family: var(--mono); font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node .meta { display: block; font-size: 11px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.node.more { flex-basis: 76px; min-width: 72px; }
+.node.more::before { background: var(--surface-2); box-shadow: 0 0 0 4px var(--chain-bg), inset 0 0 0 1.5px var(--border); }
+.node.completed { --c: var(--good); }
+.node.failed { --c: var(--serious); }
+.node.denied { --c: var(--critical); }
+.node.pending { --c: var(--neutral); }
+.node.awaiting_approval { --c: var(--warning); }
+.node.awaiting_approval::before { box-shadow: 0 0 0 4px var(--chain-bg), 0 0 0 7px color-mix(in srgb, var(--warning) 35%, transparent); }
+.spark { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-top: 12px; padding-top: 2px; }
+.spark-dot {
+  width: 11px; height: 11px; border-radius: 50%; border: 0; padding: 0; cursor: pointer; background: var(--c, var(--neutral));
+  box-shadow: 0 0 0 2px var(--chain-bg);
+}
+.spark-dot.sel { outline: 2px solid var(--accent); outline-offset: 2px; }
+.spark-dot.completed { --c: var(--good); }
+.spark-dot.failed { --c: var(--serious); }
+.spark-dot.denied { --c: var(--critical); }
+.spark-dot.pending { --c: var(--neutral); }
+.spark-dot.awaiting_approval { --c: var(--warning); border-radius: 3px; }
+.chain-focus {
+  margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: color-mix(in srgb, var(--chain-bg) 55%, var(--surface-2));
+  border: 1px solid var(--border); font-size: 13px;
+}
+.chain-focus .st-in { margin-top: 4px; }
+.chain-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.aq-main { display: flex; gap: 10px; align-items: flex-start; min-width: 0; }
+.aq-copy { min-width: 0; }
+@media (max-width: 640px) {
+  .chain-head { flex-wrap: wrap; }
+  .chain-side { justify-content: flex-start; }
+}
+
 /* drawer */
 .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.28); z-index: 20; display: none; }
 .drawer {
-  position: fixed; top: 0; right: 0; bottom: 0; width: min(640px, 100vw); background: var(--surface-1);
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(720px, 100vw); background: var(--surface-1);
   border-left: 1px solid var(--border); z-index: 21; transform: translateX(100%); transition: transform .18s ease;
   display: flex; flex-direction: column;
 }
 .drawer.open { transform: none; }
 .drawer.open + .backdrop, .backdrop.on { display: block; }
 .dr-head { display: flex; align-items: flex-start; gap: 10px; padding: 16px 18px 12px; border-bottom: 1px solid var(--border); }
-.dr-head h3 { margin: 0; font-family: var(--mono); font-size: 15px; word-break: break-all; }
+.dr-head h3 { margin: 0; font-family: var(--mono); font-size: 15px; display: flex; align-items: center; gap: 8px; }
+.dr-head h3 span { word-break: break-all; }
 .dr-head .x { margin-left: auto; }
 .dr-body { overflow: auto; padding: 14px 18px 24px; }
 .kv { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 6px 12px; font-size: 13px; margin-bottom: 16px; }
@@ -287,12 +412,16 @@ dialog .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 1
 .signal.warn { border-left-color: var(--warning); }
 .story-d { grid-column: 1 / -1; font-size: 13px; }
 .story-d summary { cursor: pointer; color: var(--accent); font-size: 12.5px; }
-.story { list-style: none; margin: 8px 0 0; padding: 0 0 0 14px; border-left: 2px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
-.story li { position: relative; }
-.story li::before { content: ""; position: absolute; left: -20px; top: 6px; width: 10px; height: 10px; border-radius: 50%; background: var(--border); }
-.story .st-line { display: flex; align-items: center; flex-wrap: wrap; gap: 2px; }
-.story .st-in { color: var(--text-secondary); font: 12px/1.4 var(--mono); margin-top: 2px; word-break: break-word; }
-.story .st-out { color: var(--text-primary); font-size: 12.5px; margin-top: 2px; background: var(--surface-2); border-radius: 6px; padding: 5px 8px; word-break: break-word; }
+.rail { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; }
+.rail li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 8px; }
+.rail .tick { display: flex; flex-direction: column; align-items: center; }
+.rail .tick .line { flex: 1; width: 2px; background: var(--border); min-height: 10px; }
+.rail li:last-child .line { visibility: hidden; }
+.rail .body { padding-bottom: 12px; min-width: 0; }
+.rail li.on .body { background: var(--hover-col); border-radius: 8px; padding: 6px 8px 8px; margin: -6px -8px 0; }
+.rail .st-line { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.st-in { color: var(--text-secondary); font: 12px/1.4 var(--mono); margin-top: 2px; word-break: break-word; }
+.st-out { color: var(--text-primary); font-size: 12.5px; margin-top: 2px; background: var(--surface-2); border-radius: 6px; padding: 5px 8px; word-break: break-word; }
 
 /* tabs + header actions */
 .tabs { display: flex; gap: 2px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; padding: 2px; }
@@ -387,7 +516,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     <div class="seg" id="range" aria-label="Time range">
       <button data-r="1h">1h</button><button data-r="24h">24h</button><button data-r="7d">7d</button><button data-r="30d">30d</button><button data-r="1y">1y</button>
     </div>
-    <input type="search" id="q" placeholder="Search tool, source, session…" aria-label="Search">
+    <input type="search" id="q" placeholder="Search tool, agent, chain…" aria-label="Search">
     <select id="status" class="f-sm" aria-label="Status">
       <option value="">All statuses</option>
       <option value="completed">Completed</option>
@@ -398,8 +527,8 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     </select>
     <input id="kind" class="f-sm" placeholder="Kind" aria-label="Kind" list="kinds">
     <datalist id="kinds"><option value="tool_call"><option value="action"><option value="http_request"></datalist>
-    <input id="source" class="f-sm" placeholder="Source" aria-label="Source">
-    <input id="session_id" class="f-sm" placeholder="Session" aria-label="Session">
+    <input id="source" class="f-sm" placeholder="Agent" aria-label="Agent">
+    <input id="session_id" class="f-sm" placeholder="Chain" aria-label="Chain">
     <div class="chips" id="chips"></div>
   </div>
 
@@ -431,12 +560,20 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     </section>
   </div>
 
-  <section class="card">
-    <div class="card-head"><h2>Events</h2><span class="sub" id="evCount"></span></div>
-    <div class="tbl-wrap">
+  <section class="card" id="eventsCard">
+    <div class="card-head">
+      <div class="chain-title"><h2 id="evTitle">Chains</h2><span class="sub" id="evCount"></span></div>
+      <div class="seg" id="evView" role="group" aria-label="Activity layout">
+        <button type="button" data-v="chains" aria-pressed="true">Chains</button>
+        <button type="button" data-v="calls">Calls</button>
+      </div>
+    </div>
+    <div class="agent-strip" id="agentStrip" aria-label="Agents" hidden></div>
+    <div id="chains" class="chains"></div>
+    <div class="tbl-wrap" id="callsWrap" hidden>
       <table class="events">
         <thead><tr>
-          <th>Time</th><th>Status</th><th>Name</th><th>Kind</th><th>Source</th><th>Session</th><th class="num">Duration</th><th>Rule</th>
+          <th>Time</th><th>Status</th><th>Name</th><th>Kind</th><th>Agent</th><th>Chain</th><th class="num">Duration</th><th>Rule</th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
@@ -668,6 +805,10 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   const state = { range: RANGES[params.get("range")] ? params.get("range") : "24h", f: {} };
   FILTERS.forEach((k) => { if (params.get(k)) state.f[k] = params.get(k); });
   let rows = [], nextBefore = null, selectedId = null, lastStats = null, gen = 0, liveBusy = false;
+  let listMode = "chains";
+  try { if (localStorage.getItem("gw.list") === "calls") listMode = "calls"; } catch {}
+  const openChains = new Set();
+  const closedChains = new Set();
   let me = null, queue = [], drawerEvent = null, view = "activity";
   let shortcutQueueId = null, shortcutIndexHint = 0, approveArm = null, queueIds = [];   // approveArm: {id, timer} while waiting for the second `a`
   const linkedEvent = params.get("event");  // /dashboard?event=<id> (webhook links) opens that event
@@ -772,6 +913,261 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   function statusEl(s) {
     const m = STATUS[s] || { label: s || "unknown", icon: "?" };
     return el("span", { class: "st " + s }, el("i", { "aria-hidden": "true", text: m.icon }), m.label);
+  }
+
+  // ---------- agent identity + chains
+  // A chain is one conversation (session). Calls with no session are grouped under the agent and marked
+  // with a dashed border so they are not read as one conversation. The same agent name always gets the same color.
+  function agentOf(e) {
+    return ((e && (e.source || e.client)) || "unknown").trim() || "unknown";
+  }
+  function agentField(e) { return e && e.source ? "source" : "client"; }
+  function agentHue(name) {
+    let h = 2166136261;
+    for (let i = 0; i < name.length; i++) h = Math.imul(h ^ name.charCodeAt(i), 16777619);
+    return (Math.abs(h) % 24) * 15;
+  }
+  function monogram(name) {
+    const parts = String(name).split(/[^A-Za-z0-9]+/).filter(Boolean);
+    const raw = parts.length >= 2 ? parts[0][0] + parts[1][0] : String(name).slice(0, 2);
+    return raw.toUpperCase();
+  }
+  function avatarEl(name, size) {
+    const n = name || "unknown";
+    const h = agentHue(n);
+    return el("span", {
+      class: "avatar" + (size === "sm" ? " sm" : ""),
+      style: `--h:${h};--hl:${h > 40 && h < 90 ? 32 : 38}%`,
+      title: n, "aria-hidden": "true", text: monogram(n),
+    });
+  }
+  function shortId(id) {
+    if (!id) return "";
+    return id.length <= 14 ? id : id.slice(0, 6) + "…" + id.slice(-4);
+  }
+  function chainTone(steps) {
+    for (const s of ["awaiting_approval", "denied", "failed", "pending"]) {
+      if (steps.some((e) => e.status === s)) return s;
+    }
+    return "completed";
+  }
+  function groupChains(list) {
+    const sessions = new Map(), loose = new Map();
+    for (const e of list) {
+      if (e.session_id) {
+        const g = sessions.get(e.session_id) || { key: "s:" + e.session_id, session: e.session_id, loose: false, steps: [] };
+        g.steps.push(e);
+        sessions.set(e.session_id, g);
+      } else {
+        const name = agentOf(e);
+        const g = loose.get(name) || { key: "loose:" + name, session: null, loose: true, steps: [] };
+        g.steps.push(e);
+        loose.set(name, g);
+      }
+    }
+    const chains = [...sessions.values(), ...loose.values()];
+    for (const c of chains) {
+      c.steps.sort((a, b) => a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : 1);
+      c.latest = c.steps[c.steps.length - 1];
+      c.started = c.steps[0].created_at;
+      c.agent = agentOf(c.latest);
+      c.field = agentField(c.latest);
+      c.client = c.latest.client;
+      c.tone = chainTone(c.steps);
+      c.also = [...new Set(c.steps.map(agentOf))].filter((n) => n !== c.agent);
+    }
+    chains.sort((a, b) => a.latest.created_at < b.latest.created_at ? 1 : a.latest.created_at > b.latest.created_at ? -1 : 0);
+    return chains;
+  }
+  function setAgentFilter(name, field) {
+    const on = state.f[field] === name;
+    delete state.f.source; delete state.f.client;
+    setFilter(field, on ? "" : name);
+  }
+  function toggleChain(key, openNow) {
+    if (openNow) { openChains.delete(key); closedChains.add(key); }
+    else { closedChains.delete(key); openChains.add(key); }
+    renderRows();
+  }
+  function edgeEl() { return el("span", { class: "edge", "aria-hidden": "true" }); }
+  function stepButton(s) {
+    const m = STATUS[s.status] || { label: s.status || "unknown", icon: "?" };
+    return el("button", {
+      type: "button",
+      class: "node " + (s.status || "") + (s.id === selectedId ? " sel" : ""),
+      "data-id": s.id,
+      title: `${s.name} · ${m.label}`,
+      "aria-label": `${s.name}, ${m.label}`,
+      onclick: (ev) => { ev.stopPropagation(); openDrawer(s.id); },
+    },
+      el("span", { class: "nm", text: s.name }),
+      el("span", { class: "meta", text: fmtTime(s.created_at) + (s.would ? (s.would === "deny" ? " · would block" : " · would hold") : "") }),
+    );
+  }
+  function flowEl(steps, chainKey) {
+    const cap = 8;
+    const truncated = steps.length > cap;
+    const shown = truncated ? [steps[0], ...steps.slice(-(cap - 1))] : steps;
+    const skipped = steps.length - shown.length;
+    const box = el("div", { class: "flow", role: "list", "aria-label": "Calls in this chain, oldest first" });
+    const add = (node) => { if (box.childNodes.length) box.append(edgeEl()); box.append(node); };
+    shown.forEach((s, i) => {
+      if (i === 1 && skipped > 0) {
+        add(el("button", {
+          type: "button", class: "node more", title: "Show every step",
+          onclick: (ev) => { ev.stopPropagation(); toggleChain(chainKey, false); },
+        }, el("span", { class: "nm", text: `+${skipped}` }), el("span", { class: "meta", text: "earlier" })));
+      }
+      add(stepButton(s));
+    });
+    return box;
+  }
+  function sparkEl(steps) {
+    return el("div", { class: "spark", role: "list", "aria-label": "Whole chain" }, steps.map((s, i) => {
+      const m = STATUS[s.status] || { label: s.status || "" };
+      return el("button", {
+        type: "button",
+        class: "spark-dot " + (s.status || "") + (s.id === selectedId ? " sel" : ""),
+        "data-id": s.id,
+        title: `${i + 1}. ${s.name} · ${m.label}`,
+        "aria-label": `Step ${i + 1} of ${steps.length}: ${s.name}, ${m.label}`,
+        onclick: (ev) => { ev.stopPropagation(); openDrawer(s.id); },
+      });
+    }));
+  }
+  function tallyEls(steps) {
+    const order = ["awaiting_approval", "denied", "failed", "pending", "completed"];
+    const counts = {};
+    for (const s of steps) counts[s.status] = (counts[s.status] || 0) + 1;
+    return order.filter((k) => counts[k]).map((k) => {
+      const m = STATUS[k] || { label: k, icon: "?" };
+      return el("span", { class: "tally " + k, title: m.label }, el("i", { "aria-hidden": "true", text: m.icon }), String(counts[k]));
+    });
+  }
+  function chainMeta(c) {
+    const bits = [];
+    if (c.loose) bits.push(el("span", { text: "No session" }));
+    else bits.push(el("button", {
+      type: "button", class: "pill-link", title: c.session, text: "chain " + shortId(c.session),
+      onclick: () => setFilter("session_id", state.f.session_id === c.session ? "" : c.session),
+    }));
+    if (c.client && c.client !== c.agent) bits.push(el("span", { text: "key " + c.client }));
+    bits.push(el("span", { text: `${c.steps.length} call${c.steps.length === 1 ? "" : "s"}` }));
+    if (c.steps.length > 1) {
+      const ms = new Date(c.latest.created_at) - new Date(c.started);
+      if (ms >= 1000) bits.push(el("span", { text: "ran " + fmtDur(ms) }));
+    }
+    bits.push(el("span", { text: fmtAgo(c.latest.created_at) }));
+    const wrap = el("div", { class: "chain-meta" });
+    bits.forEach((b, i) => { if (i) wrap.append(" · "); wrap.append(b); });
+    return wrap;
+  }
+  function focusStep(steps) {
+    return steps.find((s) => s.status === "awaiting_approval")
+      || [...steps].reverse().find((s) => s.status === "denied" || s.status === "failed")
+      || null;
+  }
+  function railEl(steps, currentId) {
+    return el("ol", { class: "rail" }, steps.map((s, i) => el("li", { class: (s.id === currentId ? "on " : "") + (s.status || ""), "data-id": s.id },
+      el("div", { class: "tick", "aria-hidden": "true" },
+        el("span", { class: "st " + (s.status || "") }, el("i", { text: (STATUS[s.status] || { icon: "?" }).icon })),
+        el("span", { class: "line" })),
+      el("div", { class: "body" },
+        el("div", { class: "st-line" },
+          el("button", { type: "button", class: "pill-link mono step-name", text: s.name, onclick: () => openDrawer(s.id) }),
+          el("span", { class: "muted", text: `${i + 1}/${steps.length}` }),
+          el("span", { class: "muted", text: (STATUS[s.status] || {}).label || s.status || "" }),
+          el("span", { class: "muted", text: fmtTime(s.created_at) }),
+          s.would ? el("span", { class: "tag would", text: s.would === "deny" ? "would block" : "would hold" }) : null,
+          s.decided_by && s.decided_by !== "timeout" ? el("span", { class: "muted", text: `${s.decision === "allow" ? "approved" : "rejected"} by ${s.decided_by}${s.decision_note ? ": “" + s.decision_note + "”" : ""}` }) : null),
+        summarizeInput(s.input) ? el("div", { class: "st-in", text: summarizeInput(s.input) }) : null,
+        summarizeOutput(s.output) ? el("div", { class: "st-out", text: summarizeOutput(s.output) }) : null,
+        s.status === "denied" && s.reason ? el("div", { class: "st-in", text: s.reason }) : null,
+        s.error ? el("div", { class: "st-in", text: s.error }) : null,
+      ),
+    )));
+  }
+  function chainCard(c, freshIds) {
+    const open = !closedChains.has(c.key) && (openChains.has(c.key) || (!!state.f.session_id && c.session === state.f.session_id));
+    const hue = agentHue(c.agent);
+    const fresh = c.steps.some((s) => freshIds.has(s.id));
+    const oldestLoaded = rows.reduce((a, e) => e.created_at < a ? e.created_at : a, rows[0].created_at);
+    const maybeMore = !c.loose && nextBefore && c.steps[0].created_at === oldestLoaded;
+    const focus = open ? null : focusStep(c.steps);
+    const kids = [
+      el("div", { class: "chain-head" },
+        avatarEl(c.agent),
+        el("div", { class: "chain-id" },
+          el("div", { class: "chain-name" },
+            el("button", {
+              type: "button", class: "agent-name", title: `Filter by ${c.agent}`, text: c.agent,
+              onclick: () => setAgentFilter(c.agent, c.field),
+            }),
+            c.also.length ? el("span", { class: "muted", style: "font-weight:400;font-size:12px", text: "with " + c.also.join(", ") }) : null),
+          chainMeta(c),
+          c.loose ? el("div", { class: "loose-note", text: c.steps.length > 1
+            ? "These calls have no session, so they are not one conversation. Grouped under the agent."
+            : "This call has no session, so it isn’t part of a chain." }) : null,
+        ),
+        el("div", { class: "chain-side" }, tallyEls(c.steps), c.session ? sessionControl(c.session, true) : null),
+      ),
+    ];
+    if (c.steps.length > 8) kids.push(sparkEl(c.steps));
+    if (!open) kids.push(flowEl(c.steps, c.key));
+    if (focus) {
+      const m = STATUS[focus.status] || { label: focus.status, icon: "?" };
+      kids.push(el("div", { class: "chain-focus" },
+        el("span", { class: "st " + focus.status }, el("i", { "aria-hidden": "true", text: m.icon }), m.label),
+        " ",
+        el("button", { type: "button", class: "pill-link mono", text: focus.name, onclick: () => openDrawer(focus.id) }),
+        summarizeInput(focus.input) ? el("div", { class: "st-in", text: summarizeInput(focus.input) }) : null,
+        focus.reason ? el("div", { class: "sec", style: "margin-top:4px", text: focus.reason }) : null,
+      ));
+    }
+    if (open && c.steps.length > 1) kids.push(railEl(c.steps, selectedId));
+    if (c.steps.length > 1 || maybeMore) {
+      kids.push(el("div", { class: "chain-foot" },
+        c.steps.length > 1 ? el("button", {
+          type: "button", class: "linkish", text: open ? "Hide details" : "Show details",
+          onclick: () => toggleChain(c.key, open),
+        }) : el("span"),
+        maybeMore ? el("span", { class: "hint", text: "Earlier calls in this chain may still be on the next page." }) : null,
+      ));
+    }
+    return el("article", {
+      class: ["chain", c.tone, c.loose ? "loose" : "", fresh ? "fresh" : ""].filter(Boolean).join(" "),
+      style: `--h:${hue}`,
+      "data-chain": c.key,
+      "aria-label": `${c.agent}, ${c.loose ? "loose calls" : "chain " + (c.session || "")}, ${c.steps.length} calls`,
+    }, kids);
+  }
+  function renderAgentStrip(chains) {
+    const box = $("#agentStrip");
+    const map = new Map();
+    for (const c of chains) {
+      const key = c.field + ":" + c.agent;
+      const a = map.get(key) || { name: c.agent, field: c.field, chains: 0, calls: 0 };
+      a.chains += 1; a.calls += c.steps.length;
+      map.set(key, a);
+    }
+    const agents = [...map.values()].sort((a, b) => b.calls - a.calls);
+    box.hidden = agents.length === 0;
+    box.replaceChildren(...agents.map((a) => {
+      const on = state.f[a.field] === a.name;
+      return el("button", {
+        type: "button", class: "agent-chip", "aria-pressed": String(on),
+        title: on ? `Clear ${a.name}` : `Show only ${a.name}`,
+        onclick: () => setAgentFilter(a.name, a.field),
+      }, avatarEl(a.name, "sm"), el("span", { text: a.name }),
+        el("span", { class: "ct", text: a.chains > 1 ? `${a.chains} chains · ${a.calls} calls` : `${a.calls} call${a.calls === 1 ? "" : "s"}` }));
+    }));
+  }
+  function applyListMode() {
+    const chainsOn = listMode === "chains";
+    $("#chains").hidden = !chainsOn;
+    $("#callsWrap").hidden = chainsOn;
+    $("#evTitle").textContent = chainsOn ? "Chains" : "Calls";
+    document.querySelectorAll("#evView button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.v === listMode)));
   }
 
   // ---------- filters UI
@@ -972,7 +1368,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
       el("td", {}, statusEl(e.status), e.would ? el("span", { class: "tag would", text: e.would === "deny" ? "would block" : "would hold" }) : null),
       el("td", { class: "mono trunc", title: e.name, text: e.name }),
       el("td", { class: "sec", text: e.kind }),
-      el("td", {}, link("source", e.source)),
+      el("td", {}, avatarEl(agentOf(e), "sm"), " ", link(agentField(e), agentOf(e))),
       el("td", { class: "mono" }, link("session_id", e.session_id)),
       el("td", { class: "num sec", text: fmtDur(e.duration_ms) }),
       el("td", { class: "mono sec trunc", title: e.reason || "", text: e.rule_id || "" }),
@@ -982,15 +1378,31 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   function renderRows(freshIds = new Set()) {
     const tbody = $("#rows");
     tbody.replaceChildren(...rows.map((e) => rowEl(e, freshIds.has(e.id))));
+    const chains = groupChains(rows);
+    $("#chains").replaceChildren(...chains.map((c) => chainCard(c, freshIds)));
+    renderAgentStrip(chains);
+    applyListMode();
     $("#noRows").hidden = rows.length > 0;
+    const narrowed = Object.keys(state.f).some((k) => state.f[k]) || state.window;
+    $("#noRows").replaceChildren(
+      el("div", { class: "empty-title", text: narrowed ? "Nothing matches" : (listMode === "chains" ? "No chains yet" : "No calls yet") }),
+      el("div", { text: narrowed
+        ? "Try a wider time range, or clear a filter."
+        : "When an agent works through a session, the whole run shows up here as one chain." }),
+    );
     $("#more").hidden = !nextBefore;
-    $("#evCount").textContent = rows.length ? `${nf.format(rows.length)} shown${nextBefore ? "" : " · all loaded"}` : "";
+    const chainN = chains.length;
+    $("#evCount").textContent = rows.length
+      ? (listMode === "chains"
+        ? `${nf.format(chainN)} chain${chainN === 1 ? "" : "s"} · ${nf.format(rows.length)} call${rows.length === 1 ? "" : "s"}${nextBefore ? "" : " · all loaded"}`
+        : `${nf.format(rows.length)} shown${nextBefore ? "" : " · all loaded"}`)
+      : "";
     const info = $("#footInfo");
     info.replaceChildren();
     if (state.window) {
       info.append(`Showing ${state.window.label} `,
         el("button", { class: "linkish", text: "× back to full range", onclick: () => { state.window = null; reloadEvents(); } }));
-    } else info.append(`Newest first · range ${state.range}`);
+    } else info.append(listMode === "chains" ? `Chains newest first · range ${state.range}` : `Newest first · range ${state.range}`);
   }
   function eventQuery(before) {
     const w = state.window;
@@ -1066,7 +1478,8 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   // ---------- approvals
   async function loadMe() {
     me = await api("/v1/me");
-    $("#meName").textContent = me.client;
+    $("#meName").textContent = me.auth_enabled === false ? "Local" : me.client;
+    $("#keyBtn").hidden = me.auth_enabled === false;
     document.querySelectorAll("[data-admin]").forEach((n) => (n.hidden = !me.is_admin));
     $("#stopBtn").hidden = !(me.can_approve || me.is_admin);
     const shadowAll = me.mode === "shadow", shadowSome = (me.shadow_agents || []).length > 0;
@@ -1225,15 +1638,24 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
       if (!li) {
         li = el("li", { "data-id": e.id, "data-viewer": viewer, "aria-selected": "false",
             onclick: (ev) => { if (!ev.target.closest("button, input, select, textarea, a")) setQueueSelection(e.id); } },
-          el("div", {},
-            el("div", {}, el("button", { class: "pill-link mono", text: e.name, title: "Open details", onclick: () => openDrawer(e.id) })),
-            el("div", { class: "why" }, e.reason || "", e.rule_id ? el("span", { class: "muted mono", text: `  · ${e.rule_id}` }) : null),
-            el("div", { class: "who" }, [e.source || e.client, e.session_id && `session ${e.session_id}`, `key ${e.client}`, `asked ${fmtAgo(e.created_at)}`].filter(Boolean).join("  ·  ")),
+          el("div", { class: "aq-main" },
+            avatarEl(agentOf(e), "sm"),
+            el("div", { class: "aq-copy" },
+              el("div", {}, el("button", { class: "pill-link mono", text: e.name, title: "Open details", onclick: () => openDrawer(e.id) })),
+              el("div", { class: "why" }, e.reason || "", e.rule_id ? el("span", { class: "muted mono", text: `  · ${e.rule_id}` }) : null),
+              el("div", { class: "who" }, [agentOf(e), e.session_id && `chain ${e.session_id}`, e.client && e.client !== agentOf(e) ? `key ${e.client}` : null, `asked ${fmtAgo(e.created_at)}`].filter(Boolean).join("  ·  ")),
+              e.session_id ? el("button", { type: "button", class: "linkish", text: "Show chain", onclick: (ev) => {
+                ev.stopPropagation();
+                listMode = "chains";
+                try { localStorage.setItem("gw.list", "chains"); } catch {}
+                setFilter("session_id", e.session_id);
+              } }) : null,
+            ),
           ),
           el("div", { class: "side" }, clockEl(e), decisionControls(e, true)),
           el("div", { class: "inp", title: preview(e.input), text: preview(e.input) }),
           signalsEl(e.signals),
-          storyDetails(e.id),
+          storyDetails(e),
         );
       }
       if (prev ? prev.nextSibling !== li : list.firstChild !== li) prev ? prev.after(li) : list.prepend(li);
@@ -1247,7 +1669,8 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   async function openDrawer(id) {
     cancelApprove();
     selectedId = id;
-    document.querySelectorAll("#rows tr").forEach((tr) => tr.classList.toggle("sel", tr.dataset.id === id));
+    document.querySelectorAll("#rows tr, .node, .spark-dot").forEach((n) => n.classList.toggle("sel", n.dataset.id === id));
+    document.querySelectorAll(".rail li").forEach((n) => n.classList.toggle("on", n.dataset.id === id));
     const d = $("#drawer");
     d.classList.add("open"); d.setAttribute("aria-hidden", "false"); $("#backdrop").classList.add("on");
     $("#drTitle").textContent = "Loading…"; $("#drSub").textContent = ""; $("#drBody").replaceChildren();
@@ -1272,9 +1695,12 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   function closeDrawer() {
     const d = $("#drawer");
     d.classList.remove("open"); d.setAttribute("aria-hidden", "true"); $("#backdrop").classList.remove("on");
-    const tr = selectedId && document.querySelector(`#rows tr[data-id="${CSS.escape(selectedId)}"]`);
+    const tr = selectedId && (
+      document.querySelector(`#rows tr[data-id="${CSS.escape(selectedId)}"]`) ||
+      document.querySelector(`.node[data-id="${CSS.escape(selectedId)}"]`));
     selectedId = null; drawerEvent = null;
-    document.querySelectorAll("#rows tr.sel").forEach((t) => t.classList.remove("sel"));
+    document.querySelectorAll("#rows tr.sel, .node.sel, .spark-dot.sel").forEach((t) => t.classList.remove("sel"));
+    document.querySelectorAll(".rail li.on").forEach((n) => n.classList.remove("on"));
     if (tr) tr.focus();
   }
   function approvalBanner(e) {
@@ -1323,47 +1749,57 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     if (from && from.length > 1) return "Listed several messages";
     return t.length > 180 ? t.slice(0, 180) + "…" : t;
   }
-  function storyEl(steps) {
-    if (!steps.length) return el("div", { class: "muted", text: "Nothing before this in the same conversation." });
-    return el("ol", { class: "story" }, steps.map((s) => el("li", {},
-      el("div", { class: "st-line" }, statusEl(s.status), " ", el("span", { class: "mono", text: s.name }),
-        el("span", { class: "muted", text: `  ${fmtTime(s.created_at)}` }),
-        s.decided_by && s.decided_by !== "timeout" ? el("span", { class: "muted", text: `  · ${s.decision === "allow" ? "approved" : "rejected"} by ${s.decided_by}${s.decision_note ? ": “" + s.decision_note + "”" : ""}` }) : null),
-      s.input && Object.keys(s.input).length ? el("div", { class: "st-in", text: summarizeInput(s.input) }) : null,
-      summarizeOutput(s.output) ? el("div", { class: "st-out", text: summarizeOutput(s.output) }) : null,
-    )));
+  function mergeChain(current, prior) {
+    const byId = new Map();
+    for (const s of prior || []) byId.set(s.id, s);
+    if (current && current.session_id) {
+      for (const r of rows) if (r.session_id === current.session_id) byId.set(r.id, { ...byId.get(r.id), ...r });
+    }
+    if (current) byId.set(current.id, { ...byId.get(current.id), ...current });
+    return [...byId.values()].sort((a, b) => a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : a.id < b.id ? -1 : 1);
   }
-  async function loadStory(id, box) {
+  async function loadStory(evOrId, box) {
+    const id = typeof evOrId === "string" ? evOrId : evOrId.id;
+    const current = typeof evOrId === "string" ? (rows.find((r) => r.id === id) || null) : evOrId;
+    const head = box.querySelector("h4, summary") || box.firstChild;
     try {
       const r = await api(`/v1/events/${encodeURIComponent(id)}/context`);
-      box.replaceChildren(box.firstChild, storyEl(r.steps));
-    } catch { box.replaceChildren(box.firstChild, el("div", { class: "muted", text: "Couldn't load the history." })); }
+      const steps = mergeChain(current, r.steps);
+      const parts = [head, steps.length > 1 ? railEl(steps, id) : el("div", { class: "muted", text: "Nothing else in this chain yet." })];
+      if (r.steps.length >= 15) parts.push(el("div", { class: "hint", text: "Showing the latest steps of this chain." }));
+      box.replaceChildren(...parts);
+      if (drawerEvent && drawerEvent.id === id && steps.length) {
+        const i = Math.max(0, steps.findIndex((s) => s.id === id));
+        $("#drSub").replaceChildren(statusEl(drawerEvent.status),
+          `  ·  step ${i + 1} of ${steps.length}  ·  ${agentOf(drawerEvent)}  ·  ${new Date(drawerEvent.created_at).toLocaleString()}`);
+      }
+    } catch { box.replaceChildren(head, el("div", { class: "muted", text: "Couldn't load the chain." })); }
   }
-  function storyDetails(id) {
-    const d = el("details", { class: "story-d" }, el("summary", { text: "What led to this" }), el("div", { class: "muted", text: "Loading…" }));
-    d.addEventListener("toggle", () => { if (d.open && !d.dataset.loaded) { d.dataset.loaded = "1"; loadStory(id, d); } });
+  function storyDetails(evOrId) {
+    const d = el("details", { class: "story-d" }, el("summary", { text: "Chain" }), el("div", { class: "muted", text: "Loading…" }));
+    d.addEventListener("toggle", () => { if (d.open && !d.dataset.loaded) { d.dataset.loaded = "1"; loadStory(evOrId, d); } });
     return d;
   }
 
-  function sessionControl(session) {
+  function sessionControl(session, compact) {
     if (!session || !me) return null;
     const stopped = (controlsState.sessions || {})[session];
-    if (stopped) return el("span", {}, " ", el("span", { class: "tag", style: "border-color:var(--critical);color:var(--critical)", text: "stopped" }),
+    if (stopped) return el("span", {}, compact ? "" : " ", el("span", { class: "tag", style: "border-color:var(--critical);color:var(--critical)", text: "stopped" }),
       me.is_admin ? el("button", { class: "linkish", text: "resume", onclick: () => resume(null, session) }) : null);
     return me.can_approve || me.is_admin
-      ? el("span", {}, " ", el("button", { class: "linkish", style: "color:var(--critical)", text: "⏹ stop this session", onclick: () => askStop(null, session) }))
+      ? el("span", {}, compact ? "" : " ", el("button", { class: "linkish", style: "color:var(--critical)", text: compact ? "Stop" : "⏹ stop this session", onclick: () => askStop(null, session) }))
       : null;
   }
 
   function renderDrawer(e) {
     drawerEvent = e;
-    $("#drTitle").textContent = e.name;
-    $("#drSub").replaceChildren(statusEl(e.status), `  ·  ${new Date(e.created_at).toLocaleString()}`);
+    $("#drTitle").replaceChildren(avatarEl(agentOf(e), "sm"), el("span", { text: e.name }));
+    $("#drSub").replaceChildren(statusEl(e.status), `  ·  ${agentOf(e)}  ·  ${new Date(e.created_at).toLocaleString()}`);
     const body = $("#drBody");
     const kids = [approvalBanner(e)];
     if (e.status === "denied" && !e.decided_by) kids.push(el("div", { class: "banner denied" }, el("b", { text: "Blocked: " }), e.reason || "", e.rule_id ? el("span", { class: "muted mono", text: `  (${e.rule_id})` }) : null));
     kids.push(signalsEl(e.signals));
-    const story = el("div", { class: "blk" }, el("h4", { text: "What led to this" }), el("div", { class: "muted", text: "Loading…" }));
+    const story = el("div", { class: "blk" }, el("h4", { text: "Chain" }), el("div", { class: "muted", text: "Loading…" }));
     kids.push(story);
     loadStory(e.id, story);
     if (e.status === "failed" && e.error) kids.push(el("div", { class: "banner failed" }, el("b", { text: "Error: " }), e.error));
@@ -1372,7 +1808,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     const kv = [
       ["Event ID", el("span", {}, el("span", { class: "mono", text: e.id }), " ", el("button", { class: "linkish", text: "copy", onclick: (ev) => copy(e.id, ev.target) }))],
       ["Kind", e.kind], ["Decision", `${e.decision}${e.reason ? " — " + e.reason : ""}`], ["Rule", e.rule_id || "—"],
-      ["Source", filt("source", e.source)], ["Session", el("span", {}, filt("session_id", e.session_id), sessionControl(e.session_id))],
+      ["Agent", filt("source", e.source)], ["Chain", el("span", {}, filt("session_id", e.session_id), sessionControl(e.session_id))],
       ["Client", filt("client", e.client)], ["Client IP", e.client_ip || "—"],
       ["Created", new Date(e.created_at).toLocaleString() + "  (" + fmtAgo(e.created_at) + ")"],
       ["Completed", e.completed_at ? new Date(e.completed_at).toLocaleString() : "—"],
@@ -1439,6 +1875,13 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     else if (ev.key === "r") { ev.preventDefault(); focusRejectNote(); }
   });
   $("#shortcutDone").addEventListener("click", () => $("#shortcutDlg").close());
+  document.querySelectorAll("#evView button").forEach((b) => b.addEventListener("click", () => {
+    if (listMode === b.dataset.v) return;
+    listMode = b.dataset.v;
+    try { localStorage.setItem("gw.list", listMode); } catch {}
+    renderRows();
+  }));
+  applyListMode();
   $("#tableToggle").addEventListener("click", (ev) => {
     const t = $("#chartTable"), open = t.hidden;
     t.hidden = !open;
@@ -1551,7 +1994,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     $("#ownerSel").replaceChildren(el("option", { value: "", text: "nobody in particular" }),
       ...data.members.filter((m) => m.kind === "person").map((m) => el("option", { value: m.name, text: m.name })));
     $("#teamRows").replaceChildren(...data.members.map((m) => el("tr", {},
-      el("td", {}, el("b", { text: m.name }), m.name === me.client ? el("span", { class: "muted", text: "  (you)" }) : null),
+      el("td", {}, m.kind === "agent" ? avatarEl(m.name, "sm") : null, m.kind === "agent" ? " " : null, el("b", { text: m.name }), m.name === me.client ? el("span", { class: "muted", text: "  (you)" }) : null),
       el("td", { class: "sec", text: m.kind === "agent" ? "🤖 AI agent" : "👤 Person" }),
       el("td", { text: access(m) }),
       el("td", {}, m.roles.length ? m.roles.map((r) => el("span", { class: "tag" + (r === "admin" ? " admin" : ""), text: r })) : el("span", { class: "muted", text: "—" })),
@@ -1638,7 +2081,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
             el("span", { class: "muted", style: "margin-left:8px;font-size:12.5px", text: "Anyone can check it offline: python verify.py <file>" })))));
     const stoppedAgents = controlsState.agents || {};
     cells("#repAgents", r.agents.map((g) => el("tr", {},
-      el("td", {}, el("b", { text: g.agent }), stoppedAgents[g.agent] ? el("span", { class: "tag", style: "border-color:var(--critical);color:var(--critical)", text: "stopped" }) : null),
+      el("td", {}, avatarEl(g.agent, "sm"), " ", el("b", { text: g.agent }), stoppedAgents[g.agent] ? el("span", { class: "tag", style: "border-color:var(--critical);color:var(--critical);margin-left:6px", text: "stopped" }) : null),
       ...["total", "denied", "held", "approved", "rejected", "failed"].map((k) => el("td", { class: "num", text: nf.format(g[k] || 0) })),
       el("td", { class: "sec", text: fmtAgo(g.last_seen) }),
       el("td", { class: "num" }, me.is_admin && stoppedAgents[g.agent] ? el("button", { class: "linkish", text: "Resume", onclick: () => resume(g.agent) })
