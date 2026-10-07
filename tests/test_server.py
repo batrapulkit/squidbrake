@@ -499,6 +499,71 @@ sequences:
         server.Policy._compile_sequences([{"id": "x", "match": {"name": "a"}, "after": {"match": {"name": "b"}, "scope": "everywhere"}}])
 
 
+def test_count_sum_and_same_target(c, monkeypatch, tmp_path):
+    """count.sum adds up a field; same_target keys the window on the customer/account."""
+    rules = tmp_path / "seq-sum.yaml"
+    rules.write_text("""
+default: allow
+history_checks: { repeat_of_rejected: off, impersonation: off, payment_request_in_message: off, duplicate_change: off }
+rules:
+  - id: deny-flagged
+    action: deny
+    reason: flagged
+    match: { name: "*refund*", input_regex: '"flag": "no"' }
+sequences:
+  - id: refunds-to-one-customer
+    action: review
+    reason: Large total refunded to one customer in a short time
+    match: { name: ["*refund*"] }
+    count:
+      sum: amount
+      more_than: 300
+      within_hours: 24
+      scope: all
+      same_target: true
+""")
+    monkeypatch.setattr(server, "policy", server.Policy(rules))
+    t = time.time_ns()
+
+    def post(amount=None, account="cus_same", extra=None):
+        inp = {"account": account}
+        if amount is not None:
+            inp["amount"] = amount
+        if extra:
+            inp.update(extra)
+        return c.post("/v1/events", headers=H, json={"name": "pay.refund", "input": inp,
+                                                      "session_id": f"sum-{t}", "source": "pay-bot"}).json()
+
+    one = [post(99, "cus_one")["decision"] for _ in range(10)]
+    assert one[:3] == ["allow"] * 3 and all(d == "review" for d in one[3:])
+    d = post(99, "cus_one")
+    assert "297" in d["reason"] and "cus_one" in d["reason"]
+
+    for i in range(10):
+        assert post(99, f"cus_other_{i}")["decision"] == "allow"
+
+    assert post(250, "cus_deny")["decision"] == "allow"
+    assert post(100, "cus_deny", extra={"flag": "no"})["decision"] == "deny"
+    assert post(40, "cus_deny")["decision"] == "allow"     # denied 100 does not count (290)
+    assert post(20, "cus_deny")["decision"] == "review"    # 310
+
+    for _ in range(3):
+        assert post("99", "cus_str")["decision"] == "allow"
+    assert post("99", "cus_str")["decision"] == "review"
+
+    for _ in range(10):
+        assert post(account="cus_miss")["decision"] == "allow"   # missing amount is 0
+    assert post(50, "cus_miss")["decision"] == "allow"
+    assert post(260, "cus_miss")["decision"] == "review"
+
+    with pytest.raises(ValueError, match="count.sum"):
+        server.Policy._compile_sequences([{"id": "x", "action": "review", "match": {"name": "a"},
+                                           "count": {"more_than": 1, "sum": 12}}])
+    with pytest.raises(ValueError, match="count.same_target"):
+        server.Policy._compile_sequences([{"id": "x", "action": "review", "match": {"name": "a"},
+                                           "count": {"more_than": 1, "same_target": "customer"}}])
+
+
 def test_shadow_mode(c, monkeypatch, tmp_path):
     rules = tmp_path / "shadow.yaml"
     rules.write_text("""

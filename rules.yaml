@@ -78,7 +78,9 @@ taint_checks:
 #   after   an earlier step that went ahead, within within_hours (default 24);
 #           scope: session (the same conversation, the default) | agent (any conversation of this agent) | all (any agent);
 #           same_target: true = only if it was on the same thing (same charge, file, account ...)
-#   count   more than `more_than` earlier matching actions within within_hours; scope: session | agent | all
+#   count   more than `more_than` earlier matching actions within within_hours; scope: session | agent | all;
+#           sum: <field> = add up that input field (this action plus earlier ones) instead of counting actions
+#             (missing or non-numeric values count as 0); same_target: true = only earlier actions on the same thing
 #   action  deny | review | warn
 sequences:
   - id: destroy-after-recovery-removed
