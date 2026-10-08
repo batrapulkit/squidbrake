@@ -725,8 +725,15 @@ class Policy:
                 scope = count.get("scope", "agent")
                 if scope not in ("session", "agent", "all") or "more_than" not in count:
                     raise ValueError(f"sequences.{rid}: count needs more_than, and scope session | agent | all")
-                seq["count"] = {"more_than": int(count["more_than"]), "within_hours": float(count.get("within_hours", 1)),
-                                "scope": scope}
+                field = count.get("sum")
+                if field is not None and not (isinstance(field, str) and field.strip()):
+                    raise ValueError(f"sequences.{rid}: count.sum must be an input field name")
+                if "same_target" in count and not isinstance(count["same_target"], bool):
+                    raise ValueError(f"sequences.{rid}: count.same_target must be true or false")
+                seq["count"] = {"more_than": float(count["more_than"]) if field else int(count["more_than"]),
+                                "within_hours": float(count.get("within_hours", 1)), "scope": scope,
+                                "sum": field.strip() if field else None,
+                                "same_target": bool(count.get("same_target", False))}
             out.append(seq)
         return out
 
@@ -1159,10 +1166,31 @@ def sequence_signals(conn, ev: "EventIn", client: str) -> list[dict]:
             scope = {"session": events.c.session_id == ev.session_id if ev.session_id else events.c.source == ev.source,
                      "agent": and_(events.c.source == ev.source, events.c.client == client),
                      "all": events.c.id.isnot(None)}[c["scope"]]
-            hits = [r for r in earlier(c["within_hours"], scope)
-                    if r.status != "denied" and Policy.matches(seq["match"], row_values(r), stored(r), r.input or "")]
-            if len(hits) >= c["more_than"]:
-                span = f"{c['within_hours']:g} hour{'s' if c['within_hours'] != 1 else ''}"
+            target = _target(ev.input)
+            hits = []
+            for r in earlier(c["within_hours"], scope):
+                if c["sum"] and r.status not in ("completed", "pending"):  # only completed or allowed actions contribute amounts
+                    continue
+                if not c["sum"] and r.status == "denied":
+                    continue
+                if not Policy.matches(seq["match"], row_values(r), stored(r), r.input or ""):
+                    continue
+                if c["same_target"]:
+                    prev = _target(stored(r))
+                    if not (target and prev and prev[1].lower() == target[1].lower()):
+                        continue
+                hits.append(r)
+            span = f"{c['within_hours']:g} hour{'s' if c['within_hours'] != 1 else ''}"
+            if c["sum"]:
+                amt = lambda inp: Policy._input_number(inp, c["sum"]) or 0.0
+                earlier_total = sum(amt(stored(r)) for r in hits)
+                total = earlier_total + amt(ev.input)
+                if total > c["more_than"]:
+                    who = f" to {target[1]}" if target else ""
+                    message = (f"{seq['reason']}. Because earlier: {len(hits)} totalling {earlier_total:g}"
+                               f"{who} in the last {span}.")
+                    ref = hits[0].id if hits else None
+            elif len(hits) >= c["more_than"]:
                 who = {"session": "in this conversation", "agent": "by this agent", "all": "across all agents"}[c["scope"]]
                 message = (f"{seq['reason']}. Because {len(hits)} like it ran {who} in the last {span} "
                            f"(limit {c['more_than']}); the latest: {_step_phrase(hits[0])}.")
