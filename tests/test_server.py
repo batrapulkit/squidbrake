@@ -537,7 +537,7 @@ sequences:
     one = [post(99, "cus_one")["decision"] for _ in range(10)]
     assert one[:3] == ["allow"] * 3 and all(d == "review" for d in one[3:])
     d = post(99, "cus_one")
-    assert "297" in d["reason"] and "cus_one" in d["reason"]
+    assert "297" in d["reason"] and "$" not in d["reason"] and "cus_one" in d["reason"]
 
     for i in range(10):
         assert post(99, f"cus_other_{i}")["decision"] == "allow"
@@ -562,6 +562,35 @@ sequences:
     with pytest.raises(ValueError, match="count.same_target"):
         server.Policy._compile_sequences([{"id": "x", "action": "review", "match": {"name": "a"},
                                            "count": {"more_than": 1, "same_target": "customer"}}])
+
+
+def test_plain_count_includes_held_refunds(c, monkeypatch, tmp_path):
+    rules = tmp_path / "held-refunds.yaml"
+    rules.write_text("""
+default: allow
+history_checks: { repeat_of_rejected: off, impersonation: off, payment_request_in_message: off, duplicate_change: off }
+rules:
+  - id: hold-refunds
+    action: review
+    reason: Refunds need approval
+    match: { name: "*refund*" }
+sequences:
+  - id: runaway-refunds
+    action: deny
+    reason: Too many refunds
+    match: { name: "*refund*" }
+    count: { more_than: 10, within_hours: 1, scope: agent }
+""")
+    monkeypatch.setattr(server, "policy", server.Policy(rules))
+    t = time.time_ns()
+
+    def post():
+        return c.post("/v1/events", headers=H, json={"name": "pay.refund", "input": {},
+                                                      "session_id": f"held-refunds-{t}", "source": f"pay-bot-{t}"}).json()
+
+    held = [post() for _ in range(10)]
+    assert all(event["decision"] == "review" for event in held)
+    assert post()["decision"] == "deny"
 
 
 def test_shadow_mode(c, monkeypatch, tmp_path):

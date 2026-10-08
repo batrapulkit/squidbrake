@@ -1150,7 +1150,9 @@ def sequence_signals(conn, ev: "EventIn", client: str) -> list[dict]:
             target = _target(ev.input)
             hits = []
             for r in earlier(c["within_hours"], scope):
-                if r.status not in ("completed", "pending"):   # only steps that actually went ahead
+                if c["sum"] and r.status not in ("completed", "pending"):  # only completed or allowed actions contribute amounts
+                    continue
+                if not c["sum"] and r.status == "denied":
                     continue
                 if not Policy.matches(seq["match"], row_values(r), stored(r), r.input or ""):
                     continue
@@ -1166,7 +1168,7 @@ def sequence_signals(conn, ev: "EventIn", client: str) -> list[dict]:
                 total = earlier_total + amt(ev.input)
                 if total > c["more_than"]:
                     who = f" to {target[1]}" if target else ""
-                    message = (f"{seq['reason']}. Because earlier: {len(hits)} totalling ${earlier_total:g}"
+                    message = (f"{seq['reason']}. Because earlier: {len(hits)} totalling {earlier_total:g}"
                                f"{who} in the last {span}.")
                     ref = hits[0].id if hits else None
             elif len(hits) >= c["more_than"]:
