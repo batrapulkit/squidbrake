@@ -85,8 +85,10 @@ def test_join_ping_leave(insights, tmp_path, monkeypatch):
     assert pilot.join(tmp_path, "nope-000000", "http://localhost", True, "1.0") == 1          # unknown code
     assert pilot.join(tmp_path, code, "http://localhost", True, "1.0") == 0
     cfg = pilot.load(tmp_path)
+    from datetime import datetime, timedelta, timezone
+    long_ago = (datetime.now(timezone.utc) - timedelta(days=40)).strftime("%Y-%m-%d")   # outside every window below
     usage = {"version": "1.0", "agents": {"claude-code": 5}, "rules_hit": {"command:catastrophic_command": 1},
-             "days": {"2026-10-01": {"events": 5, "held": 2, "blocked": 1}, "../../etc": {"events": 9}}, "total_events": 5}
+             "days": {long_ago: {"events": 5, "held": 2, "blocked": 1}, "../../etc": {"events": 9}}, "total_events": 5}
     assert pilot.send(tmp_path, usage) is True
     p = next(p for p in insights.get("/v1/admin/overview", headers=admin).json()["pilots"] if p["code"] == code)
     assert p["installs"] == 1 and p["agents"] == {"claude-code": 5} and p["total_events"] == 5
@@ -316,3 +318,13 @@ def test_traction_metrics(insights, tmp_path, monkeypatch):
     assert v["oss"]["downloads_last_week"] == 1355
     insights.post(f"/v1/admin/pilots/{code}/revenue", headers=admin, json={"mrr": 0})
     assert not any(p["company"] == "Investable" for p in insights.get("/v1/admin/traction", headers=admin).json()["paying"])
+
+
+def test_the_website_form_may_post_here_other_sites_may_not(insights):
+    """squidbrake.com is a static site; its demo form posts to /v1/team-request from the browser."""
+    ask = lambda origin: insights.options("/v1/team-request", headers={
+        "Origin": origin, "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "content-type"})
+    for ok in ("https://squidbrake.com", "https://www.squidbrake.com", "https://squidbrake-site.onrender.com"):
+        assert ask(ok).headers.get("access-control-allow-origin") == ok, ok
+    for bad in ("https://evil.example", "https://squidbrake.com.evil.example", "http://squidbrake.com"):
+        assert "access-control-allow-origin" not in ask(bad).headers, bad

@@ -23,7 +23,8 @@ classifiers = [
 ]
 dependencies = [
   "fastapi>=0.110",
-  "uvicorn[standard]>=0.29",
+  "uvicorn[standard]>=0.29; platform_machine != 'ARM64'",
+  "uvicorn>=0.29; platform_machine == 'ARM64'",       # Windows on ARM: httptools has no wheel for it (Python's own parser is used)
   "sqlalchemy>=2.0",
   "httpx>=0.27",
   "pyyaml>=6.0",
@@ -57,6 +58,13 @@ packages = ["squidbrake"]
 "commands.py" = "squidbrake/commands.py"
 "taint.py" = "squidbrake/taint.py"
 "risk.py" = "squidbrake/risk.py"
+"mcp_hub.py" = "squidbrake/mcp_hub.py"
+"mcp_catalog.py" = "squidbrake/mcp_catalog.py"
+"outbound.py" = "squidbrake/outbound.py"
+"mcp_oauth.py" = "squidbrake/mcp_oauth.py"
+"policy_edit.py" = "squidbrake/policy_edit.py"
+"siem.py" = "squidbrake/siem.py"
+"onboard.py" = "squidbrake/onboard.py"
 "pilot.py" = "squidbrake/pilot.py"
 "telemetry.py" = "squidbrake/telemetry.py"
 "verify.py" = "squidbrake/verify.py"
@@ -82,6 +90,6 @@ packages = ["squidbrake"]
 "approve.html" = "squidbrake/approve.html"
 
 [tool.hatch.build.targets.sdist]
-only-include = ["squidbrake", "server.py", "commands.py", "risk.py", "taint.py", "pilot.py", "telemetry.py", "verify.py", "evidence.py", "lockdown.py", "effects.py", "undo.py", "shell_guard.py", "runs.py", "hooklog.py", "connect.py", "service.py", "claude_hook.py", "agent_hook.py",
+only-include = ["squidbrake", "server.py", "commands.py", "risk.py", "mcp_hub.py", "mcp_catalog.py", "outbound.py", "mcp_oauth.py", "policy_edit.py", "siem.py", "onboard.py", "taint.py", "pilot.py", "telemetry.py", "verify.py", "evidence.py", "lockdown.py", "effects.py", "undo.py", "shell_guard.py", "runs.py", "hooklog.py", "connect.py", "service.py", "claude_hook.py", "agent_hook.py",
                 "gw_async.py", "gateway_proxy.py", "gateway_mcp.py", "demo_apps_mcp.py", "client.py", "rules.yaml", "rules.shipped",
                 "dashboard.html", "approve.html", "README.md", "LICENSE", "pyproject.toml"]

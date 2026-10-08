@@ -71,31 +71,26 @@ if (D.hosted && !D.missing) {
       are blocked. It runs on your machine. Setup takes about 3 minutes.</p>
 
     <section class="step"><h2><span class="n">1</span> Install</h2>
-      <p>Paste this into a terminal. It needs Python 3.10+.</p>
+      <p>Windows: open <b>PowerShell</b> (not Command Prompt). Mac: open <b>Terminal</b>. Paste this and press Enter.
+        You don't need Python: if there isn't a recent one, it brings its own.</p>
       <div class="tabs" role="tablist">
         <button role="tab" data-os="win">Windows (PowerShell)</button><button role="tab" data-os="mac">macOS / Linux</button>
         <button role="tab" data-os="manual">Manual</button></div>
       <div class="cmd" id="installCmd"></div>
-      <p class="note">It installs Squidbrake and asks whether you'd like to join the pilot (see "What we see" below).</p>
+      <p class="note">That one line does it all: it installs Squidbrake, asks whether you'd like to join the pilot (see
+        "What we see" below), keeps it running in the background, connects every AI agent on this computer (Claude Code,
+        Cursor, Codex, Gemini CLI, VS Code Copilot, Antigravity, and their MCP tools), checks each one, and opens your
+        dashboard, already signed in.</p>
     </section>
 
-    <section class="step"><h2><span class="n">2</span> Start it</h2>
-      <p>Open a <b>new</b> terminal window and run:</p>
-      <div class="cmd">squidbrake</div>
-      <p class="note">It prints two keys (save them: they're shown once) and opens your dashboard at
-        <code>http://localhost:8080/dashboard</code>. Paste the <b>admin</b> key there. Keep this window open while you work.</p>
+    <section class="step"><h2><span class="n">2</span> Save your keys, restart your agents</h2>
+      <p>The window shows two keys once: save them somewhere safe (the <b>admin</b> key signs you in to the dashboard
+        on another browser). Then quit and reopen your agents so they pick Squidbrake up.</p>
+      <p class="note">If a line says <b>[X]</b>, do what it says, then run <code>squidbrake doctor</code> to check again.
+        Squidbrake keeps running at every login. While it's off, your agents' actions are blocked, so they never run unchecked.</p>
     </section>
 
-    <section class="step"><h2><span class="n">3</span> Connect your agent</h2>
-      <p><b>Claude Code</b>: in another terminal window:</p>
-      <div class="cmd">squidbrake connect claude-code</div>
-      <p class="note">Then restart Claude Code. Every tool call (commands, edits, web fetches) now goes through Squidbrake.</p>
-      <p><b>Cursor, Codex, Gemini CLI, VS Code Copilot, Antigravity</b>: <code>squidbrake connect agents</code> adds
-        Squidbrake to each one installed (their terminal commands and file actions), and <code>squidbrake connect guard</code>
-        puts their MCP tools (GitHub, Stripe, databases...) behind it too. <code>--remove</code> undoes either.</p>
-    </section>
-
-    <section class="step try"><h2><span class="n">4</span> Use it as usual, and try these</h2>
+    <section class="step try"><h2><span class="n">3</span> Use it as usual, and try these</h2>
       <ul>
         <li>Ask your agent to <b>fix a failing test</b>: reading runs on its own; each change waits in the dashboard for one click.</li>
         <li>Ask it to <b>print your .env file</b>: blocked, and the agent is told why.</li>
@@ -120,7 +115,8 @@ if (D.hosted && !D.missing) {
     </section>
 
     <p class="foot">Stuck? ${D.contact ? "Reach me: " + esc(D.contact) + "." : "Reply to the message this link came in."}
-      To undo everything: <code>squidbrake connect claude-code --remove</code>, then <code>pipx uninstall squidbrake</code>.
+      To undo everything: <code>squidbrake service stop</code> and <code>squidbrake connect all --remove</code>, then delete
+      the <code>.squidbrake</code> folder in your home folder and <code>squidbrake</code> in <code>.local/bin</code> there.
       Squidbrake is free and open source (Apache 2.0).</p>`;
 
   const cmds = { win, mac, manual };

@@ -205,9 +205,15 @@ def join(home: Path, code: str, server: str | None, yes: bool, version: str) -> 
         return 2
     print(f"\nJoining the Squidbrake pilot with code {code}.\nThis sends usage counts to {server}:\n")
     print("  " + WHAT_IS_SENT.replace("\n", "\n  ") + "\n")
-    if not yes and input("Share these counts? [y/N] ").strip().lower() not in ("y", "yes"):
-        print("Not joined. Nothing is shared.")
-        return 1
+    if not yes:
+        try:
+            answer = input("Share these counts? [y/N] ")
+        except EOFError:                                # no keyboard here (piped, CI): don't guess
+            print(f"\nNot joined: nothing to answer with here. To join, run:  squidbrake pilot join {code} --server {server}")
+            return 1
+        if answer.strip().lower() not in ("y", "yes"):
+            print("Not joined. Nothing is shared.")
+            return 1
     cfg = load(home) or {}
     install_id = cfg.get("install_id") or uuid.uuid4().hex
     try:

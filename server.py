@@ -44,6 +44,7 @@ import uuid
 import webbrowser
 from contextlib import asynccontextmanager, contextmanager
 from datetime import datetime, timedelta, timezone
+from html import escape as html_escape
 from pathlib import Path
 from typing import Any, Literal
 
@@ -61,8 +62,14 @@ from sqlalchemy import (
 import commands
 import evidence
 import lockdown
+import mcp_catalog
+import mcp_hub
+import mcp_oauth
+import outbound
 import pilot
+import policy_edit
 import risk
+import siem
 import taint
 import verify
 
@@ -615,6 +622,11 @@ TAINT_DEFAULTS = {
     "after_untrusted": "warn",          # sends anything out after untrusted content was read in this conversation
 }
 
+# Data checks (rules.yaml `data_checks:`): text an action puts where others read it (a PR, an issue, a comment, a chat
+# post) that names a customer on the team's list, or carries personal data. See outbound.py.
+DATA_EFFECT_KEYS = ("customer_names", "personal_data")
+DATA_DEFAULTS = {"customer_names": "review", "personal_data": "review", "where": outbound.DEFAULT_WHERE}
+
 # Command checks (rules.yaml `command_checks:`) read what a shell command actually does (see commands.py).
 COMMAND_EFFECT_KEYS = ("catastrophic", "irreversible", "hidden")
 COMMAND_DEFAULTS = {
@@ -735,6 +747,7 @@ class Policy:
         self.history: dict = dict(HISTORY_DEFAULTS)
         self.commands: dict = dict(COMMAND_DEFAULTS)
         self.taint: dict = dict(TAINT_DEFAULTS)
+        self.data: dict = dict(DATA_DEFAULTS)
         self.sequences: list[dict] = []
         self.source, self.fingerprint = "", verify.rules_fingerprint("")
         self.mode, self.shadow_agents = "enforce", []
@@ -794,13 +807,19 @@ class Policy:
                         raise ValueError(f"taint_checks.{k} must be block, review, warn or off")
                 for k in ("untrusted", "sinks"):
                     tc[k] = [tc[k]] if isinstance(tc[k], str) else list(tc[k] or [])
+                dc = {**DATA_DEFAULTS, **(data.get("data_checks") or {})}
+                for k in DATA_EFFECT_KEYS:
+                    dc[k] = "off" if dc[k] is False else DATA_DEFAULTS[k] if dc[k] is True else str(dc[k]).lower()
+                    if dc[k] not in ("block", "review", "warn", "off"):
+                        raise ValueError(f"data_checks.{k} must be block, review, warn or off")
+                dc["where"] = [dc["where"]] if isinstance(dc["where"], str) else list(dc["where"] or [])
                 mode = str(data.get("mode", "enforce")).lower()
                 if mode not in ("enforce", "shadow"):
                     raise ValueError("mode must be enforce or shadow")
                 shadow_agents = data.get("shadow_agents") or []
                 shadow_agents = [shadow_agents] if isinstance(shadow_agents, str) else list(shadow_agents)
                 self.default, self.rules, self.history, self.commands = default, rules, hc, cc
-                self.sequences, self.taint = sequences, tc
+                self.sequences, self.taint, self.data = sequences, tc, dc
                 self.source, self.fingerprint = source, verify.rules_fingerprint(source)
                 self.mode, self.shadow_agents = mode, shadow_agents
                 self.default_reason = data.get("default_reason") or f"default {default}"
@@ -1186,6 +1205,29 @@ def _globbed(name: str | None, globs: list[str]) -> bool:
     return any(fnmatch.fnmatchcase((name or "").lower(), g.lower()) for g in globs)
 
 
+def data_signals(ev: "EventIn") -> list[dict]:
+    """Text this action puts where others read it (a PR, an issue, a comment, a chat post): does it name a customer on
+    the team's list, or carry personal data? (see outbound.py)"""
+    dc = policy.data
+    if dc["customer_names"] == "off" and dc["personal_data"] == "off":
+        return []
+    shell = _globbed(ev.name, policy.commands["tools"])
+    line = commands.command_of(ev.input) if shell else None
+    if (shell and not line) or not outbound.is_shared_place(ev.name, line if shell else None, dc["where"]):
+        return []
+    text = line if shell else outbound.text_of(ev.input)
+    out: list[dict] = []
+    if dc["customer_names"] != "off" and (names := outbound.customers_named(text, settings().get("customers") or [])):
+        who = ", ".join(names[:3]) + (f" and {len(names) - 3} more" if len(names) > 3 else "")
+        out.append({"check": "customer_names", "effect": dc["customer_names"],
+                    "message": f"This puts text where others can read it, and it names {who}, on your customer list. "
+                               "Check it should be there."})
+    if dc["personal_data"] != "off" and (found := outbound.personal_data(text, policy.history["company_domains"])):
+        out.append({"check": "personal_data", "effect": dc["personal_data"],
+                    "message": f"This puts text where others can read it, and it contains {', '.join(found)}."})
+    return out
+
+
 def taint_signals(conn, ev: "EventIn", client: str) -> list[dict]:
     """Does this action send something to a destination that only untrusted content mentioned? (see taint.py)"""
     tc = policy.taint
@@ -1268,11 +1310,12 @@ def record_event(ev: EventIn, client: str, client_ip: str | None) -> Decision:
                 signals += history_signals(conn, ev.name, ev.input, to_stored_json(ev.input), ev.source,
                                            ev.session_id, is_change=decision == "review" and not only_reads,
                                            client=client, only_reads=only_reads)
-                signals += taint_signals(conn, ev, client) + command_found
+                signals += data_signals(ev) + taint_signals(conn, ev, client) + command_found
             blocking = next((s for s in signals if s["effect"] == "block"), None)
             needs_person = next((s for s in signals if s["effect"] == "review"), None)
             signal_id = lambda s: f"sequence:{s['rule']}" if s["check"] == "sequence" else \
                 f"command:{s['check']}" if s["check"].endswith("_command") else \
+                f"data:{s['check']}" if s["check"] in DATA_EFFECT_KEYS else \
                 f"taint:{s['check']}" if s["check"] in TAINT_EFFECT_KEYS else f"history:{s['check']}"
             if blocking and ev.output is None and ev.error is None:
                 decision, reason, rule_id = "deny", blocking["message"], signal_id(blocking)
@@ -1343,6 +1386,7 @@ def record_event(ev: EventIn, client: str, client_ip: str | None) -> Decision:
               signals=[f"{x['check']}:{x['effect']}" for x in signals] or None, would=would)
     audit_log.info(json.dumps({k: row[k] for k in ("id", "created_at", "client", "source", "session_id",
                                                     "kind", "name", "status", "rule_id")}))
+    forwarder.emit(siem_record("decision", row))
     if status == "awaiting_approval":
         notify_approval_needed(row)
     return Decision(event_id=row["id"], decision=decision, reason=reason, rule_id=rule_id,
@@ -1356,7 +1400,13 @@ def settings() -> dict:
     defaults = {"public_url": PUBLIC_URL, "slack_webhook": APPROVAL_WEBHOOK_URL,
                 "ntfy_topic": os.getenv("NTFY_TOPIC", ""), "ntfy_server": os.getenv("NTFY_SERVER", "https://ntfy.sh"),
                 "notify_as": os.getenv("NOTIFY_APPROVER", "admin"), "weekly_digest": True,
-                "second_person": os.getenv("SECOND_PERSON_APPROVAL", "").lower() in ("1", "true", "yes")}
+                "second_person": os.getenv("SECOND_PERSON_APPROVAL", "").lower() in ("1", "true", "yes"),
+                "customers": [], "slack_signing_secret": os.getenv("SLACK_SIGNING_SECRET", ""),
+                "teams_webhook": os.getenv("TEAMS_WEBHOOK_URL", ""), "email_to": os.getenv("APPROVAL_EMAIL_TO", ""),
+                "smtp_host": os.getenv("SMTP_HOST", ""), "smtp_port": int(os.getenv("SMTP_PORT", "587") or 587),
+                "smtp_user": os.getenv("SMTP_USER", ""), "smtp_password": os.getenv("SMTP_PASSWORD", ""),
+                "smtp_from": os.getenv("SMTP_FROM", ""), "siem_url": os.getenv("SIEM_URL", ""),
+                "siem_token": os.getenv("SIEM_TOKEN", ""), "siem_format": os.getenv("SIEM_FORMAT", "json")}
     return {**defaults, **state_get("settings", {})}
 
 
@@ -1433,6 +1483,72 @@ def slack_escape(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+def slack_blocks(title: str, body: str, token: str, link: str, expires: str) -> list[dict]:
+    """The approval as a Slack message with Approve / Reject buttons (Squidbrake's Slack app sends the click to
+    /v1/slack/actions). Each button carries the same signed, one-event token as the one-tap link."""
+    text = f"*{slack_escape(title)}*\n{slack_escape(body)}"
+    return [
+        {"type": "section", "text": {"type": "mrkdwn", "text": text[:2900]}},
+        {"type": "actions", "block_id": "squidbrake", "elements": [
+            {"type": "button", "action_id": "approve", "style": "primary", "value": token,
+             "text": {"type": "plain_text", "text": "Approve"}},
+            {"type": "button", "action_id": "reject", "style": "danger", "value": token,
+             "text": {"type": "plain_text", "text": "Reject"}},
+            {"type": "button", "action_id": "open", "url": link, "text": {"type": "plain_text", "text": "Details"}},
+        ]},
+        {"type": "context", "elements": [{"type": "mrkdwn", "text": f"Expires {slack_escape(expires or '')}"}]},
+    ]
+
+
+def email_ready(cfg: dict) -> bool:
+    return bool(cfg.get("smtp_host") and cfg.get("email_to"))
+
+
+def send_email(cfg: dict, subject: str, text: str) -> bool:
+    """Email `text` to the addresses in Settings, through the SMTP server set there. Never raises."""
+    if not email_ready(cfg):
+        return False
+    import smtplib
+    from email.message import EmailMessage
+    msg = EmailMessage()
+    msg["Subject"] = subject[:200]
+    msg["From"] = cfg.get("smtp_from") or cfg.get("smtp_user") or "squidbrake@localhost"
+    msg["To"] = ", ".join(a.strip() for a in str(cfg["email_to"]).split(",") if a.strip())
+    msg.set_content(text)
+    port = int(cfg.get("smtp_port") or 587)
+    try:
+        smtp = smtplib.SMTP_SSL(cfg["smtp_host"], port, timeout=15) if port == 465 else smtplib.SMTP(cfg["smtp_host"], port, timeout=15)
+        with smtp:
+            if port != 465:
+                smtp.ehlo()
+                if smtp.has_extn("starttls"):
+                    smtp.starttls()
+            if cfg.get("smtp_user"):
+                smtp.login(cfg["smtp_user"], cfg.get("smtp_password") or "")
+            smtp.send_message(msg)
+        return True
+    except Exception:
+        log.exception("email to %s failed", msg["To"])
+        return False
+
+
+def send_teams(webhook: str, title: str, body: str, link: str | None = None) -> bool:
+    """A Microsoft Teams message (a Workflows webhook: "Post to a channel when a webhook request is received"), as an
+    Adaptive Card. Its button opens the one-tap approval page; Teams can't decide in the card itself without an app."""
+    card = {"$schema": "http://adaptivecards.io/schemas/adaptive-card.json", "type": "AdaptiveCard", "version": "1.4",
+            "body": [{"type": "TextBlock", "text": title[:300], "weight": "Bolder", "size": "Medium", "wrap": True},
+                     {"type": "TextBlock", "text": body[:3500], "wrap": True}]}
+    if link:
+        card["actions"] = [{"type": "Action.OpenUrl", "title": "Review and approve or reject", "url": link}]
+    try:
+        httpx.post(webhook, timeout=10, json={"type": "message", "attachments": [
+            {"contentType": "application/vnd.microsoft.card.adaptive", "content": card}]}).raise_for_status()
+        return True
+    except Exception:
+        log.exception("Teams message failed")
+        return False
+
+
 def _truncate_discord(s: str, limit: int) -> str:
     if len(s) <= limit:
         return s
@@ -1449,7 +1565,7 @@ def notify_approval_needed(row: dict) -> None:
     """Tell a human, wherever they are: Slack (or any incoming webhook) and/or a phone push via ntfy.
     Both carry a signed link that opens a one-tap Approve / Reject page."""
     cfg = settings()
-    if not (cfg["slack_webhook"] or cfg["ntfy_topic"]):
+    if not (cfg["slack_webhook"] or cfg["ntfy_topic"] or cfg.get("teams_webhook") or email_ready(cfg)):
         return
     base = (cfg["public_url"] or "http://localhost:8080").rstrip("/")
     token = make_link_token(row["id"], cfg["notify_as"])
@@ -1480,6 +1596,9 @@ def notify_approval_needed(row: dict) -> None:
                         "event": {k: row[k] for k in ("id", "name", "kind", "source", "session_id", "client",
                                                       "rule_id", "reason", "approval_deadline")},
                     }
+                    if cfg.get("slack_signing_secret"):
+                        # Squidbrake's Slack app (Settings): decide right in the message, no page to open
+                        payload["blocks"] = slack_blocks(title, body, token, link, expires)
                 httpx.post(cfg["slack_webhook"], timeout=10, json=payload).raise_for_status()
             except Exception:
                 log.exception("Slack/webhook notification failed for event %s", row["id"])
@@ -1495,8 +1614,25 @@ def notify_approval_needed(row: dict) -> None:
                 }).raise_for_status()
             except Exception:
                 log.exception("phone notification failed for event %s", row["id"])
+        if cfg.get("teams_webhook"):
+            send_teams(cfg["teams_webhook"], title, f"{body}\n\nExpires {expires}", link)
+        # Only the review page's link: mail scanners open links, so nothing in an email decides by being opened.
+        send_email(cfg, title, f"{body}\n\nReview and approve or reject: {link}\n(expires {expires})")
 
     threading.Thread(target=send, daemon=True).start()
+
+
+forwarder = siem.Forwarder(lambda: settings())
+
+
+def siem_record(kind: str, r) -> dict:
+    """What a SIEM gets for an event: who, which tool, the decision and why, and the stored (redacted) input."""
+    g = r.get if isinstance(r, dict) else (lambda k, d=None: getattr(r, k, d))
+    return {"type": kind, "id": g("id"), "time": g("decided_at") or g("created_at"), "agent": g("source") or g("client"),
+            "key": g("client"), "session": g("session_id"), "tool": g("name"), "kind": g("kind"),
+            "decision": g("decision"), "status": g("status"), "rule_id": g("rule_id"), "reason": g("reason"),
+            "decided_by": g("decided_by"), "note": g("decision_note"), "risk": g("risk"), "would": g("would"),
+            "input": (g("input") or "")[:500] or None}
 
 
 def expire_overdue() -> int:
@@ -1516,6 +1652,7 @@ def expire_overdue() -> int:
                     status="denied" if outcome == "deny" else "pending", decision=outcome, decided_by="timeout",
                     decided_at=now, decision_note=f"no human decision before the deadline; on_timeout={outcome}")).rowcount:
                 audit(conn, "timeout", "event.expired", eid, outcome=outcome)
+                forwarder.emit(siem_record("timed_out", conn.execute(select(events).where(events.c.id == eid)).first()))
                 n += 1
     if n:
         log.info("approvals: %d expired", n)
@@ -1555,6 +1692,8 @@ def decide(event_id: str, outcome: Literal["allow", "deny"], who: str, note: str
         if not won:
             raise HTTPException(409, "event was decided by someone else a moment ago")
         audit(conn, who, "event.approved" if outcome == "allow" else "event.rejected", event_id, note=note, via=via)
+        forwarder.emit(siem_record("approved" if outcome == "allow" else "rejected",
+                                   conn.execute(select(events).where(events.c.id == event_id)).first()))
     audit_log.info(json.dumps({"id": event_id, "approval": outcome, "decided_by": who, "via": via}))
     return current_decision(event_id)
 
@@ -1637,37 +1776,102 @@ async def _expiry_loop():
         await asyncio.sleep(2)
 
 
-def digest_text(r: dict) -> str:
+CAUGHT_ORDER = {"blocked": 0, "rejected": 1, "would have been blocked": 2, "would have waited for a person": 3}
+
+
+def caught(days: int = 7, limit: int = 8) -> list[dict]:
+    """What Squidbrake stopped (or, in shadow mode, would have), newest of each kind first: the call, why, what it
+    would have changed (when the hook measured it), and who decided. Inputs are the stored, redacted copies."""
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    blocked = (events.c.status == "denied") & events.c.decided_by.is_(None)
+    rejected = (events.c.decision == "deny") & events.c.decided_by.isnot(None) & (events.c.decided_by != "timeout")
+    with engine.connect() as conn:
+        rows = conn.execute(select(events).where(
+            events.c.created_at >= since, blocked | rejected | events.c.would.isnot(None))
+            .order_by(events.c.created_at.desc()).limit(500)).all()
+    out = []
+    for r in rows:
+        if r.would:
+            outcome = "would have been blocked" if r.would == "deny" else "would have waited for a person"
+        elif r.decided_by:
+            outcome = "rejected"
+        else:
+            outcome = "blocked"
+        try:
+            inp = json.loads(r.input or "null")
+        except ValueError:
+            inp = r.input
+        what = (inp.get("command") if isinstance(inp, dict) else None) or r.name
+        effect = next((s["message"] for s in json.loads(r.signals or "[]") if s.get("check") == "effect"), None)
+        reason = (r.reason or "").removeprefix("Shadow mode, allowed. ")
+        out.append({"at": r.created_at, "agent": r.source or r.client, "tool": r.name, "what": str(what)[:120],
+                    "why": reason[:200], "outcome": outcome, "by": r.decided_by if outcome == "rejected" else None,
+                    "note": r.decision_note if outcome == "rejected" else None, "effect": effect})
+    out.sort(key=lambda x: x["at"], reverse=True)               # newest first...
+    out.sort(key=lambda x: CAUGHT_ORDER[x["outcome"]])         # ...within blocked, rejected, would-block, would-hold
+    seen, picked = set(), []
+    for x in out:                                    # the same thing caught ten times is one line
+        key = (x["outcome"], x["what"])
+        if key not in seen:
+            seen.add(key)
+            picked.append(x)
+    return picked[:limit]
+
+
+def digest_text(r: dict, catches: list[dict] | None = None) -> str:
     a, s = r["approvals"], r["by_status"]
-    lines = [f":bar_chart: *Squidbrake weekly summary* ({r['days']} days)",
-             f"{r['total']} agent actions: {s.get('completed', 0)} completed, {s.get('denied', 0)} blocked, "
-             f"{s.get('failed', 0)} failed.",
-             f"Approvals: {a['held']} held, {a['approved']} approved, {a['rejected']} rejected, {a['timed_out']} timed out"
-             + (f", median decision time {int(a['median_seconds_to_decide'])}s." if a['median_seconds_to_decide'] is not None else ".")]
+    sh = r.get("shadow") or {}
+    lines = [f":bar_chart: *What your AI agents did this week* ({r['days']} days)"]
+    if sh.get("would_block") or sh.get("would_hold"):
+        lines.append(f"Shadow mode: nothing was stopped, but Squidbrake would have blocked {sh['would_block']} and held "
+                     f"{sh['would_hold']} for a person.")
+    if catches:
+        lines.append("*What it caught:*")
+        for c in catches:
+            who = f" by {c['by']}" + (f' ("{c["note"]}")' if c.get("note") else "") if c["by"] else ""
+            lines.append(f"• {c['outcome'].capitalize()}{who}: `{c['what']}` ({c['agent']}). {c['why']}"
+                         + (f" It would have: {c['effect']}" if c.get("effect") else ""))
+    lines += [
+             f"Signed off by a person: {a['held']} held, {a['approved']} approved, {a['rejected']} rejected, "
+             f"Signed off by a person: {a['held']} held, {a['approved']} approved, {a['rejected']} rejected, "
+             f"{a['timed_out']} timed out"
+             + (f", median decision time {int(a['median_seconds_to_decide'])}s." if a['median_seconds_to_decide'] is not None else "."),
+             f"{r['total']} agent actions on the record: {s.get('completed', 0)} completed, {s.get('denied', 0)} refused, "
+             f"{s.get('failed', 0)} failed."]
     if r["agents"]:
         lines.append("Most active: " + ", ".join(f"{g['agent']} ({g['total']})" for g in r["agents"][:5]))
-    if r["blocked_by_rule"]:
-        lines.append("Top blocks: " + ", ".join(f"{b['rule_id']} ({b['count']})" for b in r["blocked_by_rule"][:3]))
     au = r["audit"]
-    lines.append(f"Audit trail: {'intact' if au['ok'] else 'BROKEN at entry ' + str(au['first_bad_seq'])}, "
+    lines.append(f"Record: {'intact' if au['ok'] else 'BROKEN at entry ' + str(au['first_bad_seq'])}, "
                  f"{au['entries']} entries, fingerprint {str(au['head_hash'])[:16]}")
+    if r["blocked_by_rule"]:
+        lines.append("Most refused by: " + ", ".join(f"{b['rule_id']} ({b['count']})" for b in r["blocked_by_rule"][:3]))
     return "\n".join(lines)
 
 
 def maybe_send_digest() -> None:
     """Every Monday from 09:00 (server local time), once per week, post last week's summary to Slack."""
     cfg, now = settings(), datetime.now()
-    if not (cfg["slack_webhook"] and cfg.get("weekly_digest")) or now.weekday() != 0 or now.hour < 9:
+    if not ((cfg["slack_webhook"] or cfg.get("teams_webhook") or email_ready(cfg)) and cfg.get("weekly_digest")) \
+            or now.weekday() != 0 or now.hour < 9:
         return
     week = now.strftime("%G-W%V")
     with audited_tx() as conn:
         if conn.execute(select(gateway_state.c.value).where(gateway_state.c.key == "digest_week")).scalar() == json.dumps(week):
             return
         state_set(conn, "digest_week", week)
-    try:
-        httpx.post(cfg["slack_webhook"], json={"text": digest_text(build_report(7))}, timeout=15).raise_for_status()
-    except Exception:
-        log.exception("weekly digest failed")
+    text = digest_text(build_report(7), caught(7))
+    plain = text.replace(":bar_chart: ", "").replace("*", "").replace("`", "")
+    if cfg["slack_webhook"]:
+        discord = any(h in cfg["slack_webhook"] for h in ("discord.com/api/webhooks/", "discordapp.com/api/webhooks/"))
+        try:
+            body = {"content": _truncate_discord(text.replace(":bar_chart: ", "").replace("*", "**"), 1999),
+                    "allowed_mentions": {"parse": []}} if discord else {"text": text}
+            httpx.post(cfg["slack_webhook"], json=body, timeout=15).raise_for_status()
+        except Exception:
+            log.exception("weekly digest failed")
+    if cfg.get("teams_webhook"):
+        send_teams(cfg["teams_webhook"], "What your AI agents did this week", plain)
+    send_email(cfg, "What your AI agents did this week", plain)
 
 
 async def _digest_loop():
@@ -1696,6 +1900,10 @@ async def lifespan(app: FastAPI):
             log.warning("GATEWAY_APPROVERS names keys that don't exist: %s", ", ".join(sorted(unknown)))
     policy._maybe_reload()
     app.state.http = httpx.AsyncClient(timeout=PROXY_TIMEOUT, follow_redirects=False)
+    # MCP by URL: no read timeout, a held call or an event stream can stay open a long time
+    app.state.mcp_http = httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=None), follow_redirects=False)
+    if servers := mcp_servers():
+        await run_in_threadpool(hub.sync, servers)
     tasks = [asyncio.create_task(_expiry_loop()), asyncio.create_task(_digest_loop())]
     if RETENTION_DAYS > 0:
         tasks.append(asyncio.create_task(_retention_loop()))
@@ -1707,6 +1915,8 @@ async def lifespan(app: FastAPI):
     for t in tasks:
         t.cancel()
     await app.state.http.aclose()
+    await app.state.mcp_http.aclose()
+    hub.stop_all()
 
 
 app = FastAPI(title="Squidbrake", version="1.0.0", lifespan=lifespan)
@@ -1919,6 +2129,18 @@ class SettingsIn(BaseModel):
     notify_as: str | None = Field(None, max_length=64)
     weekly_digest: bool | None = None
     second_person: bool | None = None
+    customers: list[str] | None = Field(None, max_length=5000)   # names to keep out of PRs, issues, posts (data_checks)
+    slack_signing_secret: str | None = Field(None, max_length=200)  # Squidbrake's Slack app: Approve / Reject buttons
+    teams_webhook: str | None = Field(None, max_length=1000)     # a Teams Workflows webhook: approvals and the weekly report
+    email_to: str | None = Field(None, max_length=1000)          # comma-separated: approvals and the weekly report by email
+    smtp_host: str | None = Field(None, max_length=200)
+    smtp_port: int | None = Field(None, ge=1, le=65535)
+    smtp_user: str | None = Field(None, max_length=200)
+    smtp_password: str | None = Field(None, max_length=500)
+    smtp_from: str | None = Field(None, max_length=200)
+    siem_url: str | None = Field(None, max_length=1000)          # every decision, as it happens, to Splunk / Datadog / any HTTP
+    siem_token: str | None = Field(None, max_length=500)
+    siem_format: Literal["json", "splunk", "datadog"] | None = None
 
 
 @app.get("/v1/settings")
@@ -1929,14 +2151,22 @@ def get_settings(_: str = Depends(admin)):
 @app.put("/v1/settings")
 def put_settings(body: SettingsIn, who: str = Depends(admin)):
     changes = body.model_dump(exclude_none=True)
-    for k in ("public_url", "slack_webhook", "ntfy_server"):
+    for k in ("public_url", "slack_webhook", "ntfy_server", "teams_webhook", "siem_url"):
         v = changes.get(k)
         if v and not re.match(r"^https?://", v):
             raise HTTPException(400, f"{k} must start with http:// or https://")
+    if changes.get("email_to") and not all(re.fullmatch(r"[^@\s,]+@[^@\s,]+\.[^@\s,]+", a.strip())
+                                           for a in changes["email_to"].split(",") if a.strip()):
+        raise HTTPException(400, "email_to: email addresses, separated by commas")
     if changes.get("ntfy_topic") and not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", changes["ntfy_topic"]):
         raise HTTPException(400, "ntfy_topic: letters, digits, '-' and '_' only")
     if changes.get("notify_as") and not can_approve(changes["notify_as"]):
         raise HTTPException(400, f"'{changes['notify_as']}' can't approve, so links sent as them wouldn't work")
+    if "customers" in changes:
+        names = list(dict.fromkeys(n.strip() for n in changes["customers"] if n.strip()))
+        if any(len(n) > 200 for n in names):
+            raise HTTPException(400, "customers: one name per line, up to 200 characters each")
+        changes["customers"] = names
     with audited_tx() as conn:
         current = json.loads(conn.execute(select(gateway_state.c.value).where(gateway_state.c.key == "settings")).scalar() or "{}")
         current.update(changes)
@@ -1946,12 +2176,29 @@ def put_settings(body: SettingsIn, who: str = Depends(admin)):
     return settings()
 
 
+@app.post("/v1/settings/siem-test")
+def siem_test(who: str = Depends(admin)):
+    """Send one record to the SIEM now and say whether it took it."""
+    cfg = settings()
+    if not cfg.get("siem_url"):
+        raise HTTPException(400, "set the SIEM's URL first")
+    ok = forwarder.flush([{"type": "test", "id": "test", "time": utcnow(), "agent": "squidbrake", "tool": "test",
+                           "decision": "allow", "reason": f"Test from {who}", "epoch": time.time()}])
+    return {"ok": ok, "error": None if ok else "the SIEM didn't accept it (see the gateway log for why)"}
+
+
 @app.post("/v1/settings/test")
 def test_notification(who: str = Depends(admin)):
     cfg = settings()
-    if not (cfg["slack_webhook"] or cfg["ntfy_topic"]):
-        raise HTTPException(400, "set a Slack webhook or a phone topic first")
+    if not (cfg["slack_webhook"] or cfg["ntfy_topic"] or cfg.get("teams_webhook") or email_ready(cfg)):
+        raise HTTPException(400, "set Slack, Teams, email or a phone topic first")
     sent, errors = [], []
+    if cfg.get("teams_webhook"):
+        (sent.append("Teams") if send_teams(cfg["teams_webhook"], "Squidbrake", f"Test from {who}: notifications work.")
+         else errors.append("Teams: the webhook didn't accept it (see the gateway log)"))
+    if email_ready(cfg):
+        (sent.append("email") if send_email(cfg, "Squidbrake test", f"Test from {who}: approval requests will come here.")
+         else errors.append("Email: the SMTP server didn't accept it (see the gateway log)"))
     if cfg["slack_webhook"]:
         try:
             httpx.post(cfg["slack_webhook"], json={"text": f":white_check_mark: Squidbrake test from {who}: notifications work."},
@@ -2033,6 +2280,68 @@ def agent_decisions(days: int = Query(7, ge=1, le=90), limit: int = Query(20, ge
         "outcome": ("approved" if r.decision == "allow" else "rejected") if r.decided_by != "timeout" else f"timed out ({r.decision})",
         "decided_by": r.decided_by, "note": r.decision_note, "when": r.decided_at, "rule": r.reason,
     } for r in rows]}
+
+
+@app.post("/v1/slack/actions")
+async def slack_actions(request: Request):
+    """Approve / Reject clicked in a Slack message (Squidbrake's Slack app, Settings). Slack signs each request with
+    the app's signing secret; the button carries the event's signed token, so a click decides that one event only."""
+    secret = settings().get("slack_signing_secret") or ""
+    if not secret:
+        raise HTTPException(404, "Slack buttons aren't set up on this gateway")
+    raw = await request.body()
+    ts, sig = request.headers.get("x-slack-request-timestamp", ""), request.headers.get("x-slack-signature", "")
+    if not ts.isdigit() or abs(time.time() - int(ts)) > 300:
+        raise HTTPException(401, "stale or missing Slack timestamp")
+    good = "v0=" + hmac.new(secret.encode(), b"v0:" + ts.encode() + b":" + raw, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(sig, good):
+        raise HTTPException(401, "bad Slack signature")
+    from urllib.parse import parse_qs
+    try:
+        payload = json.loads(parse_qs(raw.decode())["payload"][0])
+        action = payload["actions"][0]
+    except (KeyError, IndexError, ValueError):
+        raise HTTPException(400, "not a Slack button click")
+    if action.get("action_id") not in ("approve", "reject"):
+        return Response(status_code=200)                    # "Details" just opens the page
+    event_id, approver = read_link_token(str(action.get("value", "")))
+    user = payload.get("user") or {}
+    clicker = re.sub(r"[^\w.@-]", "", str(user.get("username") or user.get("name") or user.get("id") or "someone"))[:60]
+    outcome = "allow" if action["action_id"] == "approve" else "deny"
+    try:
+        d = await run_in_threadpool(decide, event_id, outcome, approver, f"in Slack by @{clicker}", "slack")
+        done = f"{':white_check_mark: Approved' if d.decision == 'allow' else ':no_entry: Rejected'} by @{clicker} in Slack"
+    except HTTPException as e:
+        done = f":information_source: {e.detail}"
+    url = str(payload.get("response_url") or "")
+    if url.startswith("https://hooks.slack.com/"):          # replace the buttons with what happened
+        original = (payload.get("message") or {}).get("blocks") or []
+        blocks = [b for b in original if b.get("type") == "section"][:1] + [
+            {"type": "context", "elements": [{"type": "mrkdwn", "text": done}]}]
+
+        async def tell():
+            try:
+                await request.app.state.http.post(url, json={"replace_original": True, "text": done, "blocks": blocks},
+                                                   timeout=10)
+            except httpx.HTTPError:
+                log.warning("couldn't update the Slack message for %s", event_id)
+        asyncio.create_task(tell())
+    return Response(status_code=200)
+
+
+def slack_manifest(public_url: str) -> dict:
+    """A Slack app that posts approvals with buttons: create it from this manifest, install it to a channel."""
+    return {"display_information": {"name": "Squidbrake", "description": "Approve or reject what your AI agents want to do"},
+            "features": {"bot_user": {"display_name": "Squidbrake", "always_online": False}},
+            "oauth_config": {"scopes": {"bot": ["incoming-webhook"]}},
+            "settings": {"interactivity": {"is_enabled": True, "request_url": f"{public_url.rstrip('/')}/v1/slack/actions"},
+                         "org_deploy_enabled": False, "socket_mode_enabled": False, "token_rotation_enabled": False}}
+
+
+@app.get("/v1/slack/manifest")
+def get_slack_manifest(request: Request, _: str = Depends(admin)):
+    base = settings().get("public_url") or str(request.base_url)
+    return {"manifest": slack_manifest(base), "public": bool(settings().get("public_url"))}
 
 
 @app.post("/v1/a/{token}/{outcome}", response_model=Decision)
@@ -2420,6 +2729,289 @@ async def proxy(upstream: str, path: str, request: Request, client: str = Depend
     return Response(content=resp.content, status_code=resp.status_code, headers=headers)
 
 
+# --------------------------------------------------------------------------- adding rules from the dashboard
+
+def _rule_ids(path: Path) -> list[str]:
+    p = Policy(path)
+    p._maybe_reload()
+    return [r["id"] for r in p.rules]
+
+
+def _add_rules(block: str, before: str | None, who: str, what: str) -> dict:
+    try:
+        backup = policy_edit.insert(policy.path, block, before, _rule_ids)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except OSError as e:
+        raise HTTPException(500, f"couldn't write the rules file: {e}")
+    policy._maybe_reload()
+    with audited_tx() as conn:
+        audit(conn, who, "policy.edited", what, backup=backup.name)
+    return {"ok": True, "backup": backup.name, "rules": len(policy.rules)}
+
+
+def _held_and_decided(days: int = 30):
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    with engine.connect() as conn:
+        return conn.execute(select(events.c.name, events.c.input, events.c.rule_id, events.c.decision).where(
+            events.c.created_at >= since, events.c.approval_deadline.isnot(None), events.c.decided_by.isnot(None),
+            events.c.decided_by != "timeout")).all()
+
+
+@app.get("/v1/report/weekly")
+def weekly_report(days: int = Query(7, ge=1, le=90), _: str = Depends(person)):
+    """The weekly summary (what Squidbrake caught, and the counts), ready to paste or forward."""
+    catches = caught(days)
+    text = digest_text(build_report(days), catches)
+    return {"text": text.replace(":bar_chart: ", "").replace("*", "").replace("`", ""), "caught": catches}
+
+
+@app.get("/v1/policy/suggestions")
+def rule_suggestions(_: str = Depends(admin)):
+    """Rules to stop asking about what people keep approving (5+ times in 30 days, never rejected)."""
+    policy._maybe_reload()
+    existing = {r["id"] for r in policy.rules}
+    return {"suggestions": [s for s in policy_edit.suggestions(_held_and_decided(), policy.commands["tools"])
+                            if s["id"] not in existing]}
+
+
+@app.post("/v1/policy/suggestions/{sid}/apply")
+def apply_suggestion(sid: str, who: str = Depends(admin)):
+    s = next((x for x in policy_edit.suggestions(_held_and_decided(), policy.commands["tools"]) if x["id"] == sid), None)
+    if s is None:
+        raise HTTPException(404, "that suggestion isn't there any more")
+    return _add_rules(s["yaml"], s["held_by"], who, f"suggestion:{sid}")
+
+
+@app.get("/v1/policy/packs")
+def rule_packs(_: str = Depends(admin)):
+    policy._maybe_reload()
+    have = {r["id"] for r in policy.rules}
+    return {"packs": [{"id": k, "title": p["title"], "about": p["about"], "yaml": p["yaml"],
+                       "added": policy_edit._ids(p["yaml"]) <= have} for k, p in policy_edit.PACKS.items()]}
+
+
+@app.post("/v1/policy/packs/{pack}/apply")
+def apply_pack(pack: str, who: str = Depends(admin)):
+    p = policy_edit.PACKS.get(pack)
+    if p is None:
+        raise HTTPException(404, "no such pack")
+    return _add_rules(p["yaml"], None, who, f"pack:{pack}")
+
+
+# --------------------------------------------------------------------------- MCP servers by URL (mcp_hub.py)
+# For agents that connect to MCP by URL: ChatGPT and claude.ai connectors, Devin, n8n, cloud agents.
+
+hub = mcp_hub.Hub(lambda: f"http://127.0.0.1:{os.getenv('SQUIDBRAKE_LISTEN_PORT') or os.getenv('PORT') or 8080}",
+                  KEYS_PATH.parent)
+MCP_FORWARD = ("content-type", "accept", "mcp-session-id", "mcp-protocol-version", "last-event-id", "x-squidbrake-session")
+
+
+def mcp_servers() -> dict[str, dict]:
+    return state_get("mcp_servers", {}) or {}
+
+
+class McpServerIn(BaseModel):
+    url: str | None = Field(None, max_length=2000)
+    headers: dict[str, str] | None = None
+    auth: Literal["header", "oauth"] | None = None
+    client_id: str | None = Field(None, max_length=300)
+    client_secret: str | None = Field(None, max_length=500)
+    scope: str | None = Field(None, max_length=1000)
+    command: str | None = Field(None, max_length=500)
+    args: list[str] | None = None
+    env: dict[str, str] | None = None
+
+
+def _mcp_public(name: str, cfg: dict, request: Request) -> dict:
+    base = (settings().get("public_url") or str(request.base_url)).rstrip("/")
+    oauth = cfg.get("auth") == "oauth"
+    return {"name": name, "endpoint": f"{base}/mcp/{name}", "running": hub.running(name),
+            "url": cfg.get("url"), "command": " ".join([cfg["command"], *cfg.get("args", [])]) if cfg.get("command") else None,
+            "headers": sorted(cfg.get("headers") or {}),            # names only: the values are secrets
+            "auth": "oauth" if oauth else "header", "own_app": bool(cfg.get("client_id")),
+            "connected": mcp_oauth.FileTokenStorage(hub.oauth_path(name)).connected() if oauth else None,
+            "sign_in": _oauth_status.get(name)}
+
+
+@app.get("/v1/mcp-servers")
+def list_mcp_servers(request: Request, _: str = Depends(admin)):
+    return {"servers": [_mcp_public(n, c, request) for n, c in sorted(mcp_servers().items())],
+            "commands_allowed": mcp_hub.COMMANDS_ALLOWED}
+
+
+@app.get("/v1/mcp-catalog")
+def mcp_catalog_list(_: str = Depends(person)):
+    """Apps the dashboard can fill in: their official remote MCP URL and the header their token goes in."""
+    return {"apps": mcp_catalog.public(), "local": mcp_catalog.LOCAL,
+            "approved_clients_only": mcp_catalog.APPROVED_CLIENTS_ONLY,
+            "redirect_uri": f"{(settings().get('public_url') or '').rstrip('/') or '<this gateway>'}/v1/mcp-oauth/callback"}
+
+
+@app.put("/v1/mcp-servers/{name}")
+def put_mcp_server(name: str, body: McpServerIn, request: Request, who: str = Depends(admin)):
+    try:
+        cfg = mcp_hub.check(name, body.model_dump(exclude_none=True))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    servers = {**mcp_servers(), name: cfg}
+    with audited_tx() as conn:
+        state_set(conn, "mcp_servers", servers)
+        audit(conn, who, "mcp_server.saved", name, url=cfg.get("url"), headers=sorted(cfg.get("headers") or {}))
+    hub.sync(servers)
+    return _mcp_public(name, cfg, request)
+
+
+_oauth_flows: dict[str, asyncio.Future] = {}   # sign-in state -> where the app's redirect delivers the code
+_oauth_status: dict[str, str] = {}             # name -> what the last sign-in did, for the dashboard
+
+
+def _oauth_redirect(request: Request) -> str:
+    base = (settings().get("public_url") or str(request.base_url)).rstrip("/")
+    return f"{base}/v1/mcp-oauth/callback"
+
+
+@app.post("/v1/mcp-servers/{name}/connect")
+async def connect_mcp_server(name: str, request: Request, who: str = Depends(admin)):
+    """Start signing in to an app's MCP server (OAuth). Returns the app's sign-in page to open; the app sends the
+    browser back to /v1/mcp-oauth/callback, and the proxy then uses (and refreshes) the tokens."""
+    servers = mcp_servers()
+    cfg = servers.get(name)
+    if not cfg or cfg.get("auth") != "oauth":
+        raise HTTPException(404, f"'{name}' isn't an MCP server that signs in with OAuth")
+    from mcp import Client
+    from mcp.client.streamable_http import create_mcp_http_client, streamable_http_client
+    from mcp.shared.auth import AuthorizationCodeResult
+    from urllib.parse import parse_qs, urlsplit
+    storage = mcp_oauth.FileTokenStorage(hub.oauth_path(name))
+    storage.forget()                                     # a fresh sign-in, with nothing left over
+    redirect = _oauth_redirect(request)
+    if cfg.get("client_id"):
+        await mcp_oauth.use_own_app(storage, redirect, cfg["client_id"], cfg.get("client_secret"), cfg.get("scope"))
+    loop = asyncio.get_running_loop()
+    sign_in_page: asyncio.Future = loop.create_future()
+    code: asyncio.Future = loop.create_future()
+
+    async def open_page(url: str) -> None:
+        state = (parse_qs(urlsplit(url).query).get("state") or [""])[0]
+        _oauth_flows[state] = code
+        if not sign_in_page.done():
+            sign_in_page.set_result(url)
+
+    async def wait_for_code() -> AuthorizationCodeResult:
+        return await asyncio.wait_for(code, 900)
+
+    auth = mcp_oauth.provider(cfg["url"], storage, redirect, cfg.get("scope"), bool(cfg.get("client_secret")),
+                              redirect_handler=open_page, callback_handler=wait_for_code)
+
+    async def sign_in() -> None:
+        try:
+            async with Client(streamable_http_client(cfg["url"], http_client=create_mcp_http_client(auth=auth))) as c:
+                tools = (await c.list_tools()).tools
+            _oauth_status[name] = f"connected, {len(tools)} tools"
+            await run_in_threadpool(hub.restart, name, mcp_servers())
+            with audited_tx() as conn:
+                audit(conn, who, "mcp_server.connected", name)
+        except BaseException as e:   # noqa: BLE001  (the flow's errors are the person's to read)
+            _oauth_status[name] = f"sign-in failed: {type(e).__name__}: {str(e)[:200]}"
+            if not sign_in_page.done():
+                sign_in_page.set_exception(RuntimeError(_oauth_status[name]))
+        if not sign_in_page.done():
+            sign_in_page.set_result("")                  # already signed in, no page needed
+
+    _oauth_status[name] = "waiting for sign-in"
+    asyncio.create_task(sign_in())
+    try:
+        url = await asyncio.wait_for(asyncio.shield(sign_in_page), 30)
+    except Exception as e:
+        raise HTTPException(502, f"couldn't start signing in to {cfg['url']}: {e}")
+    return {"authorize_url": url or None, "status": _oauth_status.get(name), "redirect_uri": redirect}
+
+
+@app.get("/v1/mcp-oauth/callback")
+async def mcp_oauth_callback(request: Request):
+    """Where an app sends the browser back after sign-in. The state ties it to one sign-in started by an admin."""
+    from fastapi.responses import HTMLResponse
+    from mcp.shared.auth import AuthorizationCodeResult
+    q = request.query_params
+    fut = _oauth_flows.pop(q.get("state", ""), None)
+    if fut is None or fut.done():
+        return HTMLResponse("<p>This sign-in link is no longer valid. Start again from Squidbrake's Settings.</p>", 400)
+    if q.get("error"):
+        fut.set_exception(RuntimeError(f"the app said: {q.get('error')} {q.get('error_description', '')}".strip()))
+        return HTMLResponse(f"<p>Sign-in didn't go through ({html_escape(q.get('error'))}). You can close this tab.</p>", 400)
+    fut.set_result(AuthorizationCodeResult(code=q.get("code", ""), state=q.get("state"), iss=q.get("iss")))
+    return HTMLResponse("<!doctype html><meta charset=utf-8><title>Connected</title><body style='font-family:system-ui;"
+                        "padding:40px'><h2>Signed in.</h2><p>Squidbrake is connecting to the app now. You can close this "
+                        "tab and go back to Settings.</p>")
+
+
+@app.delete("/v1/mcp-servers/{name}")
+def delete_mcp_server(name: str, who: str = Depends(admin)):
+    servers = mcp_servers()
+    if servers.pop(name, None) is None:
+        raise HTTPException(404, f"no MCP server named '{name}'")
+    mcp_oauth.FileTokenStorage(hub.oauth_path(name)).forget()
+    with audited_tx() as conn:
+        state_set(conn, "mcp_servers", servers)
+        audit(conn, who, "mcp_server.removed", name)
+    hub.sync(servers)
+    return {"ok": True}
+
+
+def _mcp_caller(request: Request) -> tuple[str, str]:
+    """(key name, secret) of whoever calls /mcp/<name>: an agent key as Bearer, X-Gateway-Key, or ?key= (for agents
+    that take only a URL)."""
+    h = request.headers
+    secret = h.get("x-gateway-key") or ""
+    if h.get("authorization", "").lower().startswith("bearer "):
+        secret = h["authorization"][7:].strip()
+    secret = secret or request.query_params.get("key", "")
+    who = keystore.identify(secret)
+    if who is None:
+        raise HTTPException(401, "send an agent key: Authorization: Bearer gw_..., or add ?key=gw_... to the URL",
+                            headers={"WWW-Authenticate": "Bearer"})
+    if who in READ_ONLY_KEYS:
+        raise HTTPException(403, f"'{who}' is a read-only key")
+    return who, secret
+
+
+@app.api_route("/mcp/{name}", methods=["GET", "POST", "DELETE"])
+async def mcp_endpoint(name: str, request: Request):
+    from fastapi.responses import StreamingResponse
+    who, secret = _mcp_caller(request)
+    servers = mcp_servers()
+    if name not in servers:
+        raise HTTPException(404, f"no MCP server named '{name}' on this gateway (an admin adds it in Settings)")
+    port = await run_in_threadpool(hub.port, name, servers)
+    if not port:
+        raise HTTPException(502, f"the proxy for '{name}' isn't running; see data/mcp-{name}.log")
+    headers = {k: v for k, v in request.headers.items() if k.lower() in MCP_FORWARD}
+    headers.update({"X-Squidbrake-Token": hub.token, "X-Squidbrake-Source": who})
+    if not keystore.disabled:
+        headers["X-Gateway-Key"] = secret                 # the proxy asks the gateway as this caller
+    client = request.app.state.mcp_http
+    upstream = client.build_request(request.method, f"http://127.0.0.1:{port}/mcp", headers=headers,
+                                    content=await request.body())
+    for attempt in range(20):                              # a proxy just (re)started takes a moment to listen
+        try:
+            resp = await client.send(upstream, stream=True)
+            break
+        except httpx.ConnectError:
+            if attempt == 19:
+                raise HTTPException(502, f"the proxy for '{name}' isn't answering; see data/mcp-{name}.log")
+            await asyncio.sleep(0.25)
+    out_headers = {k: v for k, v in resp.headers.items() if k.lower() not in HOP_BY_HOP | {"content-length"}}
+
+    async def body():
+        try:
+            async for chunk in resp.aiter_raw():
+                yield chunk
+        finally:
+            await resp.aclose()
+    return StreamingResponse(body(), status_code=resp.status_code, headers=out_headers)
+
+
 # --------------------------------------------------------------------------- command line
 
 CLI = os.getenv("SQUIDBRAKE_CLI") or ("docker compose exec gateway python server.py" if IN_DOCKER else "python server.py")
@@ -2502,15 +3094,54 @@ def _cli_init(_) -> int:
     return 0
 
 
+def port_in_use(host: str, port: int) -> str | None:
+    """Why the gateway can't listen on host:port (another app, or Squidbrake already running), or None if it can."""
+    import socket
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    s = socket.socket(family, socket.SOCK_STREAM)
+    try:
+        if os.name != "nt":   # like uvicorn: a socket closed a moment ago (TIME_WAIT) doesn't count. On Windows this
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)    # option would let two programs share a port
+        s.bind((host or "127.0.0.1", port))
+        return None
+    except OSError as e:
+        try:
+            r = httpx.get(f"http://127.0.0.1:{port}/health", timeout=2, trust_env=False)
+            if r.status_code == 200 and r.json().get("status") == "ok" and "rules" in r.json():
+                return "Squidbrake is already running there (in the background, or in another window)"
+        except Exception:
+            pass
+        return f"another program is using it ({e.strerror or e})"
+    finally:
+        s.close()
+
+
+def can_open_browser() -> bool:
+    """No browser on a server over SSH or a Linux box without a desktop (webbrowser would start a text browser
+    in this terminal instead)."""
+    if os.getenv("SSH_CONNECTION") or os.getenv("SSH_TTY"):
+        return False
+    if sys.platform.startswith("linux") and not (os.getenv("DISPLAY") or os.getenv("WAYLAND_DISPLAY")):
+        return False
+    return True
+
+
 def _cli_run(args) -> int:
     import uvicorn
 
-    created = None if keystore.disabled else keystore.ensure_initialized()
     shown_host = "localhost" if args.host in ("0.0.0.0", "127.0.0.1", "::", "") else args.host
+    if taken := port_in_use(args.host, args.port):
+        # before the keys and the browser: the browser would open whatever app has the port, and the keys go there
+        print(f"Port {args.port} is already in use: {taken}.\n"
+              f"Stop that, or run Squidbrake on another port:  {CLI} --port {args.port + 10}\n"
+              f"(then connect your agents to it: {CLI} connect all --url http://127.0.0.1:{args.port + 10})", file=sys.stderr)
+        return 1
+    created = None if keystore.disabled else keystore.ensure_initialized()
     url = PUBLIC_URL or f"http://{shown_host}:{args.port}"
     print_banner(url, created)
-    if created and not IN_DOCKER and not args.no_browser:
+    if created and not IN_DOCKER and not args.no_browser and can_open_browser():
         threading.Timer(2.0, webbrowser.open, [f"{url}/dashboard"]).start()
+    os.environ["SQUIDBRAKE_LISTEN_PORT"] = str(args.port)    # where the MCP proxies (mcp_hub.py) reach this gateway
     uvicorn.run("server:app", host=args.host, port=args.port, workers=args.workers,
                 proxy_headers=True, forwarded_allow_ips=os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1"),
                 log_level=LOG_LEVEL.lower())

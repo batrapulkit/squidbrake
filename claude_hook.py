@@ -66,10 +66,23 @@ def deny(reason: str, stop: bool = False) -> None:
     sys.exit(0)
 
 
+def gateway_client(url: str, key: str, timeout: float) -> httpx.Client:
+    """The gateway on this computer is reached directly: 127.0.0.1, not localhost (Windows tries IPv6 ::1 first, and
+    waits about 2 s for each call to fail over), and never through a proxy (on Windows the system proxy setting is
+    read without its "bypass for local addresses" list, so a company proxy would get every hook call)."""
+    host = httpx.URL(url).host
+    if host == "localhost":
+        url = url.replace("//localhost", "//127.0.0.1", 1)
+    return httpx.Client(base_url=url, headers={"X-Gateway-Key": key}, timeout=timeout,
+                        trust_env=host not in ("localhost", "127.0.0.1", "::1"))
+
+
 def unreachable(url: str, e: httpx.HTTPError, what: str = "action") -> str:
     """Why everything is blocked, in words a person can act on (the agent passes it on). Same text in agent_hook.py."""
     status = getattr(getattr(e, "response", None), "status_code", None)
-    if "rejected" in str(e):
+    if isinstance(e, (ValueError, KeyError, TypeError)):
+        why = f"Something at {url} answered, but not like Squidbrake does (a proxy or another app on that port?)"
+    elif "rejected" in str(e):
         why = f"Squidbrake's dashboard at {url} rejected this computer's key (it may have been removed)"
     elif status in (502, 503, 504) or isinstance(e, (httpx.ConnectError, httpx.TimeoutException)):
         why = f"Squidbrake's dashboard at {url} isn't answering: it may be switched off, restarting, or deleted"
@@ -120,7 +133,7 @@ def pre(ev: dict, http: httpx.Client) -> None:
                 r = http.get(f"/v1/events/{d['event_id']}/decision", params={"wait": wait}, timeout=wait + 10)
                 r.raise_for_status()
                 d = r.json()
-    except httpx.HTTPError as e:
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:   # not JSON / not our answer: blocked too
         if FAIL_OPEN:
             return
         deny(unreachable(GATEWAY_URL, e, "tool call"))
@@ -204,7 +217,7 @@ def main() -> None:
         sys.exit(0)
     if ev.get("cursor_version") and _cursor_has_own_hook():
         sys.exit(0)   # Cursor runs Claude Code's hooks too; its own Squidbrake hook (agent_hook.py) covers it already
-    with httpx.Client(base_url=GATEWAY_URL, headers={"X-Gateway-Key": GATEWAY_API_KEY}, timeout=10) as http:
+    with gateway_client(GATEWAY_URL, GATEWAY_API_KEY, 10) as http:
         if ev.get("hook_event_name") == "PreToolUse":
             pre(ev, http)
         elif ev.get("hook_event_name") == "PostToolUse":

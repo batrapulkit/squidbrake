@@ -1,0 +1,92 @@
+# Example policy for an agent that runs with nobody watching: a nightly loop, a cron job, a Claude Code
+# Routine, a scheduled triage bot. Copy it over rules.yaml (or merge the parts you want) and adjust the
+# tool-name patterns and limits to your agent.
+#
+# Loop specs usually make promises in the prompt: "stop after N steps", "never delete anything",
+# "don't redo work". A prompt can't keep them. This file does, from outside the agent, and every run leaves a
+# change record someone can read the next morning (Reports, the weekly summary):
+#
+#   1. What it changed  every action of every run is on the record, with the rule that let it through
+#   2. Its own lane     reads run, a short list of writes runs, everything else is refused and recorded (rules + default)
+#   3. No redo          the same change on the same thing twice is refused, and so is anything a person
+#                       already said no to (history_checks)
+#   4. Nothing that needs a person: deletes, money out and irreversible commands are refused, not held,
+#                       because nobody is awake to sign off. Move them to a run someone is watching.
+#   5. Step limit       a stuck or runaway loop is stopped (sequences: runaway-loop, runaway-sends)
+#
+# A token or dollar budget is not something Squidbrake sees; the step cap is the closest stand-in. Keep a
+# spend limit at your model provider too.
+
+default: deny
+default_reason: Not on this agent's list of allowed actions
+
+# Try it on a few real runs first: everything is recorded as "would block", nothing is stopped.
+mode: shadow
+
+history_checks:
+  lookback_hours: 72                   # a nightly loop must not redo yesterday's or the day before's work
+  repeat_of_rejected: block            # a person said no once; an unattended run doesn't get to ask again
+  duplicate_change: block              # the same change on the same thing again (2nd comment on one issue, ...)
+  impersonation: block
+  payment_request_in_message: block
+
+command_checks:
+  catastrophic: block
+  irreversible: block                  # rm -r, git push --force, terraform destroy, DROP TABLE: no one to approve it
+  hidden: block                        # curl ... | sh, eval, encoded commands
+  read_only: allow
+
+taint_checks:
+  untrusted_destination: block         # sending to an address or URL that only appeared in content it read
+  after_untrusted: warn
+  lookback_hours: 24
+
+sequences:
+  - id: runaway-loop
+    action: deny
+    reason: This run has gone past its step limit; the loop may be stuck
+    match: {}                          # every action
+    count: { more_than: 200, within_hours: 6, scope: session }
+
+  - id: runaway-sends
+    action: deny
+    reason: Too many messages, comments or posts in one run
+    match: { name: ["*send*", "*post*", "*comment*", "*reply*", "*publish*", "*create*issue*", "*create*pull*"] }
+    count: { more_than: 10, within_hours: 6, scope: agent }
+
+rules:
+  # ---- never, whatever else this file allows
+  - id: no-deletes
+    action: deny
+    reason: Deleting is not allowed for an unattended agent
+    match:
+      name: ["*delete*", "*remove*", "*destroy*", "*drop*", "*purge*", "*archive*"]
+
+  - id: no-money-out
+    action: deny
+    reason: Moving money is not allowed for an unattended agent
+    match:
+      name: ["*refund*", "*payout*", "*transfer*", "*create*charge*", "*create*payment*", "*capture*"]
+
+  # ---- reads run on their own
+  - id: allow-reads
+    action: allow
+    reason: Read-only
+    match:
+      name: ["*get*", "*list*", "*search*", "*read*", "*fetch*", "*view*", "*query*", "*describe*",
+             "Read", "Grep", "Glob", "WebFetch", "WebSearch"]
+
+  # ---- the agent's own output: the few writes this loop exists to make. Replace with yours.
+  - id: allow-own-output
+    action: allow
+    reason: Writing this loop's own report
+    match:
+      name: ["Write", "Edit"]
+      input_regex: '"file_path":\s*"[^"]*(reports|loop-output)[/\\]'
+
+  - id: allow-team-channel
+    action: allow
+    reason: Posting the run summary to the team channel
+    match:
+      name: ["slack.*post*message*"]
+      input_regex: '"channel":\s*"#?agent-runs"'

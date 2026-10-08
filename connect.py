@@ -354,10 +354,10 @@ def guard(args) -> None:
                 if not isinstance(entry, dict) or _ours(entry) or entry.get("disabled"):
                     continue
                 remote = entry.get("url") or entry.get("serverUrl") or entry.get("httpUrl")
-                if remote and entry.get("headers"):
-                    skipped.append(f"{name} (remote with its own headers)")
-                    continue
-                target = ["--url", remote] if remote else ["--", entry.get("command", ""), *entry.get("args", [])]
+                headers = entry.get("headers") if isinstance(entry.get("headers"), dict) else {}
+                # a remote server's own headers (its auth) go along to it through the proxy
+                target = (["--url", remote, *[a for k, v in headers.items() for a in ("--header", f"{k}: {v}")]]
+                          if remote else ["--", entry.get("command", ""), *entry.get("args", [])])
                 if not remote and not entry.get("command"):
                     skipped.append(name)
                     continue
@@ -393,6 +393,29 @@ def _q(s: str) -> str:
     return f'"{s}"' if " " in s else s
 
 
+def _short_path(path: str) -> str:
+    """Windows' short (8.3) name for a path, which has no spaces: C:/Users/Rahul Kumar -> C:/Users/RAHULK~1."""
+    try:
+        import ctypes
+        buf = ctypes.create_unicode_buffer(1024)
+        n = ctypes.windll.kernel32.GetShortPathNameW(path, buf, len(buf))
+        return buf.value if 0 < n < len(buf) else path
+    except (AttributeError, OSError):
+        return path
+
+
+def _word(path: str) -> str:
+    """A path as one word that cmd, PowerShell and bash all read the same way. Agents run hook commands through
+    different shells (Cursor on Windows: PowerShell, or bash when started from Git Bash): to PowerShell a quoted first
+    word is a string, not a program to run, and bash drops backslashes. So on Windows: forward slashes, and the short
+    name when the path has a space. Only if the drive has no short names does it stay quoted."""
+    if os.name == "nt":
+        if " " in path:
+            path = _short_path(path)
+        path = path.replace("\\", "/")
+    return _q(path)
+
+
 def _read_json(path: Path) -> dict:
     text = path.read_text(encoding="utf-8").strip() if path.exists() else ""
     return json.loads(text) if text else {}
@@ -416,8 +439,11 @@ def hook_agents() -> dict[str, dict]:
     def cursor(data, cmd):
         data.setdefault("version", 1)
         hooks = data.setdefault("hooks", {})
-        for ev in ("beforeShellExecution", "beforeReadFile"):
-            hooks[ev] = _without_ours(hooks.get(ev)) + ([{"command": cmd, "timeout": 600, "failClosed": True}] if cmd else [])
+        # shell, reads and MCP calls have their own hooks; preToolUse (newer Cursor) adds file edits and deletes
+        for ev, matcher in (("beforeShellExecution", None), ("beforeReadFile", None), ("beforeMCPExecution", None),
+                            ("preToolUse", "Write|Delete")):
+            ours = {"command": cmd, "timeout": 600, "failClosed": True, **({"matcher": matcher} if matcher else {})}
+            hooks[ev] = _without_ours(hooks.get(ev)) + ([ours] if cmd else [])
             if not hooks[ev]:
                 hooks.pop(ev)
 
@@ -445,14 +471,14 @@ def hook_agents() -> dict[str, dict]:
 
     return {
         "cursor": {"present": (home / ".cursor").exists(), "file": home / ".cursor" / "hooks.json", "edit": cursor,
-                   "covers": "terminal commands and file reads"},
+                   "covers": "terminal commands, file reads, edits and deletes, and MCP tools"},
         "gemini-cli": {"present": bool(shutil.which("gemini")) or (home / ".gemini" / "settings.json").exists(),
                        "file": home / ".gemini" / "settings.json",
                        "edit": grouped("BeforeTool", "run_shell_command|write_file|replace|read_file|read_many_files", 600000),
                        "covers": "shell commands, file reads, writes and edits"},
         "codex": {"present": bool(shutil.which("codex")) or (home / ".codex").exists(), "file": home / ".codex" / "hooks.json",
-                  "edit": grouped("PreToolUse", "Bash|shell|apply_patch|Edit|Write", 600),
-                  "covers": "shell commands and edits"},
+                  "edit": grouped("PreToolUse", "Bash|shell|apply_patch|Edit|Write|mcp__.*", 600),
+                  "covers": "shell commands, edits and MCP tools"},
         "vscode": {"present": (_user_dir() / "Code" / "User").exists() or (home / ".copilot").exists(),
                    "file": home / ".copilot" / "hooks" / "squidbrake.json", "edit": vscode,
                    "covers": "Copilot agent mode: terminal commands, reads and edits"},
@@ -489,7 +515,7 @@ def agents(args) -> None:
                 print(f"{name}: hook removed")
             continue
         key = key or args.key or new_key("agents", args.url)
-        cmd = " ".join([_q(PYTHON), _q(str(AGENT_HOOK)), name, "--url", args.url, "--key", key])
+        cmd = " ".join([_word(PYTHON), _word(str(AGENT_HOOK)), name, "--url", args.url, "--key", key])
         t["edit"](data, cmd)
         _write_json(t["file"], data)
         print(f"{name}: hook added ({t['covers']}). Restart {name} to apply.")
@@ -643,10 +669,21 @@ def _hook_commands(data) -> list[str]:
 
 
 def _run_hook(cmd: str, event: dict) -> tuple[bool, str]:
-    """Run the hook exactly as the agent would, with a harmless command. -> (allowed, what it said)"""
+    """Run the hook exactly as the agent would, with a harmless command. -> (allowed, what it said)
+    On Windows also through PowerShell, which is what Cursor runs hooks with: a line cmd runs can fail there."""
+    if os.name == "nt" and (ps := shutil.which("powershell") or shutil.which("pwsh")):
+        ok, said = _run_hook_in(cmd, event, True)
+        if not ok:
+            return ok, said
+        ok, said = _run_hook_in([ps, "-NoProfile", "-NonInteractive", "-Command", cmd], event, False)
+        return ok, (f"in PowerShell (how Cursor runs it): {said}" if not ok else said)
+    return _run_hook_in(cmd, event, True)
+
+
+def _run_hook_in(cmd, event: dict, shell: bool) -> tuple[bool, str]:
     env = {**os.environ, "SQUIDBRAKE_DOCTOR": "1"}
     try:
-        p = subprocess.run(cmd, shell=True, input=json.dumps({**event, "cwd": str(Path.home())}), capture_output=True,
+        p = subprocess.run(cmd, shell=shell, input=json.dumps({**event, "cwd": str(Path.home())}), capture_output=True,
                            text=True, timeout=45, env=env, cwd=str(Path.home()))
     except (OSError, subprocess.SubprocessError) as e:
         return False, str(e)

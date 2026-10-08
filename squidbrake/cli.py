@@ -3,6 +3,8 @@ The `squidbrake` command (installed with pip):
 
   squidbrake                         start the gateway; the first time it asks once whether to keep it running in
                                      the background and at every login (Enter means no; see service.py)
+  squidbrake setup                   everything at once: runs in the background, connects every agent here, checks
+                                     them, and opens the dashboard signed in (the installers run this at the end)
   squidbrake start --background      install the background service and start it, without asking
   squidbrake service status | stop   is the background service running / stop it and take it out
   squidbrake run                     run the gateway in this window (same as: python server.py)
@@ -18,7 +20,8 @@ The `squidbrake` command (installed with pip):
   squidbrake shell-guard check "LINE"  exit code 0 run, 1 block, 2 ask (used by the snippet above)
   squidbrake undo [ID]               list, or put back, what an agent deleted or overwrote
   squidbrake proxy --app NAME -- CMD an MCP server that checks every call to the app's MCP server CMD first
-                                     (same as: python gateway_proxy.py ...)
+                                     (same as: python gateway_proxy.py ...); add --serve HOST:PORT --token T to
+                                     serve it by URL, for ChatGPT / claude.ai connectors, Devin, n8n, cloud agents
   squidbrake pilot join CODE --server URL   share usage counts with a pilot (asks first; see pilot.py)
   squidbrake telemetry [status|on|off]      anonymous usage stats (asked once; see telemetry.py)
   squidbrake register EMAIL          tell the Squidbrake team who you are (optional, asks first)
@@ -33,7 +36,19 @@ import sys
 from pathlib import Path
 
 
+def _safe_output() -> None:
+    """Printing a name the console's code page can't show (C:/Users/राहुल on Windows, where output to a pipe or a
+    log file is cp1252) would stop the command with UnicodeEncodeError: show it escaped instead."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if stream and (stream.encoding or "").lower().replace("-", "") not in ("utf8", "utf8sig"):
+                stream.reconfigure(errors="backslashreplace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main() -> int:
+    _safe_output()
     here = Path(__file__).resolve().parent
     # The gateway's modules sit next to this file in the package (in a checkout, one folder up)
     # and import each other by their plain names.
@@ -88,6 +103,9 @@ def main() -> int:
         import gateway_proxy
         gateway_proxy.main()
         return 0
+    if argv[:1] == ["setup"]:      # everything at once: background, every agent connected, dashboard (onboard.py)
+        import onboard
+        return onboard.main(argv[1:])
     if argv[:1] == ["service"]:
         import service
         return service.main(argv[1:])

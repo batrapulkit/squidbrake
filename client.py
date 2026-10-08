@@ -46,6 +46,16 @@ class GatewayUnavailable(RuntimeError):
     pass
 
 
+def refusal(e: Exception) -> str:
+    """What an agent should read when Squidbrake stopped its tool call (returned as the tool's result by guard_tools,
+    because some frameworks end the whole run on a tool exception instead of telling the model)."""
+    if isinstance(e, Denied) and e.decided_by and e.decided_by != "timeout":
+        return f"NOT RUN: a person rejected {e.name} in Squidbrake ({e.reason}). Don't retry it; ask the user how to proceed."
+    if isinstance(e, Denied):
+        return f"NOT RUN: Squidbrake stopped {e.name}: {e.reason}. Don't try to work around it; tell the user."
+    return f"NOT RUN: {e}. Every action must go through Squidbrake, so nothing was done. Tell the user."
+
+
 def _log_pending(name: str, decision: dict) -> None:
     log.warning("'%s' is waiting for human approval (event %s, expires %s): %s",
                 name, decision["event_id"], decision.get("approval_deadline"), decision["reason"])
@@ -64,7 +74,16 @@ class Gateway:
         self.on_approval_pending = on_approval_pending
         headers = {"X-Gateway-Key": api_key or os.getenv("GATEWAY_API_KEY", "")}
         self._http = httpx.Client(base_url=self.url, headers=headers, timeout=timeout)
-        self._ahttp = httpx.AsyncClient(base_url=self.url, headers=headers, timeout=timeout)
+        self._headers, self._timeout = headers, timeout
+        self._aclients: dict = {}   # one async client per event loop: a client can't outlive the loop it was made in
+
+    def _ahttp(self) -> httpx.AsyncClient:
+        loop = asyncio.get_running_loop()
+        for gone in [l for l in self._aclients if l.is_closed()]:
+            self._aclients.pop(gone)
+        if loop not in self._aclients:
+            self._aclients[loop] = httpx.AsyncClient(base_url=self.url, headers=self._headers, timeout=self._timeout)
+        return self._aclients[loop]
 
     # ---- payload helpers
     def _event(self, name, input, kind, metadata, **extra) -> dict:
@@ -136,13 +155,13 @@ class Gateway:
     # ---- async API
     async def acheck(self, name: str, input: Any = None, *, kind: str = "tool_call", metadata: dict | None = None) -> str | None:
         try:
-            resp = await self._ahttp.post("/v1/events", json=self._event(name, input, kind, metadata))
+            resp = await self._ahttp().post("/v1/events", json=self._event(name, input, kind, metadata))
         except httpx.TransportError:
             resp = None
         d = self._first(name, resp)
         while d is not None and d["decision"] == "review":
             try:
-                r = await self._ahttp.get(f"/v1/events/{d['event_id']}/decision",
+                r = await self._ahttp().get(f"/v1/events/{d['event_id']}/decision",
                                           params={"wait": LONG_POLL}, timeout=LONG_POLL + 10)
                 r.raise_for_status()
                 d = r.json()
@@ -157,7 +176,7 @@ class Gateway:
         if event_id is None:
             return
         try:
-            await self._ahttp.post(f"/v1/events/{event_id}/result",
+            await self._ahttp().post(f"/v1/events/{event_id}/result",
                                    json={"output": output, "error": error, "duration_ms": duration_ms})
         except httpx.TransportError:
             pass
@@ -199,3 +218,71 @@ class Gateway:
                 return out
             return wrapper
         return deco
+
+    @staticmethod
+    def _soft(guarded: Callable) -> Callable:
+        """The guarded function, returning a refusal message instead of raising when Squidbrake stops the call."""
+        if inspect.iscoroutinefunction(guarded):
+            @functools.wraps(guarded)
+            async def asoft(*a, **kw):
+                try:
+                    return await guarded(*a, **kw)
+                except (Denied, GatewayUnavailable) as e:
+                    return refusal(e)
+            return asoft
+
+        @functools.wraps(guarded)
+        def soft(*a, **kw):
+            try:
+                return guarded(*a, **kw)
+            except (Denied, GatewayUnavailable) as e:
+                return refusal(e)
+        return soft
+
+    def guard_tools(self, tools: list, *, prefix: str = "") -> list:
+        """Put every tool of an agent framework behind Squidbrake, without touching their code:
+
+            agent = Agent(tools=gw.guard_tools([search, refund, send_email]))          # OpenAI Agents SDK
+            agent = create_react_agent(llm, gw.guard_tools(tools))                      # LangChain / LangGraph
+
+        Works on plain functions (CrewAI, PydanticAI, smolagents, Google ADK take those), LangChain tools (their
+        `func` / `coroutine`) and OpenAI Agents SDK FunctionTools (their `on_invoke_tool`). The tools come back in the
+        same order, as the same kind of object. A call Squidbrake stops doesn't run and returns a "NOT RUN: ..." message
+        as the tool's result, so the model reads why (some frameworks end the run on a tool exception). `prefix` names
+        them in the dashboard and rules, e.g. "support." """
+        out = []
+        for t in tools:
+            name = prefix + str(getattr(t, "name", None) or getattr(t, "__name__", None) or type(t).__name__)
+            if callable(getattr(t, "on_invoke_tool", None)):              # OpenAI Agents SDK FunctionTool
+                original = t.on_invoke_tool
+
+                async def invoke(ctx, raw: str, _orig=original, _name=name):
+                    import json
+                    try:
+                        args = json.loads(raw) if raw else {}
+                    except ValueError:
+                        args = {"input": raw}
+                    try:
+                        eid = await self.acheck(_name, args)
+                    except (Denied, GatewayUnavailable) as e:
+                        return refusal(e)
+                    t0 = time.perf_counter()
+                    try:
+                        res = await _orig(ctx, raw)
+                    except Exception as e:
+                        await self.aresult(eid, error=f"{type(e).__name__}: {e}", duration_ms=(time.perf_counter() - t0) * 1000)
+                        raise
+                    await self.aresult(eid, output=res, duration_ms=(time.perf_counter() - t0) * 1000)
+                    return res
+                t.on_invoke_tool = invoke
+            elif callable(getattr(t, "func", None)) or callable(getattr(t, "coroutine", None)):   # LangChain tools
+                if callable(getattr(t, "func", None)):
+                    t.func = self._soft(self.guard(name)(t.func))
+                if callable(getattr(t, "coroutine", None)):
+                    t.coroutine = self._soft(self.guard(name)(t.coroutine))
+            elif callable(t):
+                t = self._soft(self.guard(name)(t))
+            else:
+                raise TypeError(f"don't know how to guard {t!r}: wrap its function with @gw.guard() instead")
+            out.append(t)
+        return out

@@ -2,19 +2,19 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.batrapulkit/squidbrake",
   "title": "Squidbrake",
-  "description": "Brakes for AI agents: checks every MCP tool call against your rules; risky ones wait for a person.",
+  "description": "Change control for AI agents: every MCP tool call on the record; risky ones wait for a person.",
   "repository": {
     "url": "https://github.com/batrapulkit/squidbrake",
     "source": "github"
   },
   "websiteUrl": "https://squidbrake.com",
-  "version": "0.7.2",
+  "version": "0.7.9",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "squidbrake",
-      "version": "0.7.2",
+      "version": "0.7.9",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"

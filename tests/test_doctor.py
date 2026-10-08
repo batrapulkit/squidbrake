@@ -114,8 +114,12 @@ def test_run_hook_reads_each_agents_answer(tmp_path):
     deny.write_text('import sys,json; sys.stdin.read(); print(json.dumps({"permission": "deny", "user_message": "nope"}))')
     allow = tmp_path / "allow.py"
     allow.write_text('import sys,json; sys.stdin.read(); print(json.dumps({"permission": "allow"}))')
-    assert connect._run_hook(f'"{py}" "{deny}"', {}) == (False, "nope")
-    assert connect._run_hook(f'"{py}" "{allow}"', {}) == (True, "")
+    word = connect._word
+    assert connect._run_hook(f'{word(py)} {word(str(deny))}', {}) == (False, "nope")
+    assert connect._run_hook(f'{word(py)} {word(str(allow))}', {}) == (True, "")
+    if os.name == "nt":       # a quoted first word runs in cmd, not in PowerShell (Cursor's shell): doctor says so
+        ok, said = connect._run_hook(f'"{py}" "{allow}"', {})
+        assert not ok and "PowerShell" in said
     assert connect._hook_commands({"hooks": {"x": [{"hooks": [{"command": "/p/python /a/agent_hook.py codex --url u"}]}]}}) == \
         ["/p/python /a/agent_hook.py codex --url u"]
     # Claude Code: the program in "command", its arguments in "args"

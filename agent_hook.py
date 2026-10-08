@@ -1,7 +1,8 @@
 """
 One pre-execution hook for the coding agents that have hooks, besides Claude Code (claude_hook.py):
 
-  python agent_hook.py cursor       Cursor        beforeShellExecution, beforeReadFile   (~/.cursor/hooks.json)
+  python agent_hook.py cursor       Cursor        beforeShellExecution, beforeReadFile, beforeMCPExecution,
+                                                  preToolUse for Write|Delete            (~/.cursor/hooks.json)
   python agent_hook.py gemini-cli   Gemini CLI    BeforeTool                             (~/.gemini/settings.json)
   python agent_hook.py codex        Codex CLI     PreToolUse                             (~/.codex/hooks.json)
   python agent_hook.py vscode       VS Code       PreToolUse (Copilot agent mode)        (~/.copilot/hooks/)
@@ -9,8 +10,9 @@ One pre-execution hook for the coding agents that have hooks, besides Claude Cod
 
 Each reads the agent's JSON on stdin, sends the action to Squidbrake, waits while a person decides if it's held, and
 answers in that agent's format. Shell commands are sent as "Bash", reads as "Read", writes and edits as "Write" / "Edit",
-so the same rules apply whichever agent ran them. MCP tools are left to `connect guard`, which routes the agent's MCP
-servers through Squidbrake (so they aren't recorded twice).
+so the same rules apply whichever agent ran them. MCP tools: Cursor's and Codex's are checked here as <server>.<tool>
+(unless the server is already Squidbrake's proxy); the other agents' go through `connect guard`, which routes their MCP
+servers through Squidbrake, so no call is recorded twice.
 
 Installed by `squidbrake connect agents`. Settings come as arguments: --url, --key (like claude_hook.py).
 """
@@ -80,6 +82,42 @@ def normalize(name: str, args) -> tuple[str, dict] | None:
     return name, args
 
 
+OURS = ("gateway_proxy", "squidbrake proxy", "gateway_mcp")
+
+
+def mcp_call(server, tool, args, launched_by) -> tuple[str, dict] | None:
+    """An MCP tool call as `<server>.<tool>`, the way the proxy names them, so the same rules apply. None when the
+    server is already Squidbrake's proxy (`connect guard` / `wrap`): it checks the call itself, once."""
+    server, tool = str(server or "mcp"), str(tool or "unknown")
+    if any(o in str(launched_by or "") for o in OURS) or server.startswith(("gw-", "gw_")) or server == "gateway-db":
+        return None
+    if isinstance(args, str):           # Cursor sends the arguments as a JSON string
+        try:
+            args = json.loads(args) if args.strip() else {}
+        except ValueError:
+            args = {"value": args}
+    app = re.sub(r"[^A-Za-z0-9_-]+", "-", server).strip("-").lower() or "mcp"
+    return f"{app}.{tool}", args if isinstance(args, dict) else {"value": args}
+
+
+def cursor_tool(name: str, args, cwd) -> tuple[str, dict] | None:
+    """Cursor's preToolUse, installed for Write (every file edit) and Delete. Shell and reads have their own hooks."""
+    args = args if isinstance(args, dict) else {}
+    path = next((args[k] for k in ("file_path", "path", "target_file", "filePath", "file") if args.get(k)), None)
+    if name == "Delete" and isinstance(path, str):
+        # deleting a file is the same as `rm` it: the command checks know which deletes are everyday work (a log, a
+        # temp file), and those only count inside the project, so a path in it is made relative
+        # compared as text: os.path.isabs disagrees across OSes and Python versions on paths like /w/x (Windows, 3.13)
+        root = str(cwd or "").replace("\\", "/").rstrip("/") + "/"
+        posix = path.replace("\\", "/")
+        if cwd and posix.lower().startswith(root.lower()):
+            path = posix[len(root):] or path
+        return "Bash", {"command": f"rm -- {shlex.quote(path)}", **({"cwd": cwd} if cwd else {})}
+    if name in ("Shell", "Read", "Grep") or name.startswith("MCP:"):
+        return None                     # covered by beforeShellExecution / beforeReadFile / beforeMCPExecution
+    return normalize(name, {**args, **({"file_path": path} if path else {})})
+
+
 def parse(agent: str, ev: dict) -> tuple[tuple[str, dict] | None, str | None]:
     """-> ((name, input) or None, session id)"""
     if agent == "cursor":
@@ -92,7 +130,16 @@ def parse(agent: str, ev: dict) -> tuple[tuple[str, dict] | None, str | None]:
             return ("Bash", {k: v for k, v in (("command", ev.get("command")), ("cwd", cwd)) if v}), session
         if ev.get("hook_event_name") == "beforeReadFile":
             return ("Read", {"file_path": ev.get("file_path")}), session
+        if ev.get("hook_event_name") == "beforeMCPExecution":
+            return mcp_call(ev.get("mcp_server_name"), ev.get("tool_name"), ev.get("tool_input"),
+                            ev.get("command") or ev.get("url") or ev.get("mcp_server_url")), session
+        if ev.get("hook_event_name") == "preToolUse":   # Cursor's own tools: here for edits and deletes
+            return cursor_tool(str(ev.get("tool_name") or ""), ev.get("tool_input"), ev.get("cwd")), session
         return normalize(str(ev.get("tool_name", "unknown")), ev.get("tool_input")), session
+    if agent == "codex" and str(ev.get("tool_name", "")).startswith("mcp__"):
+        # Codex's MCP servers live in config.toml, which `connect guard` doesn't rewrite: the hook checks them
+        _, server, tool = (str(ev["tool_name"]).split("__", 2) + ["", ""])[:3]
+        return mcp_call(server, tool, ev.get("tool_input"), None), ev.get("session_id")
     if agent == "antigravity":
         call = ev.get("toolCall") or {}
         return normalize(str(call.get("name", "unknown")), call.get("args")), ev.get("conversationId")
@@ -122,10 +169,23 @@ def answer(agent: str, allow: bool, message: str = "", stop: bool = False) -> No
     sys.exit(0)
 
 
+def gateway_client(url: str, key: str, timeout: float) -> httpx.Client:
+    """The gateway on this computer is reached directly: 127.0.0.1, not localhost (Windows tries IPv6 ::1 first, and
+    waits about 2 s for each call to fail over), and never through a proxy (on Windows the system proxy setting is
+    read without its "bypass for local addresses" list, so a company proxy would get every hook call)."""
+    host = httpx.URL(url).host
+    if host == "localhost":
+        url = url.replace("//localhost", "//127.0.0.1", 1)
+    return httpx.Client(base_url=url, headers={"X-Gateway-Key": key}, timeout=timeout,
+                        trust_env=host not in ("localhost", "127.0.0.1", "::1"))
+
+
 def unreachable(url: str, e: httpx.HTTPError, what: str = "action") -> str:
     """Why everything is blocked, in words a person can act on (the agent passes it on). Same text in claude_hook.py."""
     status = getattr(getattr(e, "response", None), "status_code", None)
-    if "rejected" in str(e):
+    if isinstance(e, (ValueError, KeyError, TypeError)):
+        why = f"Something at {url} answered, but not like Squidbrake does (a proxy or another app on that port?)"
+    elif "rejected" in str(e):
         why = f"Squidbrake's dashboard at {url} rejected this computer's key (it may have been removed)"
     elif status in (502, 503, 504) or isinstance(e, (httpx.ConnectError, httpx.TimeoutException)):
         why = f"Squidbrake's dashboard at {url} isn't answering: it may be switched off, restarting, or deleted"
@@ -152,7 +212,7 @@ def check(agent: str, name: str, inp: dict, session: str | None) -> None:
         except Exception:
             pass
     try:
-        with httpx.Client(base_url=URL, headers={"X-Gateway-Key": KEY}, timeout=15) as http:
+        with gateway_client(URL, KEY, 15) as http:
             r = http.post("/v1/events", json=body)
             if r.status_code == 401:
                 raise httpx.HTTPError("the gateway rejected the key")
@@ -167,7 +227,7 @@ def check(agent: str, name: str, inp: dict, session: str | None) -> None:
             if d["decision"] == "allow":
                 # these agents don't report results back: mark the call done so it isn't left "pending"
                 http.post(f"/v1/events/{d['event_id']}/result", json={"output": {"result": f"not reported by {agent}"}})
-    except httpx.HTTPError as e:
+    except (httpx.HTTPError, ValueError, KeyError, TypeError) as e:   # not JSON / not our answer: blocked too
         if FAIL_OPEN:
             answer(agent, True)
         answer(agent, False, unreachable(URL, e))

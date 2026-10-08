@@ -73,6 +73,14 @@ taint_checks:
   # sinks: [...]      tools that send things out (defaults: *send*, *reply*, *publish*, *transfer*, *webhook*, *upload* ...)
   #                   Shell commands count as sinks when they upload (curl -d, scp, git push, ...).
 
+# Data checks look at text an action puts where other people read it: a pull request, an issue or comment, a gist, a
+# chat post, a page (and `gh pr|issue|gist ... create|comment|edit`). Looking things up doesn't count. Email has its
+# own rule above. Each one: block, review, warn, off.
+data_checks:
+  customer_names: review   # names a customer on your list (dashboard → Settings → Customers), e.g. in a PR description
+  personal_data: review    # a card number, a social security number, an IBAN, or a list of 3+ emails or phone numbers
+  # where: [...]           tools whose text others read (defaults: *pull_request*, *issue*, *comment*, *gist*, ...)
+
 # Sequence rules judge an action by what came BEFORE it, and say which earlier step caused it.
 #   match   this action (same fields as rules: name, source, input_regex, input, ...)
 #   after   an earlier step that went ahead, within within_hours (default 24);
@@ -149,7 +157,10 @@ rules:
              # Claude Code's own read-only / housekeeping tools
              "Read", "Grep", "Glob", "LS", "WebSearch", "WebFetch", "NotebookRead", "ToolSearch", "TodoWrite",
              "Task", "Agent", "AskUserQuestion", "EnterPlanMode", "ExitPlanMode", "Skill", "BashOutput", "TaskOutput",
-             "ListMcpResourcesTool", "ReadMcpResourceTool"]
+             "ListMcpResourcesTool", "ReadMcpResourceTool",
+             # Antigravity's own read-only / housekeeping tools (its file reads, edits and commands are checked above)
+             "read_url_content", "view_content_chunk", "read_resource", "read_terminal", "command_status",
+             "manage_task", "task_boundary", "notify_user"]
 
   # ---- changes: a person decides (these give the approver a clearer reason than the default)
   - id: approve-money-out

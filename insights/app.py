@@ -25,7 +25,8 @@ import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
@@ -37,6 +38,9 @@ CONTACT = os.getenv("INSIGHTS_CONTACT", "")           # shown on start pages, e.
 CODE_RE = re.compile(r"^[a-z0-9-]{3,40}$")
 
 app = FastAPI(title="Squidbrake Insights", docs_url=None, redoc_url=None)
+# squidbrake.com is a static site: its "Book a demo" form posts here (/v1/team-request), from the browser
+app.add_middleware(CORSMiddleware, allow_origin_regex=r"https://([a-z0-9-]+\.)?(squidbrake\.com|onrender\.com)",
+                   allow_methods=["POST"], allow_headers=["Content-Type"])
 _lock = threading.Lock()
 
 
@@ -61,6 +65,8 @@ with db() as _c:
     CREATE INDEX IF NOT EXISTS catches_install ON catches (install_id);
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, created_at TEXT NOT NULL, expires_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS install_reports (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL,
+        code TEXT, os TEXT, step TEXT, installer TEXT, log TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS team_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL,
         name TEXT NOT NULL, email TEXT NOT NULL, company TEXT, team_size TEXT, agents TEXT, note TEXT, source TEXT,
         done INTEGER NOT NULL DEFAULT 0);
@@ -72,6 +78,21 @@ with db() as _c:
                         ("mrr", "INTEGER NOT NULL DEFAULT 0"), ("paying_since", "TEXT")):
         if _col not in _have:
             _c.execute(f"ALTER TABLE pilots ADD COLUMN {_col} {_type}")
+
+# Every install that says yes to the first-run question (telemetry.py) joins this code. It has gone missing from the
+# database twice (deleted with the other test links), and then every one of those joins was refused with a 404 that
+# nobody sees: so it is put back on every start, and it can't be deleted.
+COMMUNITY_CODE = os.getenv("INSIGHTS_COMMUNITY_CODE", "community-opt-in-ins-a42929")
+
+
+def seed_community() -> None:
+    with db() as c:
+        c.execute("INSERT OR IGNORE INTO pilots (code, company, note, created_at) VALUES (?, ?, ?, ?)",
+                  (COMMUNITY_CODE, "Community (opted in)", "everyone who said yes on first run; can't be deleted",
+                   datetime.now(timezone.utc).isoformat(timespec="seconds")))
+
+
+seed_community()
 
 HOSTED_DOMAIN = os.getenv("HOSTED_DOMAIN", "")        # e.g. app.squidbrake.com (with a *.app wildcard DNS record)
 HOSTED_MAX = int(os.getenv("HOSTED_MAX", "6"))         # each hosted gateway uses ~50-100 MB of memory
@@ -210,17 +231,43 @@ class PingIn(BaseModel):
     usage: dict
 
 
-def _pilot(c, code: str):
+# A pilot code is the only secret on a start page (and, for a hosted pilot, the way to its keys once), so guessing
+# codes is slowed down: an address that asks for 30 codes that don't exist in 10 minutes waits.
+_misses: dict[str, list[float]] = {}
+
+
+def _ip(request: Request | None) -> str:
+    return (request.client.host if request and request.client else "") or "?"
+
+
+def _guessing(request: Request | None) -> None:
+    ip = _ip(request)
+    recent = [t for t in _misses.get(ip, []) if time.time() - t < 600]
+    if len(_misses) > 10_000:                          # many addresses: keep only the ones still counting
+        for k in [k for k, v in _misses.items() if not v or time.time() - v[-1] > 600]:
+            _misses.pop(k, None)
+    _misses[ip] = recent
+    if len(recent) >= 30:
+        raise HTTPException(429, "too many unknown pilot codes from here: try again in 10 minutes")
+
+
+def _missed(request: Request | None) -> None:
+    _misses.setdefault(_ip(request), []).append(time.time())
+
+
+def _pilot(c, code: str, request: Request | None = None):
+    _guessing(request)
     row = c.execute("SELECT * FROM pilots WHERE code=?", (code.lower(),)).fetchone()
     if not row:
+        _missed(request)
         raise HTTPException(404, "unknown pilot code: check the link you were sent")
     return row
 
 
 @app.post("/v1/pilot/join")
-def join(j: JoinIn):
+def join(j: JoinIn, request: Request):
     with _lock, db() as c:
-        p = _pilot(c, j.code)
+        p = _pilot(c, j.code, request)
         c.execute("""INSERT INTO installs (install_id, code, joined_at, version, os) VALUES (?,?,?,?,?)
                      ON CONFLICT(install_id) DO UPDATE SET code=excluded.code, left_at=NULL, version=excluded.version,
                      os=excluded.os""", (j.install_id, p["code"], now(), j.version, j.os))
@@ -252,7 +299,7 @@ async def ping(request: Request):
             if re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(d))}
     clip = lambda m, n=30: json.dumps({str(k)[:60]: _int(v) for k, v in list((m or {}).items())[:n]})
     with _lock, db() as c:
-        _pilot(c, p.code)
+        _pilot(c, p.code, request)
         if not c.execute("SELECT 1 FROM installs WHERE install_id=? AND left_at IS NULL", (p.install_id,)).fetchone():
             raise HTTPException(403, "this install hasn't joined (or has left) the pilot")
         c.execute("""UPDATE installs SET last_seen=?, version=?, os=?, mode=?, rules=?, agents=?, rules_hit=?,
@@ -300,7 +347,7 @@ def dashboard_url(subdomain: str | None) -> str | None:
 @app.post("/v1/admin/pilots", dependencies=[Depends(admin)])
 def create_pilot(p: PilotIn, request: Request):
     slug = re.sub(r"[^a-z0-9]+", "-", p.company.lower()).strip("-")[:20].strip("-") or "pilot"
-    code = f"{slug}-{secrets.token_hex(3)}"
+    code = f"{slug}-{secrets.token_hex(6)}"         # 48 random bits: the company's name is easy to guess, this isn't
     with _lock, db() as c:
         sub = None
         if p.hosted:
@@ -327,6 +374,8 @@ def _forget(c, code: str) -> None:
 
 @app.delete("/v1/admin/pilots/{code}", dependencies=[Depends(admin)])
 def delete_pilot(code: str):
+    if code == COMMUNITY_CODE:
+        raise HTTPException(400, "that's the code every opted-in install joins; it can't be deleted")
     with _lock, db() as c:
         p = c.execute("SELECT hosted FROM pilots WHERE code=?", (code,)).fetchone()
         if p and p["hosted"]:   # provision.py removes its gateway first, then the row goes
@@ -384,11 +433,13 @@ def caddy_ask(domain: str = ""):
 
 
 @app.get("/v1/pilot/{code}/status")
-def pilot_status(code: str):
+def pilot_status(code: str, request: Request):
     """Polled by the start page while a hosted dashboard is being set up."""
+    _guessing(request)
     with db() as c:
         p = c.execute("SELECT state, admin_key, keys_revealed_at FROM pilots WHERE code=? AND hosted=1", (code,)).fetchone()
     if not p:
+        _missed(request)
         raise HTTPException(404)
     return {"state": p["state"], "keys_ready": bool(p["admin_key"]), "keys_shown": bool(p["keys_revealed_at"])}
 
@@ -409,11 +460,13 @@ def pilot_seen(code: str, request: Request):
 
 
 @app.post("/v1/pilot/{code}/keys")
-def reveal_keys(code: str):
+def reveal_keys(code: str, request: Request):
     """The founder's keys for their hosted gateway, shown once on their start page and then forgotten here."""
+    _guessing(request)
     with _lock, db() as c:
         p = c.execute("SELECT * FROM pilots WHERE code=? AND hosted=1", (code,)).fetchone()
         if not p:
+            _missed(request)
             raise HTTPException(404)
         if not p["admin_key"]:
             raise HTTPException(409, "already shown" if p["keys_revealed_at"] else "your dashboard is still being set up")
@@ -718,6 +771,61 @@ def team_request_done(rid: int, d: DoneIn):
     return {"ok": True}
 
 
+# ---- installs that failed: the installer asks first ([y/N]), shows what it sends, and sends the last lines of what
+# pip / uv / Python printed (home folder already replaced with ~ on the computer). Keys, tokens and email addresses
+# are taken out again here, in case a line had one.
+
+SCRUB = [(re.compile(r"gw_[A-Za-z0-9_-]{6,}"), "gw_..."),
+         (re.compile(r"(?i)(bearer|token|key|password|secret)([=: ]+)\S+"), r"\1\2..."),
+         (re.compile(r"[^@\s]{1,64}@[^@\s]{1,190}\.[A-Za-z]{2,}"), "...@..."),
+         (re.compile(r"(?i)([a-z]:[\\/]users[\\/])[^\\/\r\n]+"), r"\1..."),       # Windows names can have spaces
+         (re.compile(r"(?i)(/users/|/home/)[^/\s]+"), r"\1...")]
+_reports: dict[str, list[float]] = {}
+
+
+def scrub(text: str) -> str:
+    for rx, to in SCRUB:
+        text = rx.sub(to, text)
+    return text
+
+
+@app.post("/v1/install-report")
+async def install_report(request: Request, code: str = "", os_name: str = Query("", alias="os"), step: str = "",
+                         installer: str = ""):
+    ip = _ip(request)
+    recent = [x for x in _reports.get(ip, []) if time.time() - x < 3600]
+    if len(recent) >= 5:
+        raise HTTPException(429, "too many reports from here: try again in an hour")
+    _reports[ip] = recent + [time.time()]
+    if len(_reports) > 10_000:
+        _reports.clear()
+    raw = (await request.body())[:16_000].decode("utf-8", errors="replace")
+    log = scrub("\n".join(raw.splitlines()[-40:]))[:6000]
+    if not log.strip():
+        raise HTTPException(422, "nothing to report")
+    with _lock, db() as c:
+        known = code and c.execute("SELECT 1 FROM pilots WHERE code=?", (code.lower(),)).fetchone()
+        c.execute("INSERT INTO install_reports (created_at, code, os, step, installer, log) VALUES (?, ?, ?, ?, ?, ?)",
+                  (now(), code.lower() if known else None, scrub(os_name)[:80], scrub(step)[:200],
+                   installer if installer in ("ps1", "sh") else "", log))
+    return {"ok": True}
+
+
+@app.get("/v1/admin/install-reports", dependencies=[Depends(admin)])
+def install_reports():
+    with db() as c:
+        return [dict(r) for r in c.execute("SELECT r.*, p.company FROM install_reports r LEFT JOIN pilots p ON p.code = r.code "
+                                           "ORDER BY r.id DESC LIMIT 100")]
+
+
+@app.post("/v1/admin/install-reports/{rid}", dependencies=[Depends(admin)])
+def install_report_done(rid: int, d: DoneIn):
+    with _lock, db() as c:
+        if not c.execute("UPDATE install_reports SET done=? WHERE id=?", (int(d.done), rid)).rowcount:
+            raise HTTPException(404)
+    return {"ok": True}
+
+
 # --------------------------------------------------------------------------- pages
 
 PAGE = lambda name: (HERE / name).read_text(encoding="utf-8")
@@ -727,9 +835,11 @@ PAGE = lambda name: (HERE / name).read_text(encoding="utf-8")
 def start_page(code: str, request: Request):
     if not CODE_RE.match(code):
         raise HTTPException(404)
+    _guessing(request)
     with _lock, db() as c:
         p = c.execute("SELECT * FROM pilots WHERE code=?", (code,)).fetchone()
         if not p:
+            _missed(request)
             return HTMLResponse(PAGE("start.html").replace("__DATA__", json.dumps({"missing": True})), status_code=404)
     # Not counted here: LinkedIn, Slack, WhatsApp and mail scanners fetch a link the moment it's pasted, to draw a
     # preview. The page counts a view itself (/seen) once it runs in a browser.

@@ -824,6 +824,85 @@ def test_unedited_rules_from_an_older_release_are_updated(tmp_path):
     assert server.update_unedited_rules(mine, shipped, fake_known) is False and b"my own rule" in mine.read_bytes()
 
 
+def test_antigravity_housekeeping_runs_on_its_own():
+    """Antigravity checks its own background tasks and commands all the time: holding those for a person stalls it."""
+    p = server.Policy(Path(__file__).resolve().parents[1] / "rules.yaml")
+    decide = lambda name, inp: p.evaluate(kind="agent_hook", name=name, source="antigravity", client="k",
+                                          session_id=None, input=inp)[0]
+    for name in ("manage_task", "command_status", "task_boundary", "notify_user", "read_terminal", "read_url_content"):
+        assert decide(name, {"Action": "status", "TaskId": "c/task-81"}) == "allow", name
+    assert decide("send_command_input", {"CommandId": "c1", "Input": "y"}) == "review"
+
+
+def test_postgres_example_policy():
+    rules = Path(__file__).resolve().parents[1] / "examples" / "rules" / "postgres.yaml"
+    p = server.Policy(rules)
+
+    def decide(name, input=None):
+        return p.evaluate(kind="mcp", name=name, source=None, client="test", session_id=None,
+                          input=input or {})[0]
+
+    assert decide("postgres.list_tables") == "allow"
+    assert decide("supabase.list_tables") == "allow"
+    assert decide("postgres.execute_sql", {"query": "SELECT 1"}) == "allow"
+    assert decide("postgres.query", {"sql": "SELECT * FROM users"}) == "allow"
+    assert decide("postgres.execute_sql", {"query": "WITH cte AS (SELECT 1) SELECT * FROM cte"}) == "allow"
+    assert decide("postgres.execute_sql", {"query": "EXPLAIN SELECT 1"}) == "allow"
+    assert decide("postgres.execute_sql", {"query": 'SELECT "id" FROM t'}) == "allow"
+    assert decide("postgres.execute_sql", {"query": 'SELECT "foo\\bar" FROM t'}) == "allow"
+    assert decide("postgres.execute_sql", {"query": "SELECT count(*) FROM t"}) == "allow"
+    assert decide("postgres.execute_sql", {"query": "SELECT t.col FROM t"}) == "allow"
+    assert decide("postgres.execute_sql", {"query": "SELECT count(*) FROM public.t"}) == "allow"
+    assert decide("postgres.execute_sql", {"query": "SELECT now()"}) == "allow"
+    assert decide("postgres.execute_sql", {"query": "SELECT coalesce(a, b) FROM t"}) == "allow"
+    assert decide("postgres.execute_sql", {"query": "SELECT * FROM t WHERE note = 'drop off'"}) == "allow"
+    assert decide("postgres.execute_sql", {"query": "SELECT author FROM t"}) == "allow"
+    assert decide("postgres.execute_sql", {"query": "SELECT * FROM oauth_tokens"}) == "allow"
+
+    assert decide("postgres.execute_sql", {"query": "SELECT 1; DELETE FROM t"}) == "review"
+    assert decide("postgres.execute_sql",
+                  {"query": "WITH x AS (DELETE FROM t RETURNING *) SELECT * FROM x"}) == "review"
+    assert decide("postgres.execute_sql", {"query": "SELECT * INTO t FROM u"}) == "review"
+    for q in ("INSERT INTO t VALUES (1)", "UPDATE t SET x = 1", "DELETE FROM t"):
+        assert decide("postgres.execute_sql", {"query": q}) == "review", q
+    assert decide("postgres.execute_sql", {"query": 'SELECT "id" FROM t; SET ROLE postgres'}) == "review"
+    assert decide("postgres.execute_sql", {"query": "SELECT 'a;b' FROM t"}) == "review"
+    assert decide("postgres.execute_sql", {"query": "SELECT pg_terminate_backend(42)"}) == "review"
+    assert decide("postgres.execute_sql", {"query": "SELECT evil.count(*) FROM t"}) == "review"
+    assert decide("postgres.execute_sql", {"query": "SELECT public.lower(x) FROM t"}) == "review"
+    assert decide("postgres.execute_sql", {"query": "SELECT * FROM auth.users"}) == "review"
+    assert decide("postgres.execute_sql", {"query": 'SELECT * FROM "auth"."users"'}) == "review"
+    assert decide("postgres.execute_sql", {"query": "SELECT rolpassword FROM pg_authid"}) == "review"
+    assert decide("postgres.execute_sql", {"query": "SELECT * FROM vault.decrypted_secrets"}) == "review"
+    assert decide("postgres.execute_sql", {"query": "SELECT setval('seq', 1)"}) == "review"
+    assert decide("postgres.execute_sql", {"query": "SELECT dblink('db', 'SELECT 1')"}) == "review"
+    assert decide("postgres.execute_sql", {"query": "SELECT foo(1)"}) == "review"
+    assert decide("postgres.execute_sql", {"query": "EXPLAIN ANALYZE SELECT 1"}) == "review"
+    assert decide("postgres.execute_sql", {"query": "CREATE TABLE t (id int)"}) == "review"
+
+    assert decide("postgres.execute_sql", {"query": "DROP TABLE t"}) == "deny"
+    assert decide("postgres.query", {"sql": "TRUNCATE t"}) == "deny"
+    assert decide("postgres.execute_sql", {"query": "SELECT 1; DROP TABLE x"}) == "deny"
+    assert decide("postgres.execute_sql", {"query": "-- comment\nDROP TABLE t"}) == "deny"
+    assert decide("postgres.execute_sql", {"query": "/* comment */ DROP TABLE t"}) == "deny"
+    assert decide("postgres.execute_sql", {"query": "ALTER TABLE t DROP COLUMN x"}) == "deny"
+    assert decide("postgres.execute_sql", {"query": "-- comment\nALTER TABLE t DROP COLUMN x"}) == "deny"
+    assert decide("postgres.execute_sql", {"query": "GRANT SELECT ON t TO u"}) == "deny"
+    assert decide("postgres.execute_sql", {"query": "REVOKE SELECT ON t FROM u"}) == "deny"
+    assert decide("postgres.execute_sql", {"query": "CREATE ROLE bob"}) == "deny"
+    assert decide("postgres.apply_migration", {"name": "drop_t", "query": "DROP TABLE t"}) == "deny"
+
+    assert decide("postgres.apply_migration", {"name": "add_col", "query": "ALTER TABLE t ADD COLUMN x int"}) == "review"
+    assert decide("postgres.delete_branch") == "deny"
+    assert decide("postgres.pause_project") == "deny"
+    assert decide("postgres.reset_branch") == "deny"
+    assert decide("postgres.deploy_edge_function") == "review"
+    assert decide("postgres.create_project") == "review"
+    assert decide("postgres.confirm_cost") == "review"
+    assert decide("postgres.restore_project") == "review"
+    assert decide("postgres.unknown_tool") == "review"
+
+
 def test_slack_example_policy():
     rules = Path(__file__).resolve().parents[1] / "examples" / "rules" / "slack.yaml"
     p = server.Policy(rules)
@@ -1303,3 +1382,36 @@ def test_lookalike_domains():
     assert server.lookalike_of("acme.com", ["acme.com"]) is None
     assert server.lookalike_of("mail.acme.com", ["acme.com"]) is None
     assert server.lookalike_of("example.com", ["acme.com"]) is None
+
+
+def test_unattended_agent_example_policy(c, monkeypatch, tmp_path):
+    shipped = (Path(__file__).resolve().parents[1] / "examples" / "rules" / "unattended-agent.yaml").read_text()
+    p = server.Policy(Path(__file__).resolve().parents[1] / "examples" / "rules" / "unattended-agent.yaml")
+    p._maybe_reload()
+    assert p.source and p.mode == "shadow" and {s["id"] for s in p.sequences} == {"runaway-loop", "runaway-sends"}
+    assert p.history["repeat_of_rejected"] == "block" and p.commands["irreversible"] == "block"
+
+    def decide(name, input=None):
+        return p.evaluate(kind="mcp", name=name, source=None, client="test", session_id=None, input=input or {})[0]
+
+    for name in ("github.list_issues", "stripe.list_payments", "linear.search_issues", "Read", "WebFetch"):
+        assert decide(name) == "allow", name
+    for name in ("github.delete_repo", "stripe.create_refund", "stripe.list_refunds", "s3.remove_object",
+                 "github.create_issue", "unknown.tool"):
+        assert decide(name) == "deny", name
+    assert decide("Write", {"file_path": "C:/loop/reports/2026-10-07.md"}) == "allow"
+    assert decide("Write", {"file_path": "/home/me/.bashrc"}) == "deny"
+    assert decide("slack.post_message", {"channel": "#agent-runs"}) == "allow"
+    assert decide("slack.post_message", {"channel": "#general"}) == "deny"
+
+    rules = tmp_path / "rules.yaml"                       # enforce, with a cap small enough to hit
+    rules.write_text(shipped.replace("mode: shadow", "mode: enforce").replace("more_than: 200", "more_than: 3"))
+    monkeypatch.setattr(server, "policy", server.Policy(rules))
+    s = f"unattended-{time.time_ns()}"
+    for i in range(3):
+        d = c.post("/v1/events", headers=H, json={"name": "github.list_issues", "input": {"page": i},
+                                                   "session_id": s, "source": "nightly-bot"}).json()
+        assert d["decision"] == "allow"
+    d = c.post("/v1/events", headers=H, json={"name": "github.list_issues", "input": {"page": 3},
+                                               "session_id": s, "source": "nightly-bot"}).json()
+    assert d["decision"] == "deny" and d["rule_id"] == "sequence:runaway-loop" and "step limit" in d["reason"]

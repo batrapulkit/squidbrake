@@ -11,6 +11,7 @@ Settings (environment variables, set in the agent's MCP config):
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
 import os
 import re
@@ -30,6 +31,21 @@ SOURCE = os.getenv("GATEWAY_SOURCE", "mcp-agent")
 APPROVAL_WAIT = float(os.getenv("APPROVAL_WAIT", "50"))
 # One MCP server process per agent conversation, so this groups a conversation's calls in the dashboard.
 SESSION = f"{SOURCE}-{datetime.now().strftime('%m%d-%H%M')}-{uuid.uuid4().hex[:4]}"
+# Served over HTTP (gateway_proxy.py --serve), one process has many conversations and callers: each request sets its
+# own conversation, and may bring its own agent key and name (the gateway's /mcp/<name> passes the caller's on).
+CURRENT_SESSION: contextvars.ContextVar[str | None] = contextvars.ContextVar("squidbrake_session", default=None)
+CURRENT_KEY: contextvars.ContextVar[str | None] = contextvars.ContextVar("squidbrake_key", default=None)
+CURRENT_SOURCE: contextvars.ContextVar[str | None] = contextvars.ContextVar("squidbrake_source", default=None)
+
+
+def _as_caller() -> dict:
+    """Headers that make a request count as the current caller's (their agent key), when one is set."""
+    key = CURRENT_KEY.get()
+    return {"X-Gateway-Key": key} if key else {}
+
+
+def source() -> str:
+    return CURRENT_SOURCE.get() or SOURCE
 # Calls waiting for a person are also written here, so an approval still runs if the agent app restarts this
 # connector in the meantime (Antigravity does). One file per call; claiming it (a rename) makes it run only once.
 PENDING_DIR = Path(os.getenv("GATEWAY_PENDING_DIR") or Path(tempfile.gettempdir()) / "squidbrake-pending")
@@ -57,7 +73,7 @@ def agent_rules() -> str:
 
 async def recent_decisions() -> str:
     try:
-        r = await http().get("/v1/agent/decisions", params={"limit": 20})
+        r = await http().get("/v1/agent/decisions", params={"limit": 20}, headers=_as_caller())
         r.raise_for_status()
     except httpx.HTTPError as e:
         return f"Couldn't reach Squidbrake ({type(e).__name__})."
@@ -157,7 +173,8 @@ class GatewayError(Exception):
 async def gw_check(name: str, input: Any, kind: str = "tool_call") -> dict:
     try:
         r = await http().post("/v1/events", json={"name": name, "kind": kind, "input": input,
-                                                   "source": SOURCE, "session_id": SESSION})
+                                                   "source": source(), "session_id": CURRENT_SESSION.get() or SESSION},
+                              headers=_as_caller())
     except httpx.TransportError as e:
         raise GatewayError(f"Squidbrake at {GATEWAY_URL} is unreachable ({type(e).__name__}), so nothing was run")
     if r.status_code == 401:
@@ -172,7 +189,8 @@ async def gw_wait(event_id: str, seconds: float) -> dict:
     while True:
         wait = max(0.0, min(25.0, end - time.monotonic()))
         try:
-            r = await http().get(f"/v1/events/{event_id}/decision", params={"wait": wait}, timeout=wait + 10)
+            r = await http().get(f"/v1/events/{event_id}/decision", params={"wait": wait}, timeout=wait + 10,
+                                  headers=_as_caller())
             r.raise_for_status()
             d = r.json()
         except httpx.TransportError:
@@ -184,7 +202,7 @@ async def gw_wait(event_id: str, seconds: float) -> dict:
 async def gw_result(event_id: str, output: Any = None, error: str | None = None, duration_ms: float | None = None) -> None:
     try:
         await http().post(f"/v1/events/{event_id}/result",
-                          json={"output": output, "error": error, "duration_ms": duration_ms})
+                          json={"output": output, "error": error, "duration_ms": duration_ms}, headers=_as_caller())
     except httpx.HTTPError:
         log(f"could not report the result of {event_id}")
 

@@ -48,7 +48,7 @@ def run(monkeypatch):
     monkeypatch.setattr(server, "policy", server.Policy(ROOT / "rules.yaml"))       # the shipped rules
     monkeypatch.setattr(agent_hook, "KEY", "k1")
     monkeypatch.setattr(agent_hook, "MAX_WAIT", 0.0)                               # held -> answer at once in tests
-    monkeypatch.setattr(agent_hook.httpx, "Client", lambda base_url, headers, timeout: TestClient(server.app, headers=headers))
+    monkeypatch.setattr(agent_hook.httpx, "Client", lambda base_url, headers, timeout, **kw: TestClient(server.app, headers=headers))
 
     def go(agent, event):
         monkeypatch.setattr(sys, "argv", ["agent_hook.py", agent])
@@ -79,8 +79,10 @@ def test_each_agent(run, agent):
     assert allowed(agent, run(agent, listing))
     if secret:
         assert not allowed(agent, run(agent, secret))
-    if mcp:
-        assert allowed(agent, run(agent, mcp))          # MCP tools are left to `connect guard`
+    if mcp and agent == "codex":                        # Codex's MCP servers aren't guarded: the hook checks them
+        assert not allowed(agent, run(agent, mcp))      # (creating an issue waits for a person)
+    elif mcp:
+        assert allowed(agent, run(agent, mcp))          # the others' MCP tools are left to `connect guard`
 
 
 def test_install_and_remove_hooks(tmp_path, monkeypatch):
@@ -96,6 +98,8 @@ def test_install_and_remove_hooks(tmp_path, monkeypatch):
     shell = cur["hooks"]["beforeShellExecution"]
     assert shell[0] == {"command": "./their-own-hook.sh"} and "agent_hook.py" in shell[1]["command"]
     assert shell[1]["failClosed"] is True and "cursor --url https://x.app.example.com --key gw_k" in shell[1]["command"]
+    assert "agent_hook.py" in cur["hooks"]["beforeMCPExecution"][0]["command"]
+    assert cur["hooks"]["preToolUse"][0]["matcher"] == "Write|Delete"
     codex = json.loads((tmp_path / ".codex" / "hooks.json").read_text(encoding="utf-8"))
     assert "agent_hook.py" in codex["hooks"]["PreToolUse"][0]["hooks"][0]["command"]
     assert not (tmp_path / ".gemini").exists()                           # not installed: left alone
@@ -170,3 +174,28 @@ def test_cursor_without_cwd_measures_in_the_open_project():
     assert agent_hook.parse("cursor", ev)[0] == ("Bash", {"command": "rm -rf build", "cwd": "e:/proj"})
     ev["workspace_roots"] = ["/Users/n/proj"]
     assert agent_hook.parse("cursor", ev)[0][1]["cwd"] == "/Users/n/proj"
+
+
+def test_cursor_mcp_tools_edits_and_deletes(run):
+    """Cursor's MCP calls (beforeMCPExecution) and its edits and deletes (preToolUse) go through the same rules."""
+    mcp = lambda tool, args, **kw: {"hook_event_name": "beforeMCPExecution", "mcp_server_name": "github",
+                                    "tool_name": tool, "tool_input": json.dumps(args), "command": "npx github-mcp",
+                                    "conversation_id": "c9", **kw}
+    assert not allowed("cursor", run("cursor", mcp("create_issue", {"title": "x"})))    # a change: a person decides
+    assert allowed("cursor", run("cursor", mcp("list_issues", {"repo": "api"})))        # looking is fine
+    # already behind Squidbrake's proxy (connect guard): the proxy checks it, once
+    assert allowed("cursor", run("cursor", mcp("create_issue", {}, command="python gateway_proxy.py --app github")))
+    tool = lambda name, args: {"hook_event_name": "preToolUse", "tool_name": name, "tool_input": args,
+                               "cwd": "/w", "conversation_id": "c9"}
+    assert allowed("cursor", run("cursor", tool("Write", {"file_path": "/w/src/app.py", "contents": "x"})))
+    assert not allowed("cursor", run("cursor", tool("Write", {"file_path": "/w/.cursor/mcp.json", "contents": "{}"})))
+    assert allowed("cursor", run("cursor", tool("Delete", {"path": "/w/tmp/debug.log"})))     # a throwaway file
+    assert not allowed("cursor", run("cursor", tool("Delete", {"path": "/w/prod.db"})))       # anything else waits
+
+
+def test_codex_mcp_tools_and_our_own_servers(run):
+    assert not allowed("codex", run("codex", {"tool_name": "mcp__stripe__create_refund",
+                                              "tool_input": {"charge": "ch_1", "amount": 900}, "session_id": "x"}))
+    assert allowed("codex", run("codex", {"tool_name": "mcp__gw-stripe__create_refund", "tool_input": {},
+                                          "session_id": "x"}))     # the proxy already checks this one
+    assert agent_hook.mcp_call("Linear App", "save_issue", '{"id": 1}', None) == ("linear-app.save_issue", {"id": 1})

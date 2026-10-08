@@ -178,6 +178,16 @@ header .spacer { flex: 1; }
 .clock { font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .clock.soon { color: var(--critical); font-weight: 600; }
 .hint { font-size: 12px; color: var(--text-muted); }
+#slackSetup summary, #emailSetup summary { cursor: pointer; font-weight: 500; }
+.sub-h { font-size: 13px; font-weight: 600; margin: 18px 0 6px; }
+.packs { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 8px; }
+.packs .pack, .suggest { border: 1px solid var(--border, rgba(127,127,127,.25)); border-radius: 8px; padding: 10px 12px; }
+.packs .pack p { margin: 4px 0 8px; font-size: 12px; color: var(--text-muted); }
+.suggest { display: flex; gap: 10px; align-items: center; margin: 6px 0; }
+.suggest .grow { flex: 1; }
+#slackSetup .steps { margin: 10px 0 12px; padding-left: 18px; display: grid; gap: 6px; }
+#slackSetup .manifest { max-height: 180px; overflow: auto; margin: 6px 0; padding: 10px; font-size: 11px; border-radius: 6px;
+  background: var(--bg-subtle, rgba(127,127,127,.08)); white-space: pre; }
 @media (max-width: 640px) {
   .aq li { grid-template-columns: minmax(0, 1fr); }
   .aq .side { align-items: stretch; }
@@ -635,6 +645,13 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     </div>
     <div class="print-head" id="printHead"></div>
     <section class="tiles" id="repTiles" aria-label="Report totals"></section>
+    <section class="card">
+      <div class="card-head"><h2>What it caught</h2><span class="sub" id="caughtSub"></span>
+        <span class="spacer"></span><button class="btn" id="copyWeekly" type="button">Copy weekly report</button></div>
+      <div class="tbl-wrap"><table class="events"><thead><tr><th>Outcome</th><th>What the agent tried</th><th>Why</th>
+        <th>What it would have done</th></tr></thead><tbody id="caughtList"></tbody></table></div>
+      <p class="hint">Also sent every Monday to Slack, Teams or email when they're set up in Settings.</p>
+    </section>
     <div class="row2 even">
       <section class="card" id="auditCard"></section>
       <section class="card">
@@ -688,6 +705,35 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
         <label class="full">Slack or Discord incoming webhook
           <span class="hint">Paste a Slack or Discord webhook URL. Discord formatting is detected automatically. Leave empty to turn off.</span>
           <input name="slack_webhook" placeholder="Webhook URL"></label>
+        <label class="full">Microsoft Teams
+          <span class="hint">In the channel: Workflows → "Post to a channel when a webhook request is received" → copy its URL here.
+            Each approval arrives as a card with a button to the one-tap page.</span>
+          <input name="teams_webhook" placeholder="https://…logic.azure.com/workflows/… (leave empty to turn off)"></label>
+        <details class="full" id="emailSetup">
+          <summary>Email (approvals and the weekly report)</summary>
+          <div class="form-grid wide" style="margin-top:10px">
+            <label class="full">Send to <input name="email_to" placeholder="ops@yourcompany.com, cto@yourcompany.com"></label>
+            <label>SMTP server <input name="smtp_host" placeholder="smtp.gmail.com"></label>
+            <label>Port <input name="smtp_port" type="number" min="1" max="65535" placeholder="587"></label>
+            <label>Username <input name="smtp_user" autocomplete="off"></label>
+            <label>Password <input name="smtp_password" type="password" autocomplete="off"></label>
+            <label class="full">From <input name="smtp_from" placeholder="squidbrake@yourcompany.com"></label>
+            <p class="hint full">An email carries the link to the review page only. Mail scanners open links, so nothing
+              in an email approves or rejects by being opened.</p>
+          </div>
+        </details>
+        <details class="full" id="slackSetup">
+          <summary>Approve and Reject right in Slack (buttons)</summary>
+          <ol class="hint steps">
+            <li>Set the public address above first: Slack sends each click there.</li>
+            <li><a href="https://api.slack.com/apps?new_app=1" target="_blank" rel="noopener">Create a Slack app</a>
+              → From a manifest → pick your workspace → paste this:
+              <pre id="slackManifest" class="manifest"></pre> <button type="button" class="btn" id="copyManifest">Copy manifest</button></li>
+            <li>Install it to your workspace and pick the channel for approvals. Paste the webhook URL it gives you above.</li>
+            <li>From the app's Basic Information page, copy the Signing Secret here:</li>
+          </ol>
+          <label>Slack app signing secret <input name="slack_signing_secret" type="password" autocomplete="off" placeholder="from Basic Information"></label>
+        </details>
         <label>One-tap links approve as
           <select name="notify_as" id="notifyAs"></select>
           <span class="hint">Whoever can see the notification can use its link, so pick the person who owns that phone / channel.</span></label>
@@ -703,9 +749,74 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
       </form>
     </section>
     <section class="card">
+      <div class="card-head"><h2>Send to your SIEM</h2></div>
+      <p class="lede">Every decision, as it happens: who, which tool, allowed, held or blocked and why, who approved. In batches,
+        in the background, so a slow SIEM never slows an agent.</p>
+      <form class="form-grid wide" id="siemForm">
+        <label>Format <select name="siem_format"><option value="json">Any HTTP endpoint (JSON)</option>
+          <option value="splunk">Splunk (HTTP Event Collector)</option><option value="datadog">Datadog (logs)</option></select></label>
+        <label class="full">URL <input name="siem_url" placeholder="https://splunk.example.com:8088/services/collector/event"></label>
+        <label class="full">Token <input name="siem_token" type="password" autocomplete="off"
+          placeholder="HEC token, Datadog API key, or a Bearer token"></label>
+        <div class="form-actions full"><button class="btn primary" type="submit">Save</button>
+          <button class="btn" type="button" id="siemTest">Send a test record</button><span class="hint" id="siemMsg"></span></div>
+      </form>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Customers</h2><span class="sub" id="custCount"></span></div>
+      <p class="lede">Agents copy what they read: a ticket's customer ends up in a pull request description or a public issue.
+        When an agent puts text where others can read it (a PR, an issue or comment, a gist, a chat post) and it names a
+        customer on this list, it waits for a person. Card numbers, social security numbers, IBANs and lists of people's
+        emails or phone numbers are held there too, with no list needed.</p>
+      <form class="form-grid wide" id="custForm">
+        <label class="full">Customer names, one per line
+          <textarea name="customers" rows="6" placeholder="Acme Corp&#10;Globex&#10;initech.com"></textarea>
+          <span class="hint">Whole names, any case. Add the forms people write: the company, its domain, a product name.
+            Kept on this gateway; only admins see the list.</span></label>
+        <div class="form-actions full"><button class="btn primary" type="submit">Save list</button>
+          <span class="hint" id="custMsg"></span></div>
+      </form>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Agents that connect by URL</h2><span class="sub">MCP</span></div>
+      <p class="lede">ChatGPT and claude.ai connectors, Devin, n8n and other cloud agents use MCP servers by URL. Add the app's
+        MCP server here and give the agent its Squidbrake URL instead: every call is checked like any other and recorded as
+        the agent that made it.</p>
+      <div class="tbl-wrap"><table class="events"><thead><tr><th>Name</th><th>URL for your agents</th><th>The app's server</th>
+        <th>Status</th><th></th></tr></thead><tbody id="mcpList"></tbody></table></div>
+      <p class="hint">The agent signs in with one of its keys (Team, add an AI agent): <code>Authorization: Bearer gw_…</code>.
+        If the app only takes a URL, add <code>?key=gw_…</code> to it, and treat that URL like a password.</p>
+      <form class="form-grid wide" id="mcpForm">
+        <label class="full">App <select name="app" id="mcpApp"><option value="">Another MCP server (fill in below)</option></select>
+          <span class="hint" id="mcpAppHint">Pick an app and only its token is left to paste.</span></label>
+        <label>Name <input name="name" placeholder="github" pattern="[a-z0-9][a-z0-9\-]{0,39}" required>
+          <span class="hint">Lowercase, used in the URL and in rules, e.g. github.create_issue</span></label>
+        <label>The app's MCP server URL <input name="url" placeholder="https://api.githubcopilot.com/mcp/" required></label>
+        <label>How it signs in <select name="auth" id="mcpAuth">
+            <option value="header">A token in a header</option>
+            <option value="oauth">Sign in to the app (OAuth)</option></select></label>
+        <label data-auth="header">Header it needs (optional) <input name="hname" placeholder="Authorization"></label>
+        <label data-auth="header">Header value <input name="hvalue" type="password" placeholder="Bearer ghp_…" autocomplete="off">
+          <span class="hint">Kept on this gateway and never shown again.</span></label>
+        <p class="hint full" data-auth="oauth" hidden>After adding it, click <b>Connect</b> and sign in to the app. Redirect URL, if the
+          app asks for one: <code id="mcpRedirect"></code></p>
+        <label data-auth="oauth" hidden>Your OAuth app's client ID (optional) <input name="client_id" autocomplete="off"
+          placeholder="only if the app needs its own OAuth app"></label>
+        <label data-auth="oauth" hidden>Client secret <input name="client_secret" type="password" autocomplete="off"></label>
+        <label data-auth="oauth" hidden>Scopes (optional) <input name="scope" placeholder="as the app's docs list them"></label>
+        <div class="form-actions full"><button class="btn primary" type="submit">Add server</button>
+          <span class="hint" id="mcpMsg"></span></div>
+      </form>
+    </section>
+    <section class="card">
       <div class="card-head"><h2>Rules</h2></div>
       <p class="lede">What agents may do is decided by <code>rules.yaml</code> on the gateway: allow, block, or hold for a person
         (optionally a specific role). Edits apply within seconds. Use <b>Test a rule</b> to check what would happen.</p>
+      <div id="ruleSuggest"></div>
+      <h3 class="sub-h">Starter packs</h3>
+      <p class="hint">Rules for a kind of agent, added to your rules.yaml after the read rule, so blocks above still win. A backup is kept.</p>
+      <div id="rulePacks" class="packs"></div>
+      <h3 class="sub-h">Test a rule</h3>
       <form class="form-grid" id="ruleTest">
         <label>Tool name <input name="name" placeholder="e.g. stripe.create_refund" required></label>
         <label>Agent (source) <input name="source" placeholder="optional"></label>
@@ -2048,7 +2159,23 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   }));
   const dur = (s) => s == null ? "—" : s < 60 ? `${Math.round(s)}s` : s < 3600 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`;
   const cells = (tbody, rows, empty) => $(tbody).replaceChildren(...(rows.length ? rows : [el("tr", {}, el("td", { colspan: "9", class: "muted", text: empty }))]));
+  let weeklyText = "";
+  async function loadCaught() {
+    let w;
+    try { w = await api("/v1/report/weekly", { days: repDays }); } catch { return; }
+    weeklyText = w.text;
+    $("#caughtSub").textContent = w.caught.length ? `last ${repDays === 1 ? "24 hours" : repDays + " days"}` : "nothing stopped in this period";
+    $("#caughtList").replaceChildren(...(w.caught.length ? w.caught.map((c) => el("tr", {},
+      el("td", {}, el("b", { text: c.outcome.charAt(0).toUpperCase() + c.outcome.slice(1) }),
+        ...(c.by ? [el("div", { class: "sub", text: `by ${c.by}${c.note ? ': "' + c.note + '"' : ""}` })] : [])),
+      el("td", {}, el("code", { text: c.what }), el("div", { class: "sub", text: c.agent || "" })),
+      el("td", { class: "sub", text: c.why }),
+      el("td", { class: "sub", text: c.effect || "—" })))
+      : [el("tr", {}, el("td", { colspan: 4, class: "sub", text: "Nothing was blocked, rejected, or (in shadow mode) would have been." }))]));
+  }
+  $("#copyWeekly").addEventListener("click", (e) => copy(weeklyText, e.target));
   async function loadReports() {
+    loadCaught();
     document.querySelectorAll("#repRange button").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.d === repDays)));
     const [r, log] = await Promise.all([api("/v1/reports/summary", { days: repDays }), api("/v1/audit/log", { limit: 40 })]);
     const s = r.by_status, a = r.approvals;
@@ -2155,13 +2282,155 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   const sForm = $("#settingsForm");
   async function loadSettings() {
     const [s, team] = await Promise.all([api("/v1/settings"), api("/v1/team")]);
-    for (const k of ["public_url", "ntfy_topic", "slack_webhook"]) sForm[k].value = s[k] || "";
+    for (const k of ["public_url", "ntfy_topic", "slack_webhook", "slack_signing_secret", "teams_webhook", "email_to",
+                     "smtp_host", "smtp_port", "smtp_user", "smtp_password", "smtp_from"]) sForm[k].value = s[k] || "";
+    if (s.smtp_host) $("#emailSetup").open = true;
+    for (const k of ["siem_url", "siem_token"]) $("#siemForm")[k].value = s[k] || "";
+    $("#siemForm").siem_format.value = s.siem_format || "json";
+    loadRuleHelp();
+    if (s.slack_signing_secret) $("#slackSetup").open = true;
+    api("/v1/slack/manifest").then((m) => { $("#slackManifest").textContent = JSON.stringify(m.manifest, null, 2); }).catch(() => {});
     sForm.weekly_digest.checked = !!s.weekly_digest;
     sForm.second_person.checked = !!s.second_person;
     const approvers = team.members.filter((m) => m.approver).map((m) => m.name);
     $("#notifyAs").replaceChildren(...approvers.map((n) => el("option", { value: n, text: n, selected: n === s.notify_as ? "" : null })));
+    $("#custForm").customers.value = (s.customers || []).join("\n");
+    $("#custCount").textContent = s.customers && s.customers.length ? `${s.customers.length} on the list` : "";
+    loadMcp();
   }
+  $("#custForm").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    try {
+      const s = await apiSend("PUT", "/v1/settings", { customers: ev.target.customers.value.split("\n") });
+      ev.target.customers.value = s.customers.join("\n");
+      $("#custCount").textContent = s.customers.length ? `${s.customers.length} on the list` : "";
+      $("#custMsg").textContent = "Saved ✓"; setTimeout(() => ($("#custMsg").textContent = ""), 3000);
+    } catch (err) { $("#custMsg").textContent = err.message; }
+  });
+
+  // ---------- MCP servers by URL
+  let mcpCatalog = [];
+  function showAuth(kind) {
+    $("#mcpForm").auth.value = kind;
+    document.querySelectorAll("#mcpForm [data-auth]").forEach((n) => { n.hidden = n.dataset.auth !== kind; });
+  }
+  $("#mcpAuth").addEventListener("change", (e) => showAuth(e.target.value));
+  async function loadMcpCatalog() {
+    if (mcpCatalog.length) return;
+    let r;
+    try { r = await api("/v1/mcp-catalog"); } catch { return; }
+    mcpCatalog = r.apps;
+    $("#mcpRedirect").textContent = r.redirect_uri.includes("<") ? location.origin + "/v1/mcp-oauth/callback" : r.redirect_uri;
+    const groups = {};
+    for (const a of mcpCatalog) (groups[a.category] = groups[a.category] || []).push(a);
+    $("#mcpApp").append(...Object.keys(groups).sort().map((cat) => el("optgroup", { label: cat },
+      ...groups[cat].map((a) => el("option", { value: a.id, text: a.name })))));
+  }
+  $("#mcpApp").addEventListener("change", () => {
+    const f = $("#mcpForm"), a = mcpCatalog.find((x) => x.id === f.app.value);
+    if (!a) { $("#mcpAppHint").textContent = "Pick an app and only its token is left to paste."; return; }
+    f.name.value = a.id; f.url.value = a.url;
+    const docs = el("a", { href: a.source, target: "_blank", rel: "noopener", text: "Docs" });
+    if (a.auth === "oauth") {
+      showAuth("oauth");
+      $("#mcpAppHint").replaceChildren("Add it, then click Connect and sign in to ", a.name, ". ",
+        ...(a.note ? [a.note + " "] : []), docs);
+      (a.own_app ? f.client_id : f.querySelector("button[type=submit]")).focus();
+      return;
+    }
+    showAuth("header");
+    f.hname.value = a.header; f.hvalue.value = ""; f.hvalue.placeholder = a.value.replace("<TOKEN>", "your token");
+    $("#mcpAppHint").replaceChildren(`Token: ${a.token}. Paste it as `, el("code", { text: a.value.replace("<TOKEN>", "…") }), ". ",
+      ...(a.note ? [a.note + " "] : []), docs);
+    f.hvalue.focus();
+  });
+  async function connectMcp(name, btn) {
+    btn.disabled = true; btn.textContent = "Starting…";
+    try {
+      const r = await apiSend("POST", `/v1/mcp-servers/${encodeURIComponent(name)}/connect`);
+      if (r.authorize_url) window.open(r.authorize_url, "_blank", "noopener");
+      btn.textContent = "Waiting for sign-in…";
+      for (let i = 0; i < 180; i++) {                    // up to 6 minutes for the person to sign in
+        await new Promise((res) => setTimeout(res, 2000));
+        const m = (await api("/v1/mcp-servers")).servers.find((s) => s.name === name);
+        if (m && (m.connected && String(m.sign_in || "").startsWith("connected") || String(m.sign_in || "").startsWith("sign-in failed"))) break;
+      }
+    } catch (err) { toast(err.message); }
+    loadMcp();
+  }
+  async function loadMcp() {
+    loadMcpCatalog();
+    let r;
+    try { r = await api("/v1/mcp-servers"); } catch { return; }
+    $("#mcpList").replaceChildren(...(r.servers.length ? r.servers.map((m) => {
+      const copyBtn = el("button", { class: "btn", type: "button", text: "Copy", onclick: (e) => copy(m.endpoint, e.target) });
+      const del = el("button", { class: "btn", type: "button", text: "Remove", onclick: async () => {
+        if (!confirm(`Remove ${m.name}? Agents using its URL stop reaching the app.`)) return;
+        try { await apiSend("DELETE", `/v1/mcp-servers/${encodeURIComponent(m.name)}`); loadMcp(); } catch (err) { toast(err.message); }
+      } });
+      const status = m.auth === "oauth"
+        ? el("td", {}, el("span", { text: m.connected ? "signed in" : "not signed in yet" }),
+            ...(m.sign_in && !String(m.sign_in).startsWith("connected") ? [el("div", { class: "sub", text: m.sign_in })] : []), " ",
+            el("button", { class: "btn", type: "button", text: m.connected ? "Reconnect" : "Connect",
+                           onclick: (e) => connectMcp(m.name, e.target) }))
+        : el("td", { text: m.running ? "running" : "starts on first use" });
+      return el("tr", {}, el("td", {}, el("b", { text: m.name })),
+        el("td", {}, el("code", { text: m.endpoint }), " ", copyBtn),
+        el("td", { class: "sub", text: (m.url || m.command || "") + (m.headers.length ? ` (+ ${m.headers.join(", ")})` : "")
+                                      + (m.auth === "oauth" ? ` (OAuth${m.own_app ? ", your app" : ""})` : "") }),
+        status, el("td", {}, del));
+    }) : [el("tr", {}, el("td", { colspan: 5, class: "sub", text: "None yet. Add one below." }))]));
+  }
+  $("#mcpForm").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const f = ev.target, headers = {}, oauth = f.auth.value === "oauth";
+    if (!oauth && f.hname.value.trim() && f.hvalue.value) headers[f.hname.value.trim()] = f.hvalue.value;
+    const body = oauth ? { url: f.url.value.trim(), auth: "oauth", client_id: f.client_id.value.trim() || null,
+                           client_secret: f.client_secret.value || null, scope: f.scope.value.trim() || null }
+                       : { url: f.url.value.trim(), headers };
+    try {
+      const m = await apiSend("PUT", `/v1/mcp-servers/${encodeURIComponent(f.name.value.trim())}`, body);
+      $("#mcpMsg").textContent = oauth ? `Added. Now click Connect next to ${m.name} and sign in.`
+                                       : `Added. Give your agent ${m.endpoint}`;
+      f.reset(); showAuth("header"); loadMcp();
+    } catch (err) { $("#mcpMsg").textContent = err.message; }
+  });
   $("#useOrigin").addEventListener("click", () => { sForm.public_url.value = location.origin; });
+  $("#copyManifest").addEventListener("click", (e) => copy($("#slackManifest").textContent, e.target));
+  $("#siemForm").addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    const f = ev.target;
+    try {
+      await apiSend("PUT", "/v1/settings", { siem_url: f.siem_url.value.trim(), siem_token: f.siem_token.value,
+                                             siem_format: f.siem_format.value });
+      $("#siemMsg").textContent = f.siem_url.value.trim() ? "Saved ✓ Decisions now go there." : "Saved ✓ (off)";
+    } catch (err) { $("#siemMsg").textContent = err.message; }
+  });
+  $("#siemTest").addEventListener("click", async () => {
+    try { const r = await apiPost("/v1/settings/siem-test"); $("#siemMsg").textContent = r.ok ? "Delivered ✓" : r.error; }
+    catch (err) { $("#siemMsg").textContent = err.message; }
+  });
+  async function loadRuleHelp() {
+    let s, p;
+    try { [s, p] = await Promise.all([api("/v1/policy/suggestions"), api("/v1/policy/packs")]); } catch { return; }
+    $("#ruleSuggest").replaceChildren(...(s.suggestions.length ? [el("h3", { class: "sub-h", text: "Suggested: stop asking about these" }),
+      ...s.suggestions.map((x) => el("div", { class: "suggest" },
+        el("div", { class: "grow" }, el("code", { text: x.what }),
+          el("div", { class: "sub", text: `approved ${x.approved} times in 30 days, never rejected${x.held_by ? " · held by " + x.held_by : ""}` })),
+        el("button", { class: "btn", type: "button", text: "Allow it", title: x.yaml, onclick: async (e) => {
+          if (!confirm(`Add this rule to rules.yaml?\n\n${x.yaml}`)) return;
+          try { await apiPost(`/v1/policy/suggestions/${encodeURIComponent(x.id)}/apply`); toast("Rule added"); loadRuleHelp(); }
+          catch (err) { toast(err.message); }
+        } })))] : []));
+    $("#rulePacks").replaceChildren(...p.packs.map((x) => el("div", { class: "pack" }, el("b", { text: x.title }),
+      el("p", { text: x.about }),
+      x.added ? el("span", { class: "sub", text: "Added ✓" }) : el("button", { class: "btn", type: "button", text: "Add pack",
+        title: x.yaml, onclick: async () => {
+          if (!confirm(`Add the ${x.title} rules to rules.yaml?\n\n${x.yaml}`)) return;
+          try { await apiPost(`/v1/policy/packs/${x.id}/apply`); toast(`${x.title} rules added`); loadRuleHelp(); }
+          catch (err) { toast(err.message); }
+        } }))));
+  }
   $("#genTopic").addEventListener("click", () => {
     const b = new Uint8Array(9); crypto.getRandomValues(b);
     sForm.ntfy_topic.value = "gw-" + Array.from(b, (x) => x.toString(36).padStart(2, "0")).join("").slice(0, 16);
@@ -2170,7 +2439,12 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     ev.preventDefault();
     try {
       await apiSend("PUT", "/v1/settings", { public_url: sForm.public_url.value.trim(), ntfy_topic: sForm.ntfy_topic.value.trim(),
-        slack_webhook: sForm.slack_webhook.value.trim(), notify_as: sForm.notify_as.value || null, weekly_digest: sForm.weekly_digest.checked,
+        slack_webhook: sForm.slack_webhook.value.trim(), slack_signing_secret: sForm.slack_signing_secret.value.trim(),
+        teams_webhook: sForm.teams_webhook.value.trim(), email_to: sForm.email_to.value.trim(),
+        smtp_host: sForm.smtp_host.value.trim(), smtp_port: sForm.smtp_port.value ? +sForm.smtp_port.value : null,
+        smtp_user: sForm.smtp_user.value.trim(), smtp_password: sForm.smtp_password.value,
+        smtp_from: sForm.smtp_from.value.trim(),
+        notify_as: sForm.notify_as.value || null, weekly_digest: sForm.weekly_digest.checked,
         second_person: sForm.second_person.checked });
       $("#settingsMsg").textContent = "Saved ✓"; setTimeout(() => ($("#settingsMsg").textContent = ""), 3000);
     } catch (err) { $("#settingsMsg").textContent = err.message; }

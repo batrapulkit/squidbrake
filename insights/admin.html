@@ -223,14 +223,14 @@ function message(company, link, hosted) {
 
 async function load() {
   if (!key) return login();
-  let d, me, asks, inv;
-  try { [d, me, asks, inv] = await Promise.all([api("/v1/admin/overview"), api("/v1/admin/me"), api("/v1/admin/team-requests"),
-                                                api("/v1/admin/traction")]); }
+  let d, me, asks, inv, fails;
+  try { [d, me, asks, inv, fails] = await Promise.all([api("/v1/admin/overview"), api("/v1/admin/me"), api("/v1/admin/team-requests"),
+                                                api("/v1/admin/traction"), api("/v1/admin/install-reports")]); }
   catch (e) { if (e.message !== "unauthorized") app.innerHTML = `<main><p class="err">${esc(e.message)}</p></main>`; return; }
   const w = d.week;
   app.innerHTML = `
     <div class="top"><div class="in"><div class="brand">Squid<b>brake</b> <small>Pilots</small></div>
-      <nav><a href="#week">This week</a><a href="#stopped">Stopped</a><a href="#traction">Traction</a><a href="#pilots">Pilots</a><a href="#requests">Requests</a><a href="#new">New pilot</a></nav>
+      <nav><a href="#week">This week</a><a href="#stopped">Stopped</a><a href="#traction">Traction</a><a href="#pilots">Pilots</a><a href="#requests">Requests</a><a href="#fails">Failed installs</a><a href="#new">New pilot</a></nav>
       <span class="spacer"></span>
       <button class="btn ghost" id="refresh">Refresh</button><button class="btn ghost" id="pw">${me.has_password ? "Password" : "Set password"}</button>
       <button class="btn ghost" id="logout">Sign out</button></div></div>
@@ -259,6 +259,7 @@ async function load() {
         : `<div class="surface empty">No pilots yet. Create a link below and send it to a founder.</div>`}
     </section>
     ${teamPanel(asks)}
+    ${failsPanel(fails)}
     <section id="new"><div class="sec-h"><h2>New pilot</h2><span class="sub">Creates a setup link; with Hosted, their own dashboard too</span></div>
       <div class="surface"><form class="new" id="nf"><input id="nc" placeholder="Company, e.g. Pilot C" required maxlength="80">
         <input id="nk" placeholder="Contact (name, email, phone)" maxlength="120">
@@ -291,6 +292,10 @@ async function load() {
     const v = prompt(`Monthly revenue from ${b.dataset.name}, in dollars (0 = not paying):`, b.dataset.mrr || "");
     if (v === null || !/^\d+$/.test(v.trim())) return;
     await api(`/v1/admin/pilots/${encodeURIComponent(b.dataset.code)}/revenue`, { method: "POST", body: JSON.stringify({ mrr: Number(v.trim()) }) });
+    load();
+  });
+  document.querySelectorAll("[data-rdone]").forEach((b) => b.onclick = async () => {
+    await api(`/v1/admin/install-reports/${b.dataset.rdone}`, { method: "POST", body: JSON.stringify({ done: b.dataset.to === "1" }) });
     load();
   });
   document.querySelectorAll("[data-done]").forEach((b) => b.onclick = async () => {
@@ -350,6 +355,23 @@ function tractionUpdate(v) {
 
 // Teams that filled in /team (from `connect all`, the dashboard, or a shared link): people who installed on their own
 const FROM = { cli: "connect all", dashboard: "dashboard", github: "GitHub", site: "website" };
+// Installs that failed, sent from the installer after a yes: the last lines pip / uv printed, home folder as ~
+function failsPanel(fails) {
+  const open = fails.filter((f) => !f.done);
+  const rows = fails.slice(0, 50).map((f) => `<tr${f.done ? ' style="opacity:.55"' : ""}>
+    <td><b>${esc(f.company || "Not a pilot")}</b><div class="mini">${esc(f.installer === "ps1" ? "Windows installer" : f.installer === "sh" ? "Mac / Linux installer" : "")}</div></td>
+    <td>${esc(f.os || "–")}<div class="mini">${ago(f.created_at)}</div></td>
+    <td style="max-width:220px">${esc(f.step || "–")}</td>
+    <td><pre style="max-width:560px;max-height:220px;overflow:auto;white-space:pre-wrap;margin:0;font-size:12px">${esc(f.log)}</pre></td>
+    <td><button class="btn" data-rdone="${f.id}" data-to="${f.done ? 0 : 1}">${f.done ? "Reopen" : "Mark fixed"}</button></td></tr>`).join("");
+  return `<section id="fails"><div class="sec-h"><h2>Failed installs</h2>
+      <span class="sub">${open.length ? `${open.length} to look at` : "Sent by the installer when it fails, only after the person says yes"}</span></div>
+    ${fails.length ? `<div class="table-wrap"><table><thead><tr><th>Who</th><th>Computer</th><th>Where it stopped</th>
+      <th>What it said</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : `<div class="surface empty">None yet. When an install fails, the installer asks whether to send its last lines here.</div>`}
+  </section>`;
+}
+
 function teamPanel(asks) {
   const open = asks.filter((a) => !a.done);
   const rows = asks.slice(0, 50).map((a) => `<tr${a.done ? ' style="opacity:.55"' : ""}>

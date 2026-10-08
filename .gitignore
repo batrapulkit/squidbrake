@@ -13,3 +13,4 @@ __pycache__/
 
 # the marketing site is a separate project
 squidbreak-site/
+tools/

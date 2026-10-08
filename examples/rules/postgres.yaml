@@ -1,0 +1,162 @@
+# Example policy for Postgres / Supabase MCP servers wrapped with
+# `connect.py wrap --app postgres` (tools show as postgres.<tool>).
+# Globs are `*.tool` so wrapping the Supabase server as --app supabase works too.
+#
+# Checked (tool names from source, not guesses):
+#   - @supabase/mcp-server-supabase 0.13.0 (tag mcp-server-supabase-v0.13.0)
+#     and github.com/supabase/mcp main @ 8a265089 (2026-10-06), which adds
+#     notebooks behind features=notebooks (not in 0.13.0, not a default group)
+#   - @modelcontextprotocol/server-postgres 0.6.2 (archived
+#     modelcontextprotocol/servers-archived src/postgres; in-file version 0.1.0).
+#     Only tool is query; input field is sql
+#
+# SQL on execute_sql / query is deny, then review, then allow. Regexes are
+# case-insensitive (the matcher compiles with re.I) and search json.dumps of
+# the call input, so newlines are \n and quotes are \". Unclassified SQL waits.
+default: review
+default_reason: Postgres / Supabase changes require approval
+
+rules:
+  # ---- SQL: never
+  # Leading statement keyword after whitespace, escaped newlines, or a -- / /* */
+  # comment, including after `;`. SELECT ... 'drop off' is not a leading DROP.
+  - id: block-sql-drop-truncate
+    action: deny
+    reason: Dropping or truncating database objects is not allowed
+    match:
+      name: ["*.execute_sql", "*.query", "*.apply_migration"]
+      input_regex: '"(query|sql)"\s*:\s*"(?:(?:(?:\\[nrt]|\s|--(?:[^"\\]|\\[nrt]|\\.)*?(?:\\n)|/\*(?:[^"\\]|\\.)*?\*/)*)(?:DROP|TRUNCATE)\b|(?:[^"\\]|\\.)*;(?:(?:\\[nrt]|\s|--(?:[^"\\]|\\[nrt]|\\.)*?(?:\\n)|/\*(?:[^"\\]|\\.)*?\*/)*)(?:DROP|TRUNCATE)\b)'
+
+  # ALTER / GRANT / REVOKE / CREATE ROLE on ad-hoc SQL only. apply_migration is
+  # wait at minimum; a migration that ALTERs is the usual case, so it is not
+  # denied here and falls to the apply_migration review rule.
+  - id: block-sql-ddl
+    action: deny
+    reason: ALTER, GRANT/REVOKE, and CREATE ROLE are not allowed
+    match:
+      name: ["*.execute_sql", "*.query"]
+      input_regex: '"(query|sql)"\s*:\s*"(?:(?:(?:\\[nrt]|\s|--(?:[^"\\]|\\[nrt]|\\.)*?(?:\\n)|/\*(?:[^"\\]|\\.)*?\*/)*)(?:ALTER|GRANT|REVOKE|CREATE\s+(?:ROLE|USER|GROUP))\b|(?:[^"\\]|\\.)*;(?:(?:\\[nrt]|\s|--(?:[^"\\]|\\[nrt]|\\.)*?(?:\\n)|/\*(?:[^"\\]|\\.)*?\*/)*)(?:ALTER|GRANT|REVOKE|CREATE\s+(?:ROLE|USER|GROUP))\b)'
+
+  # ---- SQL: a person decides
+  # INSERT/UPDATE/DELETE/MERGE, COPY, DO, SELECT ... INTO, write CTEs, CREATE
+  # (tables etc.; CREATE ROLE is already denied). Keyword-in-identifier false
+  # positives wait for a person.
+  - id: review-sql-writes
+    action: review
+    reason: This SQL writes or changes the schema
+    match:
+      name: ["*.execute_sql", "*.query"]
+      input_regex: '\b(insert|update|delete|merge|create|copy|call|do|into|refresh|reindex|vacuum|lock|execute|prepare|import|load|listen|notify|checkpoint|discard|cluster)\b'
+
+  - id: review-sql-explain-analyze
+    action: review
+    reason: EXPLAIN ANALYZE can run the statement
+    match:
+      name: ["*.execute_sql", "*.query"]
+      input_regex: '\bEXPLAIN\b(?:[^;"\\]|\\.)*\bANALY[SZ]E\b'
+
+  # Fail-closed: any identifier( that is not a small allowlist of common
+  # read-only functions (count/sum/avg/..., now, coalesce, lower/upper, ...).
+  # AS/FROM/IN/OVER/... before ( are SQL syntax, not calls. Quoted names before
+  # ( always wait. `.ident(` is a schema-qualified call and waits even when
+  # ident is allowlisted (evil.count, public.lower). This is not a parser;
+  # unknown or schema-qualified side effects wait, including
+  # pg_terminate_backend, setval, dblink.
+  - id: review-sql-functions
+    action: review
+    reason: This SQL calls a function that has not been proven read-only
+    match:
+      name: ["*.execute_sql", "*.query"]
+      input_regex: '(?:\.[a-z_][a-z0-9_]*\s*\(|\\"[^"\\]*(?:\\.[^"\\]*)*\\"\s*\(|\b(?!(?:count|sum|avg|min|max|now|coalesce|nullif|greatest|least|lower|upper|length|char_length|btrim|trim|ltrim|rtrim|substr|substring|concat|concat_ws|left|right|date_trunc|date_part|extract|age|to_char|to_date|to_timestamp|abs|round|ceil|ceiling|floor|trunc|mod|cast|unnest|generate_series|row_number|rank|dense_rank|lag|lead|ntile|first_value|last_value|array_agg|string_agg|json_agg|jsonb_agg|bool_and|bool_or|current_date|current_time|current_timestamp|replace|position|strpos|split_part|format|overlay|to_json|to_jsonb|jsonb_typeof|pg_typeof|as|from|in|on|and|or|where|having|join|using|select|with|union|except|intersect|case|when|then|else|not|over|lateral|values|set|by|is|exists|between|like|ilike)\s*\()[a-z_][a-z0-9_]*\s*\()'
+
+  # auth./vault. schemas (Supabase) and catalog password tables. Word-bounded
+  # so a column `author` or table `oauth_tokens` still allows. Quoted forms
+  # (`"auth"."users"`) arrive in json.dumps as \".
+  - id: review-sql-secret-tables
+    action: review
+    reason: Reading auth, vault, or password catalog tables needs approval
+    match:
+      name: ["*.execute_sql", "*.query"]
+      input_regex: '(?:\bauth\.|\\"auth\\"\.|\bvault\.|\\"vault\\"\.|\bpg_authid\b|\\"pg_authid\\"|\bpg_shadow\b|\\"pg_shadow\\")'
+
+  # ---- SQL: reads run
+  # One JSON string starting with SELECT, WITH or EXPLAIN, with no `;`.
+  # EXPLAIN ANALYZE is held above. [^;"\\] so a JSON-escaped quote cannot
+  # close the string early and hide a second statement.
+  - id: allow-sql-select
+    action: allow
+    reason: Read-only SQL
+    match:
+      name: ["*.execute_sql", "*.query"]
+      input_regex: '"(query|sql)"\s*:\s*"(?:\\[nrt]|\s)*(SELECT|WITH|EXPLAIN)\b(?:[^;"\\]|\\.)*"'
+
+  # ---- never allowed (named tools)
+  # Current Supabase MCP has no delete_project; the glob is there so a later
+  # server that adds one stays blocked. Resetting a branch is the closest
+  # "reset the database" tool; there is no reset_database.
+  - id: block-destructive-postgres
+    action: deny
+    reason: Deleting or pausing a project or branch, or resetting a branch, is not allowed
+    match:
+      name: ["*.delete_project", "*.delete_branch", "*.pause_project", "*.reset_branch"]
+
+  # ---- changes: a person decides
+  - id: review-postgres-schema-and-functions
+    action: review
+    reason: Applying a migration or deploying a function changes production
+    match:
+      name: ["*.apply_migration", "*.deploy_edge_function"]
+
+  - id: review-postgres-create-and-branch
+    action: review
+    reason: Creating a project or branch, or merging or rebasing a branch, needs approval
+    match:
+      name: ["*.create_project", "*.create_branch", "*.merge_branch", "*.rebase_branch"]
+
+  - id: review-postgres-cost-and-restore
+    action: review
+    reason: Confirming spend or restoring a project needs approval
+    match:
+      name: ["*.confirm_cost", "*.restore_project"]
+
+  # create_edge_function_secret is registered only when the server sets
+  # elicitation.secretCollection (0.13.0 and 8a265089). Storage tools exist in
+  # both; they are off unless features=storage (documented, not a hidden flag).
+  - id: review-postgres-secrets-and-storage
+    action: review
+    reason: Changing Edge Function secrets or storage config needs approval
+    match:
+      name: ["*.create_edge_function_secret", "*.update_storage_config"]
+
+  # ---- looking is fine
+  # No list_schemas tool: list_tables takes a schemas list. query_logs is
+  # read-only ClickHouse against logs (field sql), not Postgres execute_sql;
+  # get_logs stays registered but is hidden when query_logs is available.
+  # get_publishable_keys returns anon/publishable keys, not service_role.
+  # list_notebooks / get_notebook are not in 0.13.0; on later main they exist
+  # only behind features=notebooks, which is not a default group, so omitted.
+  - id: allow-postgres-reads
+    action: allow
+    reason: Read-only Postgres / Supabase operation
+    match:
+      name:
+        - "*.list_tables"
+        - "*.list_extensions"
+        - "*.list_migrations"
+        - "*.list_projects"
+        - "*.list_organizations"
+        - "*.list_edge_functions"
+        - "*.list_branches"
+        - "*.list_storage_buckets"
+        - "*.get_project"
+        - "*.get_organization"
+        - "*.get_cost"
+        - "*.get_logs"
+        - "*.get_advisors"
+        - "*.get_project_url"
+        - "*.get_publishable_keys"
+        - "*.get_edge_function"
+        - "*.get_storage_config"
+        - "*.query_logs"
+        - "*.search_docs"
+        - "*.generate_typescript_types"

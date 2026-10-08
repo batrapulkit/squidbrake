@@ -1,13 +1,13 @@
 {
   "name": "squidbrake",
   "displayName": "Squidbrake",
-  "version": "0.7.2",
-  "description": "Brakes for Claude Code: every tool call is checked against your rules before it runs. Destructive commands are blocked, risky ones wait for your approval (dashboard, phone or Slack), and everything is recorded in a tamper-evident audit trail.",
+  "version": "0.7.9",
+  "description": "Change control for Claude Code: every command and edit goes on a tamper-evident record (which agent, what changed, who approved it). Risky ones wait for a person to sign off (dashboard, phone or Slack), destructive ones keep an undo, and the ones your rules forbid never run.",
   "author": { "name": "Pulkit Batra", "url": "https://github.com/batrapulkit" },
   "homepage": "https://github.com/batrapulkit/squidbrake",
   "repository": "https://github.com/batrapulkit/squidbrake",
   "license": "Apache-2.0",
-  "keywords": ["security", "guardrails", "approval", "audit", "human-in-the-loop"],
+  "keywords": ["change-control", "security", "approval", "audit", "human-in-the-loop"],
   "userConfig": {
     "gateway_url": {
       "type": "string",

@@ -26,7 +26,7 @@ def hook(monkeypatch, tmp_path):
     monkeypatch.setattr(server, "policy", server.Policy(ROOT / "rules.yaml"))   # the shipped rules, put back afterwards
     monkeypatch.setattr(claude_hook, "STATE_DIR", tmp_path)
     monkeypatch.setattr(claude_hook, "GATEWAY_API_KEY", "k1")
-    monkeypatch.setattr(claude_hook.httpx, "Client", lambda base_url, headers, timeout: TestClient(server.app, headers=headers))
+    monkeypatch.setattr(claude_hook.httpx, "Client", lambda base_url, headers, timeout, **kw: TestClient(server.app, headers=headers))
 
     def run(event: dict) -> str:
         monkeypatch.setattr(sys, "stdin", io.TextIOWrapper(io.BytesIO(json.dumps({"session_id": "hook-test", **event}).encode("utf-8"))))

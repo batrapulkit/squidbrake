@@ -1,12 +1,13 @@
 # Squidbrake for Claude Code (plugin)
 
-Sends every Claude Code tool call (Bash, PowerShell, Edit, Write, Read, WebFetch, MCP tools) through
-[Squidbrake](https://github.com/batrapulkit/squidbrake) before it runs:
+Change control for Claude Code. Every tool call (Bash, PowerShell, Edit, Write, Read, WebFetch, MCP tools) goes
+through [Squidbrake](https://github.com/batrapulkit/squidbrake) before it runs, and onto its record:
 
-- `rm -rf ~/`, `rmdir /s /q d:\`, wiping a disk: **blocked**, and Claude is told why
-- `git push --force`, `terraform destroy`, destructive SQL, cloud deletes: **wait for you** (dashboard, phone or Slack)
+- everything: recorded in a tamper-evident record (which agent, what it changed, who approved it, what led to it)
+- `git push --force`, `terraform destroy`, destructive SQL, cloud deletes: **wait for a person to sign off**
+  (dashboard, phone or Slack), and destructive ones keep an undo
 - `ls`, `git status`, reading files: run as normal
-- everything: recorded in a tamper-evident audit trail
+- `rm -rf ~/`, `rmdir /s /q d:\`, wiping a disk: never run, and Claude is told why
 
 ## Install
 

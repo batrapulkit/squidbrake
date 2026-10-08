@@ -38,7 +38,9 @@ def test_guard_and_restore(tmp_path, monkeypatch):
     assert gh["args"][:3] == [str(connect.PROXY), "--app", "github"] and gh["args"][3:] == ["--", "npx", "-y", "@modelcontextprotocol/server-github"]
     assert gh["env"] == {"GITHUB_TOKEN": "t", "GATEWAY_URL": URL, "GATEWAY_API_KEY": KEY, "GATEWAY_SOURCE": "cursor"}
     assert g["mcpServers"]["linear"]["args"][-2:] == ["--url", "https://mcp.linear.app/sse"]
-    assert g["mcpServers"]["private-api"] == original["mcpServers"]["private-api"]      # can't carry its headers: left alone
+    # a remote server with its own auth: guarded too, its headers carried to it through the proxy
+    assert g["mcpServers"]["private-api"]["args"][-4:] == ["--url", "https://api.internal/mcp", "--header",
+                                                           "Authorization: Bearer x"]
     assert g["otherSetting"] is True
     v = json.loads(vscode.read_text(encoding="utf-8"))["servers"]["db"]
     assert v["type"] == "stdio" and v["args"][-3:] == ["--", "uvx", "mcp-db"]

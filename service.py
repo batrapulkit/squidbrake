@@ -202,8 +202,27 @@ def _win_stop_running() -> None:
         pid = json.loads(_win_state().read_text(encoding="utf-8")).get("pid")
     except (OSError, ValueError):
         return
-    if pid:
+    if pid and _is_python(pid):    # a saved pid can belong to another program by now (after a crash or reboot)
         _run("taskkill", "/PID", str(pid), "/T", "/F")
+
+
+def _is_python(pid: int) -> bool:
+    """Is process pid a Python (the supervisor runs as pythonw.exe)?"""
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        h = k.OpenProcess(0x1000, False, int(pid))          # PROCESS_QUERY_LIMITED_INFORMATION
+        if not h:
+            return False
+        try:
+            buf, n = ctypes.create_unicode_buffer(1024), ctypes.c_ulong(1024)
+            if not k.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(n)):
+                return False
+            return Path(buf.value).name.lower() in ("pythonw.exe", "python.exe") or "python" in Path(buf.value).name.lower()
+        finally:
+            k.CloseHandle(h)
+    except (AttributeError, OSError, ValueError):
+        return False
 
 
 def _win_remove() -> bool:
@@ -237,11 +256,21 @@ def supervise() -> int:
     cfg["pid"] = os.getpid()
     path.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    quick = 0
     while True:
+        started = time.monotonic()
         with open(cfg["log"], "a", encoding="utf-8") as log:
-            subprocess.call(cfg["command"], cwd=cfg["cwd"], env={**os.environ, **cfg["env"]},
+            # its output goes to a file: UTF-8, or a name like C:\Users\राहुल in what it prints would stop it
+            subprocess.call(cfg["command"], cwd=cfg["cwd"], env={**os.environ, "PYTHONIOENCODING": "utf-8", **cfg["env"]},
                             stdout=log, stderr=subprocess.STDOUT, creationflags=flags)
-        time.sleep(2)
+        quick = quick + 1 if time.monotonic() - started < 30 else 0
+        time.sleep(restart_delay(quick))
+
+
+def restart_delay(quick: int) -> float:
+    """Seconds before starting it again: 2 s after a crash, longer each time it stops right away (port taken, broken
+    install), up to 5 minutes, so a gateway that can't start doesn't fill the log and the processor."""
+    return min(2.0 * 2 ** max(quick - 1, 0), 300.0)
 
 
 # --------------------------------------------------------------------------- entry points
@@ -310,7 +339,11 @@ def _ask(kind: str) -> bool | None:
     except (EOFError, KeyboardInterrupt):
         print()
         return None
-    return answer in ("y", "yes")
+    if answer not in ("y", "yes"):
+        print("\nRunning in this window. Keep it open: while Squidbrake isn't running, your agents' actions are blocked.\n"
+              f"Start it again with: {_cli('start')}   (or in the background: {_cli('start --background')})\n")
+        return False
+    return True
 
 
 def wants_background(kind: str) -> bool:

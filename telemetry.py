@@ -38,7 +38,7 @@ SHIPPED_KEY = "phc_muPqCNPamFR8iPaewdgVWqdcrGburJSXeySGHqXatZnU"   # PostHog > P
 POSTHOG_KEY = os.getenv("SQUIDBRAKE_POSTHOG_KEY", SHIPPED_KEY)
 POSTHOG_HOST = os.getenv("SQUIDBRAKE_POSTHOG_HOST", "https://us.i.posthog.com")
 QUIET = {"hook", "agent-hook", "shell-guard", "proxy", "telemetry", "register"}  # never ask, never send
-COMMANDS = {"start", "connect", "doctor", "lockdown", "evidence", "undo", "pilot", "add-key", "keys", "verify"}
+COMMANDS = {"start", "setup", "connect", "doctor", "lockdown", "evidence", "undo", "pilot", "add-key", "keys", "verify"}
 WHAT_IS_SENT = __doc__.split("What is sent, once each time you run a command:")[1].strip()
 # the gateway's counts go where `squidbrake connect all` sends them (connect.py), as the community "pilot"
 COMMUNITY_SERVER, COMMUNITY_CODE = "https://pilots.squidbrake.com", "community-opt-in-ins-a42929"
@@ -169,7 +169,9 @@ def maybe(argv: list[str], version: str) -> None:
         return
     cfg = load()
     if "enabled" not in cfg:
-        if not _interactive() or "--yes" in argv or any(a in ("-h", "--help") for a in argv):
+        # not during `pilot join` either: the installer runs it, and two questions with opposite defaults (this one
+        # Yes, the pilot's No) would put a founder who presses Enter in the community pilot instead of theirs
+        if command == "pilot" or not _interactive() or "--yes" in argv or any(a in ("-h", "--help") for a in argv):
             return
         cfg = _ask_once(cfg, version)
     if cfg.get("enabled") and POSTHOG_KEY:
