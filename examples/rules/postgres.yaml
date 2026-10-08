@@ -58,26 +58,28 @@ rules:
   # Fail-closed: any identifier( that is not a small allowlist of common
   # read-only functions (count/sum/avg/..., now, coalesce, lower/upper, ...).
   # AS/FROM/IN/OVER/... before ( are SQL syntax, not calls. Quoted names before
-  # ( always wait. `.ident(` is a schema-qualified call and waits even when
-  # ident is allowlisted (evil.count, public.lower). This is not a parser;
-  # unknown or schema-qualified side effects wait, including
+  # ( always wait. `.ident(` is a schema-qualified call (optional space/tab
+  # and JSON-escaped \n \t \r after the dot) and waits even when ident is
+  # allowlisted (evil.count, public.lower, public. lower). This is not a
+  # parser; unknown or schema-qualified side effects wait, including
   # pg_terminate_backend, setval, dblink.
   - id: review-sql-functions
     action: review
     reason: This SQL calls a function that has not been proven read-only
     match:
       name: ["*.execute_sql", "*.query"]
-      input_regex: '(?:\.[a-z_][a-z0-9_]*\s*\(|\\"[^"\\]*(?:\\.[^"\\]*)*\\"\s*\(|\b(?!(?:count|sum|avg|min|max|now|coalesce|nullif|greatest|least|lower|upper|length|char_length|btrim|trim|ltrim|rtrim|substr|substring|concat|concat_ws|left|right|date_trunc|date_part|extract|age|to_char|to_date|to_timestamp|abs|round|ceil|ceiling|floor|trunc|mod|cast|unnest|generate_series|row_number|rank|dense_rank|lag|lead|ntile|first_value|last_value|array_agg|string_agg|json_agg|jsonb_agg|bool_and|bool_or|current_date|current_time|current_timestamp|replace|position|strpos|split_part|format|overlay|to_json|to_jsonb|jsonb_typeof|pg_typeof|as|from|in|on|and|or|where|having|join|using|select|with|union|except|intersect|case|when|then|else|not|over|lateral|values|set|by|is|exists|between|like|ilike)\s*\()[a-z_][a-z0-9_]*\s*\()'
+      input_regex: '(?:\.(?:\\[nrt]|\s)*[a-z_][a-z0-9_]*\s*\(|\\"[^"\\]*(?:\\.[^"\\]*)*\\"\s*\(|\b(?!(?:count|sum|avg|min|max|now|coalesce|nullif|greatest|least|lower|upper|length|char_length|btrim|trim|ltrim|rtrim|substr|substring|concat|concat_ws|left|right|date_trunc|date_part|extract|age|to_char|to_date|to_timestamp|abs|round|ceil|ceiling|floor|trunc|mod|cast|unnest|generate_series|row_number|rank|dense_rank|lag|lead|ntile|first_value|last_value|array_agg|string_agg|json_agg|jsonb_agg|bool_and|bool_or|current_date|current_time|current_timestamp|replace|position|strpos|split_part|format|overlay|to_json|to_jsonb|jsonb_typeof|pg_typeof|as|from|in|on|and|or|where|having|join|using|select|with|union|except|intersect|case|when|then|else|not|over|lateral|values|set|by|is|exists|between|like|ilike)\s*\()[a-z_][a-z0-9_]*\s*\()'
 
   # auth./vault. schemas (Supabase) and catalog password tables. Word-bounded
-  # so a column `author` or table `oauth_tokens` still allows. Quoted forms
-  # (`"auth"."users"`) arrive in json.dumps as \".
+  # so a column `author` or table `oauth_tokens` still allows. Optional
+  # space/tab and JSON-escaped \n \t \r around the dot (`auth . users`,
+  # `"auth" . "users"`). Quoted forms arrive in json.dumps as \".
   - id: review-sql-secret-tables
     action: review
     reason: Reading auth, vault, or password catalog tables needs approval
     match:
       name: ["*.execute_sql", "*.query"]
-      input_regex: '(?:\bauth\.|\\"auth\\"\.|\bvault\.|\\"vault\\"\.|\bpg_authid\b|\\"pg_authid\\"|\bpg_shadow\b|\\"pg_shadow\\")'
+      input_regex: '(?:(?:\bauth|\\"auth\\"|\bvault|\\"vault\\")(?:\\[nrt]|\s)*\.(?:\\[nrt]|\s)*|\bpg_authid\b|\\"pg_authid\\"|\bpg_shadow\b|\\"pg_shadow\\")'
 
   # ---- SQL: reads run
   # One JSON string starting with SELECT, WITH or EXPLAIN, with no `;`.
