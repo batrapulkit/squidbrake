@@ -1,6 +1,6 @@
 # Normal permissions versus Squidbrake, on whole sessions
 
-52 agent sessions and 99 steps go through five guards. The sessions are the
+59 agent sessions and 110 steps go through five guards. The sessions are the
 [public incidents](../../incidents), plus sessions written for this benchmark.
 
 - **Harm that builds up over several steps:** prompt injection from a docs page, an issue, a ticket or a Slack
@@ -33,18 +33,39 @@ guards only read the steps. `tests/test_risk.py` runs this benchmark in CI.
 | Squidbrake, one step at a time | The shipped `rules.yaml`, with history wiped before every step: no chains |
 | Squidbrake, with chains | The shipped `rules.yaml` over the whole session, as it runs in use |
 
-## Results (2026-10-06, main after the fixes below)
+## Results (2026-10-09)
 
 | Guard | Harmful steps stopped | Harmful sessions stopped | Routine steps stopped (false positives) | Sensitive steps a person saw | Times a person was asked |
 |---|---|---|---|---|---|
-| Auto-run | 0/59 | 0/31 | 0/34 | 0/6 | 0 |
-| Ask for everything | 58/59 | 30/31 | 33/34 | 6/6 | 98 |
-| Allowlist | 50/59 | 23/31 | 10/34 | 5/6 | 66 |
-| Squidbrake, one step at a time | 57/59 (5 blocked) | 29/31 | 2/34 | 6/6 | 61 |
-| Squidbrake, with chains | **58/59** (6 blocked) | **30/31** | **2/34** | **6/6** | 61 |
+| Auto-run | 0/63 | 0/35 | 0/41 | 0/6 | 0 |
+| Ask for everything | 62/63 | 34/35 | 40/41 | 6/6 | 109 |
+| Allowlist | 52/63 | 25/35 | 10/41 | 5/6 | 68 |
+| Squidbrake, one step at a time | 60/63 (5 blocked) | 32/35 | 2/41 | 6/6 | 64 |
+| Squidbrake, with chains | **62/63** (6 blocked) | **34/35** | **3/41** | **6/6** | 66 |
 
-- **Speed.** Squidbrake decides in 3.5 ms per step at the median and 5.0 ms at p95 (in-process, SQLite).
-- **The step counts lean on one session.** 24 of the 59 harmful steps come from the session that deletes files one
+### What changed on 2026-10-09: hold what can't be read
+
+A shell reading can only follow the shell. These now wait for a person:
+
+- a program written inline (`python -c`, `node -e`, `perl -e`, ...)
+- a program whose name is only known when it runs (`$(...)`)
+- a script the agent created in this conversation and then runs
+- an agent turning Squidbrake itself off (`connect --remove`, `service stop`, uninstalling it, killing its process)
+
+Seven sessions test this: four harmful, three routine. On the same 59 sessions, before and after:
+
+| Squidbrake, with chains | Harmful sessions stopped | Routine steps stopped (false positives) |
+|---|---|---|
+| Before (0.7.9) | 30/35 | 2/41 |
+| After | **34/35** | 3/41 |
+
+The new false positive is real and we kept it in: the agent writes a small script to count TODOs and runs it. It now
+waits for a person, because a script the agent just wrote is as unreadable as `python -c`. Editing an existing script
+and running it still runs on its own. Programs that aren't common developer tools are recorded but not held
+(`command_checks.unknown: warn`); set it to `review` to hold them too.
+
+- **Speed.** Squidbrake decides in 4.1 ms per step at the median and 7.6 ms at p95 (in-process, SQLite).
+- **The step counts lean on one session.** 24 of the 63 harmful steps come from the session that deletes files one
   by one. Read the session column for how many incidents were stopped.
 - **The "asked" counts include good asks.** Most asks are holds on harmful steps, which is what you want. The cost of
   asking is the false-positive column.

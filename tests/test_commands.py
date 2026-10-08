@@ -219,3 +219,54 @@ def test_explain_says_what_the_gateway_would_do():
     assert "gateway: waits for a person (approve-git-push)" in r.stdout
     assert "gateway: blocked" in run_explain("ls && rm -rf ~/").stdout
     assert "gateway: runs" in run_explain("npm test").stdout
+
+
+# ---- what a shell reading can't follow waits for a person
+
+@pytest.mark.parametrize("line", [
+    'python -c "print(1)"', 'python3 -c "x=1"', 'python3.12 -Bc "x=1"', 'py -c "x=1"', 'node -e "1"',
+    'node --eval "1"', 'nodejs -p "1"', 'bun -e "1"', 'deno eval "1"', "perl -e 1", "perl -we 1", "ruby -e 1",
+    "php -r 1", 'osascript -e "beep"', 'Rscript -e "1"', 'bash -c "$(cat x)"', "$(cat x) --y", "`cat x` y",
+    'sudo python3 -c "x=1"', 'ls && node -e "1"',
+])
+def test_inline_programs_are_hidden(line):
+    assert kind(line) == "hidden", line
+
+
+@pytest.mark.parametrize("line", [
+    "python -m pytest -q", "python manage.py test", "python script.py -c conf", "node build.js -e prod",
+    "npx jest", "perl Makefile.PL", "deno run main.ts", "python --version",
+])
+def test_scripts_and_modules_are_not_inline(line):
+    assert kind(line) != "hidden", line
+
+
+@pytest.mark.parametrize("line", [
+    "squidbrake connect all --remove", "squidbrake connect agents --remove", "squidbrake service stop",
+    "squidbrake service uninstall", "squidbrake stop", "pip uninstall -y squidbrake", "pipx uninstall squidbrake",
+    "uv tool uninstall squidbrake", "taskkill /F /IM pythonw.exe", "pkill -f server.py", "killall python3",
+    "Stop-Process -Name pythonw", "launchctl bootout gui/501/com.squidbrake.gateway",
+    "systemctl --user stop squidbrake", "squidbrake remove-key agents",
+    r'reg delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v Squidbrake /f',
+])
+def test_turning_squidbrake_off_waits_for_a_person(line):
+    r = commands.read(line)
+    assert r.kind == "irreversible" and ("Squidbrake" in r.summary() or "Python" in r.summary()), line
+
+
+@pytest.mark.parametrize("line", ["squidbrake doctor", "squidbrake connect all", "squidbrake connect status",
+                                  "pip install squidbrake", "pip uninstall -y requests", "squidbrake explain 'ls'"])
+def test_using_squidbrake_isnt_turning_it_off(line):
+    assert kind(line) in ("other", "read_only"), line
+
+
+def test_scripts_a_line_runs():
+    assert commands.read("python evil.py --x && bash ./a.sh").scripts == ["evil.py", "./a.sh"]
+    assert commands.read("pwsh -File x.ps1").scripts == ["x.ps1"] and commands.read("./run.sh go").scripts == ["./run.sh"]
+    assert commands.read("python -m pytest").scripts == [] and commands.read('node -e "1"').scripts == []
+
+
+def test_unknown_programs_are_named_not_held():
+    r = commands.read("ls && frobnicate --all")
+    assert r.unknown == ["frobnicate"] and r.kind == "other"
+    assert commands.read("npm test && git status && cargo build").unknown == []

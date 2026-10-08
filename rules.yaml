@@ -57,7 +57,11 @@ command_checks:
   tools: ["Bash", "PowerShell", "*shell*", "*run_command*", "*execute_command*", "*terminal*", "*exec_command*"]
   catastrophic: block     # rm -rf /, rm -rf ~, wiping a drive (rmdir /s d:\), mkfs, dd onto a disk, chmod -R 777 /
   irreversible: review    # rm -r, git push --force, git reset --hard, terraform destroy, kubectl delete, cloud deletes, DROP TABLE
-  hidden: review          # code that can't be read first: eval, curl ... | sh, base64 -d | bash, powershell -EncodedCommand
+  hidden: review          # code that can't be read first: eval, curl ... | sh, base64 -d | bash, powershell -EncodedCommand,
+                          # programs written inline (python -c, node -e, perl -e), a program named only when it runs
+  written_then_run: review  # a script the agent created in this conversation, then runs (python x.py): read it first
+  unknown: warn           # a program that isn't a common developer tool: recorded so you can see what would wait;
+                          # review holds them too
   read_only: allow        # commands that only look (ls, cat, grep, git status/log/diff) run without asking,
                           # unless a rule below says otherwise. Set to off to approve those too.
 
@@ -144,7 +148,7 @@ rules:
     reason: Changes an AI agent's own settings, hooks or MCP servers, Squidbrake itself, a secrets file, or code that runs at login
     match:
       name: ["Edit", "Write", "MultiEdit", "NotebookEdit", "bash*", "powershell*", "shell*", "run_command*"]
-      input_regex: '(?i)\.(claude|cursor|codex|gemini|copilot|kiro|codeium|windsurf|squidbrake)[\\/]|mcp(_config)?\.json|claude_desktop_config\.json|\.vscode[\\/]+(mcp|tasks)\.json|\.env\b(?!\.?(example|sample|template))|\.ssh[\\/]|\.aws[\\/]|\.(npmrc|pypirc|netrc)\b|\.(bashrc|zshrc|bash_profile|zprofile|profile)\b|PowerShell_profile\.ps1|\.git[\\/]+hooks[\\/]'
+      input_regex: '(?i)\.(claude|cursor|codex|gemini|copilot|kiro|codeium|windsurf|squidbrake)[\\/]|mcp(_config)?\.json|claude_desktop_config\.json|\.vscode[\\/]+(mcp|tasks)\.json|\.env\b(?!\.?(example|sample|template))|\.ssh[\\/]|\.aws[\\/]|\.(npmrc|pypirc|netrc)\b|\.(bashrc|zshrc|bash_profile|zprofile|profile)\b|PowerShell_profile\.ps1|\.git[\\/]+hooks[\\/]|managed-settings\.json|(/etc/|ProgramData[\\/]+|Program Files[\\/]+|Application Support/)(ClaudeCode|claude-code|codex|gemini-cli|cursor|squidbrake|OpenAI)\b'
 
   # ---- looking is fine: reading, listing, searching run without asking (and are still recorded)
   - id: allow-reads

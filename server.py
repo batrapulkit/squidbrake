@@ -633,7 +633,10 @@ COMMAND_DEFAULTS = {
     "tools": ["Bash", "PowerShell", "*shell*", "*run_command*", "*execute_command*", "*terminal*", "*exec_command*"],
     "catastrophic": "block",   # wipes a disk, the filesystem or a home folder: rm -rf /, rm -rf ~, mkfs, dd onto a disk
     "irreversible": "review",  # rm -r, git push --force, git reset --hard, terraform destroy, kubectl delete, DROP TABLE
-    "hidden": "review",        # code that can't be read first: eval, curl | sh, base64 -d | bash, -EncodedCommand
+    "hidden": "review",        # code that can't be read first: eval, curl | sh, base64 -d | bash, -EncodedCommand,
+                               # inline programs (python -c, node -e, ...), a program named only when it runs
+    "written_then_run": "review",  # runs a script the agent itself created in this conversation (read it first)
+    "unknown": "warn",         # a program that isn't a common developer tool: recorded (shadow); "review" holds it
     "read_only": "off",        # "allow": commands that only look (ls, cat, grep, git status) run without asking
 }
 
@@ -790,7 +793,7 @@ class Policy:
                         raise ValueError(f"history_checks.{k} must be block, review, warn or off")
                 hc["company_domains"] = [d.lower().strip() for d in hc["company_domains"] or []]
                 cc = {**COMMAND_DEFAULTS, **(data.get("command_checks") or {})}
-                for k in COMMAND_EFFECT_KEYS:
+                for k in (*COMMAND_EFFECT_KEYS, "written_then_run", "unknown"):
                     cc[k] = "off" if cc[k] is False else COMMAND_DEFAULTS[k] if cc[k] is True else str(cc[k]).lower()
                     if cc[k] not in ("block", "review", "warn", "off"):
                         raise ValueError(f"command_checks.{k} must be block, review, warn or off")
@@ -1096,7 +1099,48 @@ def command_signals(name: str, input: Any, metadata: dict | None = None) -> tupl
         if cc[kind] == "off":
             return [], False
         return [{"check": f"{kind}_command", "effect": cc[kind], "message": message}], False
+    if reading.unknown and cc["unknown"] != "off":
+        return [{"check": "unknown_command", "effect": cc["unknown"],
+                 "message": f"This command runs a program Squidbrake doesn't know ({', '.join(reading.unknown[:3])}), so "
+                            f"what it does is up to that program."}], False
     return [], kind == "read_only"
+
+
+WRITES_A_FILE = ("Write", "write_file", "create_file", "write_to_file", "Create", "fs_write")
+
+
+def written_then_run(conn, ev: "EventIn", client: str) -> list[dict]:
+    """A script the agent created in this conversation, now run: `python x.py` is as unreadable to a shell reading
+    as `python -c`, so a person reads it first (command_checks.written_then_run). Edits to existing files aren't
+    counted: running the project's own tests and scripts after changing them is everyday work."""
+    cc = policy.commands
+    if cc["written_then_run"] == "off" or not ev.session_id             or not any(fnmatch.fnmatchcase(ev.name.lower(), t.lower()) for t in cc["tools"]):
+        return []
+    line = commands.command_of(ev.input)
+    scripts = commands.read(line).scripts if line else []
+    if not scripts:
+        return []
+    cwd = str((ev.metadata or {}).get("cwd") or "")
+    norm = lambda p: os.path.normcase(os.path.normpath(p.replace("\\", "/"))) if p else ""
+    wanted = {norm(os.path.join(cwd, sp) if cwd and not os.path.isabs(sp) and not sp.startswith("~") else sp): sp
+              for sp in scripts}
+    since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat().replace("+00:00", "Z")
+    rows = conn.execute(select(events.c.name, events.c.input).where(
+        events.c.session_id == ev.session_id, events.c.created_at >= since, events.c.status.in_(("completed", "pending")),
+        events.c.name.in_(WRITES_A_FILE)).order_by(events.c.created_at.desc()).limit(200)).all()
+    for r in rows:
+        try:
+            inp = json.loads(r.input) if r.input else {}
+        except ValueError:
+            continue
+        path = str(inp.get("file_path") or inp.get("path") or "") if isinstance(inp, dict) else ""
+        hit = wanted.get(norm(path)) or next((sp for sp in scripts if not cwd and path and
+                                              os.path.basename(path.replace("\\", "/")) == os.path.basename(sp)), None)
+        if hit:
+            return [{"check": "written_then_run_command", "effect": cc["written_then_run"],
+                     "message": f"This command runs {hit}, a script the agent wrote in this conversation. Read it "
+                                f"before it runs: {path}"}]
+    return []
 
 
 SEQUENCE_EFFECT = {"deny": "block", "review": "review", "warn": "warn"}
@@ -1310,7 +1354,7 @@ def record_event(ev: EventIn, client: str, client_ip: str | None) -> Decision:
                 signals += history_signals(conn, ev.name, ev.input, to_stored_json(ev.input), ev.source,
                                            ev.session_id, is_change=decision == "review" and not only_reads,
                                            client=client, only_reads=only_reads)
-                signals += data_signals(ev) + taint_signals(conn, ev, client) + command_found
+                signals += data_signals(ev) + taint_signals(conn, ev, client) + command_found                     + written_then_run(conn, ev, client)
             blocking = next((s for s in signals if s["effect"] == "block"), None)
             needs_person = next((s for s in signals if s["effect"] == "review"), None)
             signal_id = lambda s: f"sequence:{s['rule']}" if s["check"] == "sequence" else \

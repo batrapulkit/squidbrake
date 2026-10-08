@@ -16,10 +16,12 @@
 databases. Squidbrake keeps the record of every one of those changes: which agent, what it changed, who approved
 it, and what led to it. Risky changes wait for someone other than the requester to sign off; routine ones run on
 their own and are still recorded. The record is tamper-evident, readable by people who don't write code (a weekly
-summary, an evidence pack for your auditor), and destructive changes keep an undo. One policy for Claude Code,
-Cursor, Codex, Gemini CLI, VS Code Copilot, Antigravity and your MCP tools.
+summary, an evidence pack for your auditor), and destructive changes keep an undo. **One policy for every agent your
+company runs** (Claude Code, Cursor, Codex, Gemini CLI, VS Code Copilot, Antigravity and your MCP tools), and **a
+record that sits outside them**: the agents can't quietly change it, or switch Squidbrake off, without a person.
 
-Free and open source (Apache 2.0). Runs on your laptop or your own server; your data never leaves it.
+Free and open source (Apache 2.0). Runs on your laptop or your own server. What your agents do (commands, files,
+prompts, the audit trail) never leaves it; usage counts go out only if you say yes when it asks (Enter means yes).
 
 - **A second person signs off:** risky changes wait in the dashboard, on your phone (one-tap links, push via ntfy) or in Slack.
   The approver sees *what led to it*, e.g. the email the agent just read.
@@ -42,9 +44,11 @@ Free and open source (Apache 2.0). Runs on your laptop or your own server; your 
 - **Works with real agents:** `squidbrake connect all` connects Claude Code, Cursor, Codex, Gemini CLI, VS Code
   Copilot and Antigravity (their commands, reads and edits, via hooks) and the MCP servers they already use; any MCP
   app (Stripe, GitHub, Slack, databases, internal tools) can be wrapped too.
-- **Can't be switched off:** `squidbrake lockdown --url https://gateway.yourcompany.com` writes the managed-settings
-  files IT pushes to every machine (Claude Code, Codex, Gemini CLI, Cursor), so each agent must run Squidbrake's hook
-  and `--dangerously-skip-permissions` / `--yolo` are turned off. One policy, every agent.
+- **Agents can't switch it off:** an agent removing, stopping or uninstalling Squidbrake waits for a person. For a
+  company, `squidbrake lockdown --url https://gateway.yourcompany.com` writes the managed-settings files IT pushes to
+  every machine (Claude Code, Codex, Gemini CLI, Cursor), so each agent must run Squidbrake's hook and
+  `--dangerously-skip-permissions` / `--yolo` are turned off; only someone with admin rights on the machine can undo
+  that. One policy, every agent.
 - **Rules, not vibes:** `rules.yaml` says what runs by itself, what's blocked, and what waits for a person.
   No LLM in the decision path.
 - **Reads what a command really does:** `ls && rm -rf ~/`, `bash -c "..."`, `rmdir /s /q d:\` or `curl ... | sh` are
@@ -425,9 +429,10 @@ Squidbrake **fails closed**. Guarded tool calls are blocked if the gateway is un
 
 ### Does my data leave my machine?
 
-No. Squidbrake is **self-hosted** and runs on your laptop or your own server. Your data stays in your environment.
-The only things that ever leave are the ones you said yes to: anonymous usage stats (command name, version, OS)
-and, if you join, usage counts. See [Usage sharing](#usage-sharing-opt-in).
+What your agents do doesn't: commands, files, prompts, tool inputs and outputs, and the audit trail stay on your
+laptop or your server. What can leave is usage counts, and only after a yes: the first run asks once (Enter means
+yes) to send the command name, version, OS, how many actions were allowed, held and blocked, and for each held or
+blocked one the program (like `rm`) and the rule. See [Usage sharing](#usage-sharing-asked-first).
 
 ### Does Squidbrake use an LLM to make decisions?
 
@@ -444,15 +449,26 @@ Here's what that means in practice:
   or to Squidbrake's rules (held for a person), and chains of steps such as backups switched off and then a delete.
   Through the hooks, what a command runs underneath is read too: a Makefile target's recipe (`make clean`), a
   `package.json` script (`npm run release`) and a shell script (`bash cleanup.sh`).
+- **Held because it can't be read:** a program written inline (`python -c`, `node -e`, `perl -e`), a program named
+  only when it runs (`$(...)`, `eval`), and a script the agent created in this conversation and then runs
+  (`python cleanup.py` right after writing `cleanup.py`). A person reads it first.
+- **Held: the agent turning Squidbrake off.** `squidbrake connect --remove`, `service stop`, uninstalling it, killing
+  its process, or editing the agents' hook settings all wait for a person.
 - **Not caught:**
-  - Scripts in other languages the agent writes and then runs. `python cleanup.py` is read as one command, and what
-    the script does inside isn't seen. Neither are recipes built while they run (`$(shell ...)`, `eval`).
+  - A script that was already in the project, edited and then run: `python scripts/seed.py` runs, and what it does
+    inside isn't seen (running the project's own scripts after a change is everyday work). Cursor reports new files
+    and edits the same way, so there a new script counts as written too.
+  - Programs that aren't common developer tools are recorded, not held (`command_checks.unknown: warn`; set it to
+    `review` to hold them).
   - Tools that aren't connected (`squidbrake connect status` shows which are).
   - Damage done inside an MCP server after the call it checks: see the postmark-mcp row in [`incidents/`](incidents/).
+  - A person, or a program running outside the agents, can still remove Squidbrake from their own laptop. For a
+    company, `squidbrake lockdown` writes policy files IT pushes to every machine, so agents can't run without it
+    (only an admin on the machine can undo that).
 - **For a hostile agent,** add a sandbox (a container or a VM, with no credentials it doesn't need) underneath.
   Squidbrake then decides what is allowed, and the sandbox makes sure nothing goes around it.
 
-See [`SECURITY.md`](SECURITY.md) for the full security model.
+To report a vulnerability, see [`SECURITY.md`](SECURITY.md).
 
 ## Querying
 
@@ -505,7 +521,7 @@ pip install pytest && pytest -q
 python tests/e2e_business_scenario.py
 ```
 
-## Usage sharing (opt-in)
+## Usage sharing (asked first)
 
 Squidbrake sends nothing anywhere without asking first.
 

@@ -41,6 +41,18 @@ class Reading:
     writes_files: bool = False                           # output redirected into a file
 
     @property
+    def unknown(self) -> list[str]:
+        """Programs this reading doesn't know (not a shell built-in, a common developer tool, or one it classifies):
+        what they do is up to them. Recorded, so a team can see what would wait if unknown programs had to."""
+        return list(dict.fromkeys(c.program for c in self.commands
+                                  if c.kind == "other" and c.program not in KNOWN and not _looks_like_path(c.program)))
+
+    @property
+    def scripts(self) -> list[str]:
+        """Script files this line runs (python x.py, node x.js, bash x.sh, ./x, pwsh -File x.ps1)."""
+        return list(dict.fromkeys(p for c in self.commands if (p := _script_of(c.words))))
+
+    @property
     def kind(self) -> str:
         kinds = [c.kind for c in self.commands] + (["hidden"] if self.hidden else [])
         if not kinds:
@@ -243,6 +255,61 @@ def _program(word: str) -> str:
     return p[:-4] if p.endswith(".exe") else p
 
 
+# Interpreters given their program as an argument instead of a file: the program is right there, but it's another
+# language, so this reading can't tell what it does. A file (python x.py) or a module (python -m pytest) isn't this.
+INLINE_CODE = {
+    "python": ("-c",), "py": ("-c",), "pypy": ("-c",), "pypy3": ("-c",),
+    "node": ("-e", "--eval", "-p", "--print"), "nodejs": ("-e", "--eval", "-p", "--print"),
+    "bun": ("-e", "--eval", "-p", "--print"), "deno": ("eval",),
+    "perl": ("-e", "-E"), "ruby": ("-e",), "php": ("-r",), "lua": ("-e",), "luajit": ("-e",),
+    "osascript": ("-e",), "rscript": ("-e",), "julia": ("-e", "--eval"), "groovy": ("-e",),
+}
+
+
+def _inline_code_flag(prog: str, lower: list[str]) -> str | None:
+    base = re.sub(r"[0-9.]+$", "", prog)               # python3.12 -> python
+    flags = INLINE_CODE.get(base) or INLINE_CODE.get(prog)
+    if not flags:
+        return None
+    if base == "deno":
+        return "eval" if lower[1:2] == ["eval"] else None
+    for w in lower[1:]:
+        if w in flags:
+            return w
+        # combined short flags: python -Bc, perl -we
+        if re.fullmatch(r"-[a-z]{2,4}", w) and any(len(f) == 2 and w.endswith(f[1]) for f in flags):
+            return w
+        if w == "-m" or not w.startswith("-"):
+            return None                                    # a module or a script file comes first: that's what runs
+    return None
+
+
+SELF = ("squidbrake", "squidbreak")
+
+
+def _turns_off_squidbrake(prog: str, lower: list[str]) -> str | None:
+    """Commands that take Squidbrake out of the way: they wait for a person even when an agent asks nicely."""
+    args = " ".join(lower[1:])
+    if prog in SELF:
+        sub = [w for w in lower[1:] if not w.startswith("-")]
+        if "--remove" in lower or sub[:2] in (["service", "stop"], ["service", "remove"], ["service", "uninstall"]) \
+                or sub[:1] in (["stop"], ["uninstall"]):
+            return f"turns Squidbrake off or takes it out of the agents ({' '.join(lower[:4])})"
+        if sub[:1] in (["remove-key"],):
+            return f"removes a Squidbrake key ({' '.join(lower[:3])})"
+    if prog in ("pip", "pip3", "pipx", "uv", "brew", "conda") and "uninstall" in lower[1:3] \
+            and any(s in args for s in SELF):
+        return f"uninstalls Squidbrake ({' '.join(lower[:4])})"
+    if prog in ("kill", "pkill", "killall", "taskkill", "stop-process", "spps", "launchctl", "systemctl") \
+            and re.search(r"squidbrake|squidbreak|server\.py|pythonw|python", args):
+        return f"stops Squidbrake (or the Python it runs in) ({' '.join(lower[:4])})"
+    if prog == "reg" and lower[1:2] == ["delete"] and "currentversion\\run" in args:
+        return "takes Squidbrake out of what starts at login (reg delete ...\\Run)"
+    if prog in ("remove-itemproperty", "rp") and "currentversion\\run" in args:
+        return "takes Squidbrake out of what starts at login (Remove-ItemProperty ...\\Run)"
+    return None
+
+
 def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Command], list[str]]:
     """One simple command (already split into words). -> (commands, hidden-reasons)."""
     words = _strip_wrappers(words)
@@ -278,6 +345,16 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
     # ---- code that can't be read
     if prog in ("eval", "iex", "invoke-expression"):
         return [], [f"runs code built at run time ({prog}), which can't be read before it runs"]
+    if re.search(r"\$\(|`|^\$", words[0]):
+        return [], ["runs a program whose name is only known when it runs"]
+    if (flag := _inline_code_flag(prog, lower)):
+        return [], [f"runs a program written inline ({prog} {flag}), which a shell reading can't follow; a person "
+                    f"reads it first"]
+
+    # ---- Squidbrake itself: an agent turning off what checks it waits for a person
+    if (why := _turns_off_squidbrake(prog, lower)):
+        cmd.kind, cmd.why = "irreversible", why
+        return [cmd], []
 
     # ---- catastrophic
     if prog == "diskutil":
@@ -549,6 +626,58 @@ def _read(line: str, depth: int = 0) -> tuple[list[Command], list[str]]:
         c, h = classify(_words(part), raw=part, depth=depth)
         commands += c; hidden += h
     return commands, hidden
+
+
+# Programs a developer's machine runs all day. Not "safe" (each is still read for what it does); just not unknown.
+KNOWN = READ_ONLY | SHELLS | POWERSHELLS | {
+    "git", "gh", "glab", "npm", "npx", "pnpm", "yarn", "bun", "node", "deno", "tsc", "tsx", "ts-node", "vite", "next",
+    "jest", "vitest", "mocha", "eslint", "prettier", "biome", "python", "python3", "py", "pip", "pip3", "pipx", "uv",
+    "poetry", "pdm", "hatch", "pytest", "tox", "nox", "ruff", "black", "isort", "mypy", "pyright", "flake8", "pylint",
+    "coverage", "make", "cmake", "ninja", "gcc", "g++", "clang", "cc", "ld", "go", "gofmt", "cargo", "rustc", "rustup",
+    "java", "javac", "mvn", "gradle", "gradlew", "kotlin", "dotnet", "msbuild", "nuget", "ruby", "gem", "bundle",
+    "rake", "rails", "php", "composer", "perl", "swift", "xcodebuild", "pod", "flutter", "dart", "docker", "podman",
+    "kubectl", "helm", "terraform", "tofu", "pulumi", "ansible", "aws", "gcloud", "az", "curl", "wget", "ssh", "scp",
+    "rsync", "tar", "zip", "unzip", "gzip", "gunzip", "mkdir", "touch", "cp", "mv", "ln", "chmod", "chown", "rm",
+    "rmdir", "sed", "awk", "xargs", "tee", "env", "export", "set", "unset", "source", ".", "alias", "history", "clear",
+    "code", "cursor", "open", "start", "explorer", "claude", "codex", "gemini", "squidbrake", "psql", "mysql",
+    "sqlite3", "redis-cli", "mongosh", "brew", "apt", "apt-get", "dnf", "yum", "pacman", "choco", "winget", "scoop",
+    "set-location", "sl", "new-item", "ni", "copy-item", "cp", "move-item", "mi", "set-content", "sc", "add-content",
+    "out-file", "remove-item", "invoke-webrequest", "iwr", "invoke-restmethod", "irm", "start-process", "saps",
+}
+
+
+def _looks_like_path(prog: str) -> bool:
+    return prog.endswith((".sh", ".py", ".js", ".mjs", ".ts", ".ps1", ".bat", ".cmd", ".rb", ".pl"))
+
+
+SCRIPT_RUNNERS = {"python", "py", "pypy", "node", "nodejs", "bun", "tsx", "ts-node", "ruby", "perl", "php", "bash",
+                  "sh", "zsh", "dash", "ksh", "fish", "pwsh", "powershell", "deno", "osascript", "rscript", "lua"}
+
+
+def _script_of(words: list[str]) -> str | None:
+    words = _strip_wrappers(words)
+    if not words:
+        return None
+    prog = _program(words[0])
+    base = re.sub(r"[0-9.]+$", "", prog)
+    if words[0].startswith(("./", ".\\", "/", "~")) or _looks_like_path(prog) and prog != "":
+        return words[0] if _looks_like_path(prog) or words[0].startswith(("./", ".\\")) else None
+    if base not in SCRIPT_RUNNERS and prog not in SCRIPT_RUNNERS:
+        return None
+    rest = words[1:]
+    if prog == "deno" and rest[:1] == ["run"]:
+        rest = rest[1:]
+    i = 0
+    while i < len(rest):
+        w = rest[i]
+        if w.lower() in ("-file", "-f") and base in ("pwsh", "powershell"):
+            return rest[i + 1] if i + 1 < len(rest) else None
+        if w == "-m" or w in ("-c", "-e", "-r", "--eval", "-p", "--print", "-command") or w.lower() == "-command":
+            return None                                    # a module, or inline code (read elsewhere)
+        if not w.startswith("-"):
+            return w
+        i += 1
+    return None
 
 
 def read(line: str) -> Reading:
