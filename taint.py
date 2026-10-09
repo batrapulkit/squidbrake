@@ -25,12 +25,49 @@ DEST_KEYS = {
 }
 EMAIL_RE = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b")
 URL_RE = re.compile(r"\bhttps?://[^\s\"'<>)]+", re.I)
-SCP_RE = re.compile(r"\b[\w.-]+@([\w.-]+\.[A-Za-z]{2,}):")               # scp / rsync / git over ssh: user@host:
+SCP_RE = re.compile(r"\b[\w.-]+@([\w.-]+\.[A-Za-z]{2,}):([\w./~-]*)")    # scp / rsync / git over ssh: user@host:path
+# Images load by themselves when text is rendered (an email, a PR, a chat message), so a URL in one sends whatever is in
+# its query string, with nobody clicking (EchoLeak). Markdown ![](url), reference-style ![x][r] + [r]: url, and <img src>.
+IMAGE_RE = re.compile(r"!\[[^\]]*\]\(\s*<?(https?://[^\s)>]+)|<img\b[^>]*\bsrc\s*=\s*[\"']?(https?://[^\s\"'>]+)", re.I)
+IMAGE_REF_RE = re.compile(r"^\s*\[[^\]]+\]:\s*<?(https?://[^\s>]+)", re.M)
+# Hosts everyone uses: github.com alone says nothing about who gets the data, github.com/attacker/leaks does.
+# Value = how many path segments name the owner (github.com/<owner>/<repo>, docs.google.com/document/d/<id>).
+SHARED_HOSTS = {"github.com": 2, "gist.github.com": 2, "gitlab.com": 2, "bitbucket.org": 2, "huggingface.co": 2,
+                "docs.google.com": 3, "drive.google.com": 3}
 # Shell commands that send data somewhere.
 UPLOAD_RE = re.compile(r"\b(curl|wget|http|https|xh|nc|ncat|netcat|scp|rsync|sftp|ftp|invoke-webrequest|iwr|"
                        r"invoke-restmethod|irm|git\s+push|gh\s+(gist|issue|pr|api|release))\b", re.I)
 CURL_SEND_RE = re.compile(r"(^|\s)(-d|--data\S*|-F|--form|-T|--upload-file|-X\s*(POST|PUT|PATCH)|--json|"
                           r"--post-data|--post-file|--body-file|-Method\s+(Post|Put))(\s|=|$)", re.I)
+# The same from inside a one-line script: python -c "requests.post(...)", node -e "fetch(u, {method: 'POST'})".
+SCRIPT_SEND_RE = re.compile(r"\b(requests|httpx|axios|session|client)\.(post|put|patch)\s*\(|"
+                            r"\bfetch\s*\([^;]*?\bmethod\s*:\s*[\"'](post|put|patch)[\"']|"
+                            r"\burllib\.request\b[^;]*\bdata\s*=", re.I)
+# gh subcommands that put something on GitHub (gh gist create .env makes a secret public); gh issue view, gh pr list read.
+GH_SEND_RE = re.compile(r"\bgh\s+(gist\s+(create|new|edit)|(issue|pr)\s+(create|new|comment|edit|review)|"
+                        r"release\s+(create|upload|edit)|"
+                        r"api\b[^|;&]*\s(-f|-F|--field|--raw-field|--input|-X\s*(POST|PUT|PATCH)|--method\s+(POST|PUT|PATCH))\b)",
+                        re.I)
+
+
+def _host_value(host: str, path: str = "") -> str | None:
+    """What identifies the receiver: the host, or for a shared host the owner part of the path (None if there's none)."""
+    host = host.lower().removeprefix("www.")
+    if host not in SHARED_HOSTS:
+        return host
+    parts = [p for p in re.split(r"[/:]", path.lower()) if p][:SHARED_HOSTS[host]]
+    if len(parts) < SHARED_HOSTS[host]:
+        return None
+    parts[-1] = parts[-1].removesuffix(".git")
+    return "/".join([host] + parts)
+
+
+def _url_value(url: str) -> str | None:
+    try:
+        u = urlsplit(url)
+        return _host_value(u.hostname, u.path) if u.hostname else None
+    except ValueError:
+        return None
 
 
 def _walk(value: Any, key: str = "") -> list[tuple[str, str]]:
@@ -58,41 +95,47 @@ def destinations(input: Any, command: str | None = None) -> list[dict]:
             found.append({"field": field, "value": v, "kind": kind})
 
     for key, text in _walk(input):
-        if key not in DEST_KEYS or not text.strip():
+        if not text.strip():
+            continue
+        # Any field, not only the ones above: an image in a body or message is fetched when it's shown.
+        images = [a or b for a, b in IMAGE_RE.findall(text)] + (IMAGE_REF_RE.findall(text) if "![" in text else [])
+        for u in images:
+            if v := _url_value(u):
+                add(key, v, "host")
+        if key not in DEST_KEYS:
             continue
         emails, urls = EMAIL_RE.findall(text), URL_RE.findall(text)
         for e in emails:
             add(key, e, "email")
         for u in urls:
-            host = urlsplit(u).hostname
-            if host:
-                add(key, host, "host")
+            if v := _url_value(u):
+                add(key, v, "host")
         if not emails and not urls:
             if key in ("to_account", "account", "account_number", "iban", "payee", "beneficiary", "destination"):
                 add(key, text, "account")
             elif key in ("host", "domain"):
-                add(key, text, "host")
+                if v := _host_value(text.strip()):
+                    add(key, v, "host")
             elif key in ("repo", "repository", "channel", "owner", "remote") and len(text) <= 100:
                 add(key, text, "name")
-    if command and UPLOAD_RE.search(command):
-        sends = CURL_SEND_RE.search(command) or re.search(r"\b(scp|rsync|sftp|nc|ncat|netcat|git\s+push|gh\s)", command, re.I)
-        if sends:
-            for u in URL_RE.findall(command):
-                host = urlsplit(u).hostname
-                if host:
-                    add("command", host, "host")
-            for host in SCP_RE.findall(command):
-                add("command", host, "host")
-            for e in EMAIL_RE.findall(command):
-                if not SCP_RE.search(command):
-                    add("command", e, "email")
+    if sends_out(command):
+        for u in URL_RE.findall(command):
+            if v := _url_value(u):
+                add("command", v, "host")
+        for host, path in SCP_RE.findall(command):
+            if v := _host_value(host, path):
+                add("command", v, "host")
+        for e in EMAIL_RE.findall(command):
+            if not SCP_RE.search(command):
+                add("command", e, "email")
     return found
 
 
 def sends_out(command: str | None) -> bool:
     """Does this shell command send data somewhere (not just download)?"""
-    return bool(command and UPLOAD_RE.search(command)
-                and (CURL_SEND_RE.search(command) or re.search(r"\b(scp|rsync|sftp|nc|ncat|netcat|git\s+push)\b", command, re.I)))
+    return bool(command and ((UPLOAD_RE.search(command) and (CURL_SEND_RE.search(command) or re.search(
+        r"\b(scp|rsync|sftp|nc|ncat|netcat|git\s+push)\b", command, re.I)))
+                             or SCRIPT_SEND_RE.search(command) or GH_SEND_RE.search(command)))
 
 
 def appears_in(dest: dict, text: str) -> bool:
@@ -103,8 +146,9 @@ def appears_in(dest: dict, text: str) -> bool:
     v = dest["value"]
     if dest["kind"] == "account":
         return v.lower() in re.sub(r"\s+", "", low)
-    if dest["kind"] == "host":
-        return re.search(rf"(?<![\w.-]){re.escape(v)}(?![\w-])", low) is not None
+    if dest["kind"] == "host":       # github.com/owner/repo also matches git@github.com:owner/repo
+        pat = re.escape(v).replace("/", "[/:]", 1) if "/" in v else re.escape(v)
+        return re.search(rf"(?<![\w.-]){pat}(?![\w-])", low) is not None
     return v in low
 
 
