@@ -889,6 +889,7 @@ class Decision(BaseModel):
     decision_note: str | None = None
     signals: list[dict] | None = None  # history-check findings, e.g. possible impersonation
     would: str | None = None           # shadow mode: deny | review that was let through
+    cannot_undo: bool = False          # once it runs it can't be taken back: the agent's person is told first
     risk: int | None = None            # risk.py's score, 0..100: measured only, never part of the decision
 
 
@@ -1515,7 +1516,8 @@ def record_event(ev: EventIn, client: str, client_ip: str | None) -> Decision:
     if status == "awaiting_approval":
         notify_approval_needed(row)
     return Decision(event_id=row["id"], decision=decision, reason=reason, rule_id=rule_id,
-                    status=status, approval_deadline=deadline, signals=signals or None, would=would, risk=risk_score)
+                    status=status, approval_deadline=deadline, signals=signals or None, would=would, risk=risk_score,
+                    cannot_undo=cannot_undo({"rule_id": rule_id, "signals": signals, "reason": reason}))
 
 
 # --------------------------------------------------------------------------- notifications + approval links
@@ -1701,6 +1703,8 @@ def notify_approval_needed(row: dict) -> None:
     token = make_link_token(row["id"], cfg["notify_as"])
     link = f"{base}/a/{token}"
     title, body = approval_message(row)
+    if cannot_undo(row):                       # said first, before anything else about it
+        title = f"Can't be undone: {title}"
     expires = row["approval_deadline"]
 
     def send():

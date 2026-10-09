@@ -23,10 +23,32 @@ def _say(mark: str, text: str) -> None:
     print(f"  [{mark}] {text}", flush=True)
 
 
+def offer_terminal_guard(yes: bool) -> None:
+    import shell_guard
+    shell = shell_guard.this_shell()
+    if not yes:
+        try:
+            if not (sys.stdin.isatty() and sys.stdout.isatty()):
+                return
+            answer = input("\nAlso warn you in your own terminal before a command that can't be undone (git push --force,\n"
+                           f"rm -r, DROP TABLE)? It adds a few lines to your {shell} startup file. [y/N] ")
+        except (EOFError, KeyboardInterrupt, OSError):
+            return
+        if answer.strip().lower() not in ("y", "yes"):
+            print("  Skipped. Later:  squidbrake shell-guard install --write")
+            return
+    try:
+        _say("OK", shell_guard.write(shell))
+    except OSError as e:
+        _say("!", f"Couldn't add the terminal guard ({e}). Later:  squidbrake shell-guard install --write")
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="squidbrake setup", description="Set Squidbrake up on this computer, in one go.")
     p.add_argument("--port", type=int, default=int(os.getenv("PORT", "8080")))
     p.add_argument("--no-browser", action="store_true", help="don't open the dashboard")
+    p.add_argument("--terminal-guard", action="store_true",
+                   help="also warn in your own terminal before a command that can't be undone (without asking)")
     p.add_argument("--agent", dest="only", action="append", metavar="AGENT",
                    help="connect only this agent (repeat, or comma-separated; default: every one found here). "
                         "The installers pass SQUIDBRAKE_AGENTS")
@@ -83,6 +105,9 @@ def main(argv: list[str] | None = None) -> int:
         connect.doctor(argparse.Namespace(url=None, key=None, quick=True))
     except SystemExit:
         pass
+
+    # ---- your own terminal: the same warning before a command that can't be undone (asked; Enter means no)
+    offer_terminal_guard(args.terminal_guard)
 
     # ---- 4. the keys (once) and the dashboard
     server.print_banner(shown, created)

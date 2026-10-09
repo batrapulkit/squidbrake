@@ -120,3 +120,40 @@ def test_one_agent_can_be_switched_on_and_off_from_the_dashboard(c, monkeypatch,
     monkeypatch.setattr(server, "PUBLIC_URL", "https://gw.example.com")    # a gateway on a server: no switches
     assert c.get("/v1/agents/local", headers=BOSS).status_code == 404
     assert 'id="agentsHere"' in (ROOT / "dashboard.html").read_text(encoding="utf-8")
+
+
+# ---- a person is told first that it can't be undone: their agent, their phone, their own terminal
+
+def test_the_person_is_told_first_that_it_cant_be_undone(c, monkeypatch):
+    d = c.post("/v1/events", headers=H, json={"name": "Bash", "input": {"command": "git push --force origin main"},
+                                              "session_id": f"undo-first-{time.time_ns()}"}).json()
+    assert d["decision"] == "review" and d["cannot_undo"] is True        # the hook says so in the agent's window
+    assert "It can't be undone once it runs." in (ROOT / "claude_hook.py").read_text(encoding="utf-8")
+    sent = []
+    real = server.settings()
+    monkeypatch.setattr(server, "settings", lambda: {**real,
+                        "slack_webhook": "https://hooks.slack.com/x", "ntfy_topic": "", "public_url": "", "notify_as": "boss",
+                        "ntfy_server": "https://ntfy.sh", "teams_webhook": "", "email_to": ""})
+    monkeypatch.setattr(server, "email_ready", lambda cfg: False)
+    monkeypatch.setattr(server.httpx, "post", lambda url, timeout=None, json=None, **k: sent.append(json) or
+                        type("R", (), {"raise_for_status": lambda s: None})())
+    monkeypatch.setattr(server.threading, "Thread", lambda target, daemon=None, **k: type(
+        "T", (), {"start": lambda s: target()})())
+    row = {"id": d["event_id"], "name": "Bash", "kind": "tool_call", "source": "x", "session_id": "s", "client": "tester",
+           "rule_id": "command:irreversible_command", "reason": "rewrites history", "approval_deadline": "soon",
+           "input": json.dumps({"command": "git push --force origin main"}), "signals": None}
+    server.notify_approval_needed(row)
+    assert sent and sent[0]["text"].startswith(":raised_hand: *Can't be undone:")
+
+
+def test_the_terminal_guard_goes_in_and_out_of_the_startup_file(tmp_path):
+    import shell_guard
+    rc = tmp_path / ".bashrc"
+    rc.write_text("export A=1\n")
+    assert "Added" in shell_guard.write("bash", rc)
+    assert "already" in shell_guard.write("bash", rc)                    # never twice
+    text = rc.read_text()
+    assert text.count(shell_guard.BEGIN) == 1 and "export A=1" in text and "shell-guard check" in text
+    assert list(tmp_path.glob(".bashrc.bak-*"))                          # the old one kept
+    assert "Took" in shell_guard.remove("bash", rc)
+    assert rc.read_text() == "export A=1\n"

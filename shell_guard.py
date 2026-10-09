@@ -7,8 +7,10 @@ A guard for the lines people type or paste into their own terminal (no agent inv
 `check` is a thin layer over commands.read(), so the terminal and the agent hooks always agree:
 catastrophic -> block, irreversible or hidden -> ask, anything else -> run (silently).
 
-It never edits an rc file: `install` only prints. It is a helper for people, not a gate: if the check itself fails
-(an exception, `squidbrake` missing), the line runs. Local only; nothing is sent anywhere.
+`install` only prints, unless you add --write (or say yes when `squidbrake setup` asks): then it adds the snippet to
+your shell's startup file between two marker lines, after a backup, and `uninstall` takes exactly that out again.
+It is a helper for people, not a gate: if the check itself fails (an exception, `squidbrake` missing), the line
+runs. Local only; nothing is sent anywhere.
 """
 from __future__ import annotations
 
@@ -126,7 +128,65 @@ if ((Get-Command squidbrake -ErrorAction SilentlyContinue) -and (Get-Module PSRe
 SNIPPETS = {"bash": BASH, "zsh": ZSH, "powershell": POWERSHELL}
 
 USAGE = """usage: squidbrake shell-guard check [--stdin] [--] LINE   exit code 0 run, 1 block, 2 ask
-       squidbrake shell-guard install --shell bash|zsh|powershell   print the snippet for your rc file"""
+       squidbrake shell-guard install --shell bash|zsh|powershell [--write]   print the snippet (--write: add it)
+       squidbrake shell-guard uninstall [--shell ...]                  take it out of your startup file again"""
+
+BEGIN, END = "# >>> squidbrake terminal guard >>>", "# <<< squidbrake terminal guard <<<"
+
+
+def this_shell() -> str:
+    import os
+    if os.name == "nt":
+        return "powershell"
+    name = os.path.basename(os.getenv("SHELL", ""))
+    return name if name in SHELLS else "bash"
+
+
+def startup_file(shell: str):
+    """The file that shell reads when a terminal opens."""
+    import os
+    import subprocess
+    from pathlib import Path
+    home = Path.home()
+    if shell == "zsh":
+        return home / ".zshrc"
+    if shell == "bash":
+        return home / (".bash_profile" if sys.platform == "darwin" else ".bashrc")
+    try:            # PowerShell's own answer: Documents can be moved (OneDrive)
+        out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", "$PROFILE"],
+                             capture_output=True, text=True, timeout=20).stdout.strip()
+        if out:
+            return Path(out)
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return Path(os.getenv("USERPROFILE", str(home))) / "Documents" / "WindowsPowerShell" / "Microsoft.PowerShell_profile.ps1"
+
+
+def write(shell: str, path=None) -> str:
+    """Add the snippet to the startup file (once), after a backup. -> what happened, in a sentence."""
+    import shutil
+    import time
+    path = path or startup_file(shell)
+    text = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+    if BEGIN in text:
+        return f"The terminal guard is already in {path}."
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        shutil.copy2(path, path.with_name(f"{path.name}.bak-{time.strftime('%Y%m%d-%H%M%S')}"))
+    block = f"{BEGIN}\n{SNIPPETS[shell].rstrip()}\n{END}\n"
+    path.write_text(text.rstrip("\n") + ("\n\n" if text.strip() else "") + block, encoding="utf-8")
+    return f"Added the terminal guard to {path}. New terminal windows warn before a command that can't be undone."
+
+
+def remove(shell: str, path=None) -> str:
+    import re
+    path = path or startup_file(shell)
+    text = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+    if BEGIN not in text:
+        return f"The terminal guard isn't in {path}."
+    new = re.sub(re.escape(BEGIN) + r".*?" + re.escape(END) + r"\n?", "", text, flags=re.S)
+    path.write_text(new.rstrip("\n") + "\n" if new.strip() else "", encoding="utf-8")
+    return f"Took the terminal guard out of {path}."
 
 
 def main(argv: list[str]) -> int:
@@ -143,12 +203,18 @@ def main(argv: list[str]) -> int:
         if message:
             print(message, file=sys.stderr)
         return EXIT_CODES[action]
-    if argv[:1] == ["install"]:
-        shell = argv[argv.index("--shell") + 1] if "--shell" in argv[:-1] else ""
+    if argv[:1] in (["install"], ["uninstall"]):
+        shell = argv[argv.index("--shell") + 1] if "--shell" in argv[:-1] else (this_shell() if "--write" in argv
+                                                                                or argv[0] == "uninstall" else "")
         if shell not in SHELLS:
             print(USAGE, file=sys.stderr)
             return 64
-        sys.stdout.write(SNIPPETS[shell])
+        if argv[0] == "uninstall":
+            print(remove(shell))
+        elif "--write" in argv:
+            print(write(shell))
+        else:
+            sys.stdout.write(SNIPPETS[shell])
         return 0
     print(USAGE, file=sys.stderr)
     return 64
