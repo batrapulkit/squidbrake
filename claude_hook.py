@@ -125,8 +125,8 @@ def pre(ev: dict, http: httpx.Client) -> None:
         r.raise_for_status()
         d = r.json()
         if d["decision"] == "review":
-            undo = " It can't be undone once it runs." if d.get("cannot_undo") else ""
-            print(f"Squidbrake: '{body['name']}' is waiting for approval at {GATEWAY_URL}/dashboard.{undo}",
+            undo_note = " It can't be undone once it runs." if d.get("cannot_undo") else ""
+            print(f"Squidbrake: '{body['name']}' is waiting for approval at {GATEWAY_URL}/dashboard.{undo_note}",
                   file=sys.stderr, flush=True)
             end = time.monotonic() + MAX_WAIT
             while d["decision"] == "review" and time.monotonic() < end:
