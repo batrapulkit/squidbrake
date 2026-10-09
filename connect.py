@@ -587,6 +587,33 @@ def _hooked_gateway() -> tuple[str, str] | None:
     return None
 
 
+AGENT_LABELS = {"claude-code": "Claude Code", "cursor": "Cursor", "codex": "Codex", "gemini-cli": "Gemini CLI",
+                "vscode": "VS Code Copilot", "antigravity": "Antigravity"}
+
+
+def local_agents() -> list[dict]:
+    """Every agent this computer has, and whether Squidbrake's hook is in it (the dashboard's toggles)."""
+    on = set(connected_agents())
+    found = [{"name": "claude-code", "present": bool(shutil.which("claude")) or (Path.home() / ".claude").exists()}]
+    found += [{"name": n, "present": t["present"]} for n, t in hook_agents().items()]
+    return [{**a, "label": AGENT_LABELS.get(a["name"], a["name"]), "connected": a["name"] in on} for a in found]
+
+
+def set_agent(name: str, on: bool, url: str) -> None:
+    """Connect (or take out) one agent, the way `connect all --agent NAME` does, with the key the other hooks use."""
+    if name not in AGENT_LABELS:
+        raise ValueError(f"unknown agent {name}")
+    hooked = _hooked_gateway()
+    key = hooked[1] if hooked else None
+    args = argparse.Namespace(url=url, key=key, remove=not on, yes=True, agent=name, project=None, hook_only=True)
+    if name == "claude-code":
+        claude_code(args)
+    else:
+        agents(args)
+        if name in ("cursor", "vscode", "gemini-cli", "antigravity"):
+            guard(args)
+
+
 def connected_agents() -> list[str]:
     """The agents on this computer whose config has Squidbrake's hook in it (no network, nothing run)."""
     found = []

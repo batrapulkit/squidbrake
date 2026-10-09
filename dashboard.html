@@ -693,6 +693,12 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
 
   <!-- ============================================================ SETTINGS -->
   <div id="view-settings" class="view" hidden>
+    <section class="card" id="agentsHere" hidden>
+      <div class="card-head"><h2>Agents on this computer</h2></div>
+      <p class="lede">Choose which agents go through Squidbrake. Turning one off takes Squidbrake out of that agent only;
+        the others stay as they are. Quit and reopen the agent afterwards so it picks the change up.</p>
+      <div id="agentsList"></div>
+    </section>
     <section class="card">
       <div class="card-head"><h2>Notifications</h2></div>
       <p class="lede">When an agent needs approval, the gateway can ping you on your phone and in Slack. Each message has a
@@ -2312,7 +2318,33 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
 
   // ---------- settings
   const sForm = $("#settingsForm");
+  // one switch per agent on this computer (admins, and only when the gateway runs on this computer)
+  function renderAgentsHere(list) {
+    const box = $("#agentsList");
+    box.replaceChildren(...list.map((a) => {
+      const sw = el("input", { type: "checkbox", "aria-label": `Send ${a.label} through Squidbrake` });
+      sw.checked = a.connected;
+      sw.disabled = !a.present && !a.connected;
+      sw.onchange = async () => {
+        sw.disabled = true;
+        try {
+          const r = await apiPost(`/v1/agents/local/${encodeURIComponent(a.name)}`, { on: sw.checked });
+          renderAgentsHere(r.agents);
+          toast(`${a.label}: ${sw.checked ? "connected" : "taken out"}. Quit and reopen ${a.label} to apply.`);
+        } catch (err) { toast(String(err.message || err)); sw.checked = !sw.checked; sw.disabled = false; }
+      };
+      return el("label", { class: "toggle-row", style: "display:flex;align-items:center;gap:10px;padding:6px 0" }, sw,
+        el("b", { text: a.label }),
+        el("span", { class: "hint", text: a.connected ? "goes through Squidbrake" : a.present ? "not connected" : "not installed here" }));
+    }));
+  }
+  async function loadAgentsHere() {
+    if (!(me && me.is_admin)) return;
+    try { const r = await api("/v1/agents/local"); $("#agentsHere").hidden = false; renderAgentsHere(r.agents); }
+    catch { $("#agentsHere").hidden = true; }          // a gateway on a server: nothing to switch here
+  }
   async function loadSettings() {
+    loadAgentsHere();
     const [s, team] = await Promise.all([api("/v1/settings"), api("/v1/team")]);
     for (const k of ["public_url", "ntfy_topic", "slack_webhook", "slack_signing_secret", "teams_webhook", "email_to",
                      "smtp_host", "smtp_port", "smtp_user", "smtp_password", "smtp_from"]) sForm[k].value = s[k] || "";

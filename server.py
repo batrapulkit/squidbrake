@@ -2140,6 +2140,43 @@ def me(who: str = Depends(auth)):
             "mode": policy.mode, "shadow_agents": policy.shadow_agents, "version": VERSION, "latest": latest_known()}
 
 
+def _local_only(request: Request) -> None:
+    """The toggles change files on the computer the gateway runs on: only when that's the person's own computer."""
+    if IN_DOCKER or PUBLIC_URL or (request.client and request.client.host not in ("127.0.0.1", "::1", "localhost", "testclient")):
+        raise HTTPException(404, "the agents on this computer can only be switched from the computer itself")
+
+
+@app.get("/v1/agents/local")
+def agents_here(request: Request, _: str = Depends(admin)):
+    _local_only(request)
+    import connect
+    return {"agents": connect.local_agents()}
+
+
+class AgentToggleIn(BaseModel):
+    on: bool
+
+
+@app.post("/v1/agents/local/{name}")
+def agent_toggle(name: str, body: AgentToggleIn, request: Request, who: str = Depends(admin)):
+    """Connect one agent to Squidbrake, or take it out: Settings → Agents on this computer."""
+    _local_only(request)
+    import connect
+    if name not in connect.AGENT_LABELS:
+        raise HTTPException(404, "unknown agent")
+    port = os.getenv("SQUIDBRAKE_LISTEN_PORT") or os.getenv("PORT") or "8080"
+    try:
+        import contextlib
+        import io
+        with contextlib.redirect_stdout(io.StringIO()):
+            connect.set_agent(name, body.on, f"http://localhost:{port}")
+    except SystemExit as e:
+        raise HTTPException(400, str(e))
+    with audited_tx() as conn:
+        audit(conn, who, "agent.connected" if body.on else "agent.disconnected", name, via="dashboard")
+    return {"agents": connect.local_agents()}
+
+
 def latest_known() -> str | None:
     """The newest version the CLI's daily update check saw (squidbrake/cli.py); this gateway never asks on its own."""
     try:

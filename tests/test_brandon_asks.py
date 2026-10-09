@@ -97,3 +97,26 @@ def test_release_notes_get_an_install_block_once():
     assert install_notes.notes("v0.8.0", once) is None                  # never twice
     wf = (ROOT / ".github" / "workflows" / "publish.yml").read_text(encoding="utf-8")
     assert "install_notes.py" in wf and "contents: write" in wf
+
+
+# ---- a switch per agent, in the dashboard
+
+def test_one_agent_can_be_switched_on_and_off_from_the_dashboard(c, monkeypatch, tmp_path):
+    monkeypatch.setattr(connect.Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.setattr(connect.shutil, "which", lambda name: None)
+    monkeypatch.setattr(connect, "new_key", lambda name, url="": "gw_test_agents")
+    (tmp_path / ".cursor").mkdir()
+    (tmp_path / ".codex").mkdir()
+    agents = {a["name"]: a for a in c.get("/v1/agents/local", headers=BOSS).json()["agents"]}
+    assert agents["cursor"]["present"] and not agents["cursor"]["connected"] and not agents["gemini-cli"]["present"]
+    assert c.post("/v1/agents/local/cursor", headers=H, json={"on": True}).status_code == 403   # an agent's key: no
+    r = c.post("/v1/agents/local/cursor", headers=BOSS, json={"on": True}).json()
+    on = {a["name"]: a["connected"] for a in r["agents"]}
+    assert on["cursor"] is True and on["codex"] is False                  # only the one switched on
+    assert "agent_hook.py" in (tmp_path / ".cursor" / "hooks.json").read_text()
+    r = c.post("/v1/agents/local/cursor", headers=BOSS, json={"on": False}).json()
+    assert {a["name"]: a["connected"] for a in r["agents"]}["cursor"] is False
+    assert c.post("/v1/agents/local/notepad", headers=BOSS, json={"on": True}).status_code == 404
+    monkeypatch.setattr(server, "PUBLIC_URL", "https://gw.example.com")    # a gateway on a server: no switches
+    assert c.get("/v1/agents/local", headers=BOSS).status_code == 404
+    assert 'id="agentsHere"' in (ROOT / "dashboard.html").read_text(encoding="utf-8")
