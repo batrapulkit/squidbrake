@@ -587,6 +587,26 @@ def _hooked_gateway() -> tuple[str, str] | None:
     return None
 
 
+def connected_agents() -> list[str]:
+    """The agents on this computer whose config has Squidbrake's hook in it (no network, nothing run)."""
+    found = []
+    claude = settings_path(None)
+    try:
+        text = claude.read_text(encoding="utf-8", errors="replace") if claude.exists() else ""
+        if "claude_hook.py" in text or ("squidbrake" in text and re.search(r"\bhook\b", text)):   # or the plugin's
+            found.append("claude-code")
+    except OSError:
+        pass
+    for name, t in hook_agents().items():
+        try:
+            text = t["file"].read_text(encoding="utf-8", errors="replace") if t["file"].exists() else ""
+        except OSError:
+            continue
+        if "agent_hook.py" in text or "agent-hook" in text:
+            found.append(name)
+    return found
+
+
 def status(args) -> int:
     """Which agents here go through Squidbrake, and whether each one will really run the hook."""
     hooked = _hooked_gateway()

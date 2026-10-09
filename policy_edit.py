@@ -4,7 +4,7 @@ agent (support, finance, ops).
 
   suggestions()   calls held for a person, approved 5+ times in 30 days and never rejected, grouped by what they are
                   (a tool, or a shell command's program and subcommand): each comes with an `allow` rule to add.
-                  Never suggested: money, an agent changing its own guard rails, or anything the command, history,
+                  Never suggested: money, an agent changing its own setup, or anything the command, history,
                   data or chain checks held (a rule can't and shouldn't open those).
   PACKS           rule blocks for a support, finance or ops agent.
   insert()        puts a block into rules.yaml right before the rule that held the call (so block rules above it
@@ -22,7 +22,7 @@ import yaml
 import commands
 import risk
 
-NEVER = {"approve-guard-rail-changes", "approve-money-out", "approve-refunds", "approve-outbound-email"}
+NEVER = {"approve-agent-setup-changes", "approve-guard-rail-changes", "approve-money-out", "approve-refunds", "approve-outbound-email"}
 CHECK_PREFIXES = ("command:", "taint:", "history:", "sequence:", "data:", "session-stop", "emergency-stop")
 WORD = re.compile(r"^[a-z][\w:.@/-]*$")
 

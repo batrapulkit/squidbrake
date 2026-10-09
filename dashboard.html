@@ -845,6 +845,13 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     <p id="stopWhat">Every action any agent tries will be blocked immediately, until an admin resumes them. Actions already
       running aren't interrupted.</p>
     <input id="stopReason" placeholder="Reason (shown to the agents and in the audit trail)" maxlength="500" aria-label="Reason">
+    <label style="display:block;margin-top:10px">For how long
+      <select id="stopFor" aria-label="For how long">
+        <option value="">Until someone turns it off</option>
+        <option value="15">15 minutes</option>
+        <option value="60">1 hour</option>
+        <option value="240">4 hours</option>
+      </select></label>
     <div class="acts">
       <button class="btn" type="button" id="stopCancel">Cancel</button>
       <button class="btn danger" type="submit">⏹ Stop now</button>
@@ -2037,11 +2044,16 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     const b = $("#stopBanner"), s = controlsState.all;
     const agentsStopped = Object.keys(controlsState.agents || {});
     const sessionsStopped = Object.keys(controlsState.sessions || {});
-    if (s) {
+    const live = (x) => x && !(x.until && new Date(x.until) <= new Date());
+    const hhmm = (t) => new Date(t).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    if (live(s)) {
       b.hidden = false;
-      b.replaceChildren(el("b", { text: "⏹ All agents are stopped." }),
-        el("span", { text: `By ${s.by} ${fmtAgo(s.at)}${s.reason ? " — " + s.reason : ""}. Every action they try is blocked.` }),
-        me && me.is_admin ? el("button", { class: "btn", text: "Resume all agents", onclick: () => resume(null) }) : null);
+      const long = Date.now() - new Date(s.at) > 30 * 60 * 1000;
+      b.replaceChildren(el("b", { text: `⏹ Emergency stop ON since ${hhmm(s.at)}` }),
+        el("span", { text: `By ${s.by}${s.reason ? " — " + s.reason : ""}${s.until ? `, until ${hhmm(s.until)}` : ""}. ` +
+          "Every action any agent tries is blocked, and the agent is told how to turn this off." +
+          (long ? " Still stopped: did you mean to leave this on?" : "") }),
+        me && me.is_admin ? el("button", { class: "btn", text: "Turn off", onclick: () => resume(null) }) : null);
     } else if (agentsStopped.length || sessionsStopped.length) {
       b.hidden = false;
       const what = [...agentsStopped, ...sessionsStopped.map((x) => "session " + x)];
@@ -2049,8 +2061,8 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
         el("span", { text: "Everything else is running normally." }),
         ...(me && me.is_admin ? sessionsStopped.map((x) => el("button", { class: "btn", text: `Resume session ${x.slice(0, 18)}`, onclick: () => resume(null, x) })) : []));
     } else b.hidden = true;
-    $("#stopBtn").textContent = s ? "⏹ Agents stopped" : "⏹ Stop agents";
-    $("#stopBtn").disabled = !!s;
+    $("#stopBtn").textContent = live(s) ? "⏹ Agents stopped" : "⏹ Stop agents";
+    $("#stopBtn").disabled = !!live(s);
   }
   let stopTarget = null, stopSession = null;
   function askStop(agent, session = null) {
@@ -2068,7 +2080,8 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   $("#stopCancel").addEventListener("click", () => $("#stopDlg").close());
   $("#stopForm").addEventListener("submit", async () => {
     try {
-      await apiPost("/v1/controls/stop", { agent: stopTarget, session: stopSession, reason: $("#stopReason").value.trim() || null });
+      await apiPost("/v1/controls/stop", { agent: stopTarget, session: stopSession, reason: $("#stopReason").value.trim() || null,
+                                           minutes: Number($("#stopFor").value) || null });
       toast(stopSession ? "Session stopped" : stopTarget ? `Stopped ${stopTarget}` : "All agents stopped");
       await loadControls(); if (view === "reports") loadReports();
       if (drawerEvent && stopSession) renderDrawer(drawerEvent);

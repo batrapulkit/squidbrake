@@ -778,7 +778,7 @@ rules:
     assert decide("stripe.payments_refund", {"amount": 250}) == "review"  # bad op: previous rules kept
 
 
-def test_shipped_rules_let_coding_work_run_and_hold_the_guard_rails():
+def test_shipped_rules_let_coding_work_run_and_hold_agent_setup_changes():
     """Everyday coding work must not wait for a person (people uninstall over approval fatigue), but an agent
     changing its own settings, hooks or MCP servers, Squidbrake's rules, or a secrets file must."""
     p = server.Policy(Path(__file__).resolve().parents[1] / "rules.yaml")

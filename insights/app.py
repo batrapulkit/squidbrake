@@ -72,6 +72,8 @@ with db() as _c:
         done INTEGER NOT NULL DEFAULT 0);
     """)
     # hosted pilots: their own gateway at <subdomain>.<HOSTED_DOMAIN>, started by provision.py on the server
+    if "connected" not in {r[1] for r in _c.execute("PRAGMA table_info(installs)")}:
+        _c.execute("ALTER TABLE installs ADD COLUMN connected TEXT")     # agents with Squidbrake's hook, as JSON
     _have = {r[1] for r in _c.execute("PRAGMA table_info(pilots)")}
     for _col, _type in (("hosted", "INTEGER NOT NULL DEFAULT 0"), ("subdomain", "TEXT"), ("state", "TEXT"),
                         ("admin_key", "TEXT"), ("agent_key", "TEXT"), ("keys_revealed_at", "TEXT"), ("error", "TEXT"),
@@ -302,11 +304,13 @@ async def ping(request: Request):
         _pilot(c, p.code, request)
         if not c.execute("SELECT 1 FROM installs WHERE install_id=? AND left_at IS NULL", (p.install_id,)).fetchone():
             raise HTTPException(403, "this install hasn't joined (or has left) the pilot")
+        connected = u.get("connected")
+        connected = json.dumps([str(a)[:40] for a in connected[:20]]) if isinstance(connected, list) else None
         c.execute("""UPDATE installs SET last_seen=?, version=?, os=?, mode=?, rules=?, agents=?, rules_hit=?,
-                     total_events=?, first_event=? WHERE install_id=?""",
+                     total_events=?, first_event=?, connected=? WHERE install_id=?""",
                   (now(), str(u.get("version", ""))[:40], str(u.get("os", ""))[:80], str(u.get("mode", ""))[:20],
                    _int(u.get("rules")), clip(u.get("agents")), clip(u.get("rules_hit")), _int(u.get("total_events")),
-                   str(u.get("first_event", ""))[:10], p.install_id))
+                   str(u.get("first_event", ""))[:10], connected, p.install_id))
         for d, cnt in days.items():
             c.execute("INSERT OR REPLACE INTO days (install_id, day, counts) VALUES (?,?,?)", (p.install_id, d, json.dumps(cnt)))
         if isinstance(u.get("catches"), list):
@@ -474,7 +478,35 @@ def reveal_keys(code: str, request: Request):
     return {"dashboard": dashboard_url(p["subdomain"]), "admin_key": p["admin_key"], "agent_key": p["agent_key"]}
 
 
-SUMS = ("events", "allowed", "held", "approved", "rejected", "blocked", "timed_out", "failed", "would_block", "would_hold")
+SUMS = ("events", "allowed", "held", "approved", "rejected", "blocked", "timed_out", "failed", "would_block", "would_hold",
+        "paused")
+# Blocks from an emergency stop a person switched on: not something a rule caught, so never counted as "stopped"
+PAUSE_RULES = ("emergency-stop", "session-stop")
+
+
+def _paused(x: dict) -> bool:
+    return x.get("rule") in PAUSE_RULES
+
+
+def _version(v: str) -> tuple:
+    return tuple(int(n) for n in re.findall(r"\d+", v or "")[:3]) or (0,)
+
+
+def rule_approvals(caught: list[dict]) -> list[dict]:
+    """Per rule: how many holds a person decided, and how many they approved. A rule whose 5+ holds were all
+    approved is holding routine work: suggest letting it run."""
+    by: dict[str, dict] = {}
+    for x in caught:
+        if x.get("outcome") in ("approved", "rejected") and x.get("rule") and not _paused(x):
+            r = by.setdefault(x["rule"], {"rule": x["rule"], "decided": 0, "approved": 0})
+            r["decided"] += 1
+            r["approved"] += x["outcome"] == "approved"
+    out = []
+    for r in sorted(by.values(), key=lambda r: -r["decided"]):
+        r["approve_pct"] = round(100 * r["approved"] / r["decided"])
+        r["always_allowed"] = r["decided"] >= 5 and r["approved"] == r["decided"]
+        out.append(r)
+    return out
 
 
 @app.get("/v1/admin/overview", dependencies=[Depends(admin)])
@@ -491,6 +523,7 @@ def overview(request: Request):
     by_install: dict[str, dict] = {}
     for iid, day, counts in days:
         by_install.setdefault(iid, {})[day] = json.loads(counts)
+    latest = oss_numbers().get("latest_version") or ""
     t = datetime.now(timezone.utc)
     seen_within = lambda s, h: bool(s) and t - datetime.fromisoformat(s) < timedelta(hours=h)
     out, totals = [], {k: 0 for k in SUMS}
@@ -506,13 +539,19 @@ def overview(request: Request):
             for k, v in json.loads(i["rules_hit"] or "{}").items(): hits[k] = hits.get(k, 0) + v
         week = {k: sum(daily[d][k] for d in span[-7:]) for k in SUMS}
         for k in SUMS: totals[k] += week[k]
+        active = [i for i in mine if not i["left_at"]]
+        known = [json.loads(i["connected"]) for i in active if i.get("connected")]
+        connected = sorted({a for k in known for a in k}) if known else None
         active_days = [d for d in span if daily[d]["events"]]
         days_this_week = sum(1 for d in active_days if d in span[-7:])
         days_last_week = len(active_days) - days_this_week
-        active = [i for i in mine if not i["left_at"]]
         last = max((i["last_seen"] or "" for i in active), default="")
+        ever_acted = sum(i["total_events"] or 0 for i in mine) > 0
         stage = ("left" if mine and not active else "active" if seen_within(last, 48) and week["events"] else
-                 "quiet" if last else "installed" if active else "opened link" if p["page_views"] else "link sent")
+                 "quiet" if last and ever_acted else
+                 "installed · agent not connected" if active and connected == [] else
+                 "agent connected" if active and connected else
+                 "installed" if active else "opened link" if p["page_views"] else "link sent")
         keys_waiting = bool(p.pop("admin_key", None)); p.pop("agent_key", None)   # never sent to the browser
         if p["hosted"]:
             # a hosted gateway reports on its own from the start, so the founder's progress is: opened the link ->
@@ -525,7 +564,13 @@ def overview(request: Request):
             elif not ever:
                 stage = "keys taken"
         mine_caught = sorted((x for i in mine for x in caught.get(i["install_id"], [])), key=lambda x: x["t"], reverse=True)
-        stopped = [x for x in mine_caught if x.get("outcome") in ("rejected", "blocked")]
+        stopped = [x for x in mine_caught if x.get("outcome") in ("rejected", "blocked") and not _paused(x)]
+        paused = sum(1 for x in mine_caught if _paused(x) and x.get("t", "") >= span[-7])
+        if not any("paused" in by_install.get(i["install_id"], {}).get(d, {}) for i in mine for d in span[-7:]):
+            # a gateway from before 0.8 counts emergency-stop blocks as "blocked": take them out here
+            week["blocked"] = max(0, week["blocked"] - paused)
+            totals["blocked"] -= min(paused, totals["blocked"])
+        week["paused"] = max(week["paused"], paused)
         saved: dict[str, int] = {}
         for x in stopped:
             for k, v in (x.get("saved") or {}).items():
@@ -538,7 +583,10 @@ def overview(request: Request):
         if stage == "active" and health in ("at risk", "churned"):
             stage = "quiet"           # reporting in, but its agents haven't done anything for 3+ days
         out.append({**p, "dashboard": dashboard_url(p["subdomain"]), "keys_waiting": keys_waiting,
-                    "catches": mine_caught[:25], "stopped": len(stopped), "saved": saved,
+                    "catches": mine_caught[:25], "stopped": len(stopped), "paused": week["paused"], "saved": saved,
+                    "connected": connected, "rule_approvals": rule_approvals(mine_caught),
+                    "outdated": bool(latest) and any(_version(v) < _version(latest) for v in
+                                                     {i["version"] for i in active if i["version"]}),
                     "decide_median_s": waits[len(waits) // 2] if waits else None, "health": health,
                     "idle_days": idle, "trend": (None if not prev else round(100 * (week["events"] - prev) / prev)),
                     "link": f"{public_url(request)}/start/{p['code']}", "stage": stage, "installs": len(active),
@@ -548,7 +596,8 @@ def overview(request: Request):
                     "daily": [daily[d]["events"] for d in span], "total_events": sum(i["total_events"] or 0 for i in mine),
                     "active_today": bool(daily[span[-1]]["events"]), "days_this_week": days_this_week,
                     "days_last_week": days_last_week})
-    return {"span": span, "pilots": out, "week": totals,
+    totals["paused"] = sum(p["paused"] for p in out)     # per pilot, incl. ones read from older gateways' catches
+    return {"span": span, "pilots": out, "week": totals, "latest_version": latest or None,
             "active_pilots": sum(1 for p in out if p["stage"] == "active"),
             "installs": sum(p["installs"] for p in out), "scorecard": scorecard(out, totals)}
 
@@ -569,6 +618,7 @@ def scorecard(pilots: list[dict], week: dict) -> dict:
         "at_risk": sum(1 for p in pilots if p.get("health") == "at risk"),
         "churned": sum(1 for p in pilots if p.get("health") == "churned"),
         "stopped": sum(p.get("stopped", 0) for p in pilots),
+        "paused": sum(p.get("paused", 0) for p in pilots),
         "saved": {k: sum((p.get("saved") or {}).get(k, 0) for p in pilots)
                   for k in sorted({k for p in pilots for k in (p.get("saved") or {})})},
     }
@@ -619,6 +669,11 @@ def oss_numbers() -> dict:
     except Exception:
         pass
     try:
+        pkg, _ = _fetch_json(f"https://pypi.org/pypi/{OSS_PACKAGE}/json")
+        fresh["latest_version"] = (pkg.get("info") or {}).get("version")
+    except Exception:
+        pass
+    try:
         dl, _ = _fetch_json(f"https://pypistats.org/api/packages/{OSS_PACKAGE}/recent")
         fresh["downloads_last_week"] = (dl.get("data") or {}).get("last_week")
     except Exception:
@@ -645,7 +700,8 @@ def traction():
         pilots = [dict(r) for r in c.execute(
             "SELECT code, company, created_at, page_views, keys_revealed_at, mrr, paying_since FROM pilots "
             "WHERE COALESCE(state, '') != 'deleting'")]
-        installs = [dict(r) for r in c.execute("SELECT install_id, code, left_at, agents FROM installs")]
+        installs = [dict(r) for r in c.execute("SELECT install_id, code, left_at, agents, connected, total_events "
+                                               "FROM installs")]
         days = c.execute("SELECT install_id, day, counts FROM days").fetchall()
         caught = [json.loads(r[0]) for r in c.execute("SELECT data FROM catches")]
         asks = [r[0] for r in c.execute("SELECT created_at FROM team_requests")]
@@ -670,10 +726,14 @@ def traction():
         if after:
             first_action[p["code"]] = min(after)
     set_up = {i["code"] for i in installs} | {p["code"] for p in pilots if p["keys_revealed_at"]}
+    # an agent is connected when the gateway says a hook is in place, or once any action has arrived
+    connected_codes = {i["code"] for i in installs if json.loads(i["connected"] or "[]") or (i["total_events"] or 0)} \
+        | set(first_action)
     days_this_week = {p["code"]: sum(1 for d in events_by.get(p["code"], {}) if d in window(0)) for p in pilots}
     funnel = [("Pilots created", len(pilots)),
               ("Opened the link", sum(1 for p in pilots if p["page_views"])),
               ("Set up (keys or install)", sum(1 for p in pilots if p["code"] in set_up)),
+              ("Agent connected", sum(1 for p in pilots if p["code"] in connected_codes)),
               ("First action", len(first_action)),
               ("Active 3+ days this week", sum(1 for v in days_this_week.values() if v >= 3)),
               ("Paying", sum(1 for p in pilots if (p["mrr"] or 0) > 0))]
@@ -682,8 +742,9 @@ def traction():
     then4 = [p for p in pilots if active_in(p["code"], 4)]
     cut = (today - timedelta(days=7)).isoformat()
     week_caught = [x for x in caught if x.get("t", "") >= cut]
-    stopped = [x for x in week_caught if x.get("outcome") in ("rejected", "blocked")]
-    decided = [x for x in week_caught if x.get("outcome") in ("approved", "rejected")]
+    stopped = [x for x in week_caught if x.get("outcome") in ("rejected", "blocked") and not _paused(x)]
+    paused = sum(1 for x in week_caught if _paused(x))
+    decided = [x for x in week_caught if x.get("outcome") in ("approved", "rejected") and not _paused(x)]
     saved: dict[str, int] = {}
     for x in stopped:
         for k, v in (x.get("saved") or {}).items():
@@ -703,7 +764,7 @@ def traction():
         "retention_w4": None if not then4 else round(100 * sum(1 for p in then4 if active_in(p["code"], 0)) / len(then4)),
         "actions_per_active_pilot": round(this["actions"] / this["active_pilots"]) if this["active_pilots"] else 0,
         "agents_per_active_install": round(sum(agents_per) / len(agents_per), 1) if agents_per else 0,
-        "stopped_this_week": len(stopped), "saved_this_week": saved,
+        "stopped_this_week": len(stopped), "paused_this_week": paused, "saved_this_week": saved,
         "approve_rate": round(100 * sum(1 for x in decided if x["outcome"] == "approved") / len(decided)) if decided else None,
         "median_seconds_to_decide": _median([x["decide_s"] for x in week_caught if isinstance(x.get("decide_s"), int)]),
         "mrr": mrr, "arr": mrr * 12,

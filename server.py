@@ -899,17 +899,97 @@ class ApprovalIn(BaseModel):
 # --------------------------------------------------------------------------- core
 
 
+def _live(entry: dict | None) -> bool:
+    """A stop with a time limit ("for 1 hour") ends by itself when the time is up."""
+    return bool(entry) and not (entry.get("until") and entry["until"] <= utcnow())
+
+
 def stopped_for(source: str | None, client: str, session_id: str | None = None) -> dict | None:
     """The stop that applies to this caller, if any: everything, one agent (by source or key), or one session."""
     s = state_get("stop", {"all": None, "agents": {}, "sessions": {}})
-    if s.get("all"):
-        return s["all"]
+    if _live(s.get("all")):
+        return {**s["all"], "scope": "all"}
     for k in (source, client):
-        if k and k in s.get("agents", {}):
-            return s["agents"][k]
-    if session_id and session_id in s.get("sessions", {}):
-        return {**s["sessions"][session_id], "session": session_id}
+        if k and _live(s.get("agents", {}).get(k)):
+            return {**s["agents"][k], "scope": "agent", "agent": k}
+    if session_id and _live(s.get("sessions", {}).get(session_id)):
+        return {**s["sessions"][session_id], "session": session_id, "scope": "session"}
     return None
+
+
+def _hhmm(iso: str | None) -> str:
+    try:
+        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).strftime("%H:%M UTC")
+    except ValueError:
+        return str(iso or "")
+
+
+def stop_message(stop: dict) -> str:
+    """What the agent is told, so the person reading its reply knows it's a stop, not a rule, and how to end it."""
+    by = f" by {stop.get('by')}" if stop.get("by") else ""
+    why = f" ({stop['reason']})" if stop.get("reason") else ""
+    until = f", until {_hhmm(stop['until'])}" if stop.get("until") else ""
+    dash = f"{(settings().get('public_url') or PUBLIC_URL or 'http://localhost:8080').rstrip('/')}/dashboard"
+    if stop.get("scope") == "session":
+        what = "This conversation is stopped"
+        cli = f"{CLI} resume --session {stop['session']}"
+    elif stop.get("scope") == "agent":
+        what = f"Squidbrake's emergency stop is ON for {stop['agent']}"
+        cli = f"{CLI} resume --agent {stop['agent']}"
+    else:
+        what = "Squidbrake's emergency stop is ON. All agents' actions are paused"
+        cli = f"{CLI} resume"
+    return (f"{what} (since {_hhmm(stop.get('at'))}{by}{why}{until}). Nothing runs until a person turns it off: "
+            f"in the dashboard ({dash}, Resume), or on the computer running Squidbrake: {cli}")
+
+
+STOP_REMINDER_MINUTES = int(os.getenv("SQUIDBRAKE_STOP_REMINDER_MINUTES", "30"))
+
+
+def remind_if_still_stopped(stop: dict, tried: str) -> None:
+    """A stop that's been on for 30 minutes while agents keep trying: ask once whether it was meant to stay on."""
+    try:
+        at = datetime.fromisoformat(str(stop.get("at")).replace("Z", "+00:00"))
+    except ValueError:
+        return
+    if stop.get("reminded") or datetime.now(timezone.utc) - at < timedelta(minutes=STOP_REMINDER_MINUTES):
+        return
+    with audited_tx() as conn:
+        s = json.loads(conn.execute(select(gateway_state.c.value).where(gateway_state.c.key == "stop")).scalar() or "{}")
+        entry = s.get("all") if stop.get("scope") == "all" else \
+            s.get("agents", {}).get(stop.get("agent")) if stop.get("scope") == "agent" else \
+            s.get("sessions", {}).get(stop.get("session"))
+        if not entry or entry.get("reminded"):
+            return
+        entry["reminded"] = utcnow()
+        state_set(conn, "stop", s)
+    minutes = int((datetime.now(timezone.utc) - at).total_seconds() // 60)
+    text = (f"Still stopped: did you mean to leave this on? Squidbrake's emergency stop has been on for {minutes} "
+            f"minutes{' (' + stop['reason'] + ')' if stop.get('reason') else ''}, and agents keep trying (just now: "
+            f"{tried}). Turn it off in the dashboard, or run: {CLI} resume")
+    threading.Thread(target=notify_text, args=("Squidbrake is still stopped", text), daemon=True).start()
+
+
+def notify_text(title: str, text: str) -> None:
+    """A plain message to wherever approvals go: Slack or Discord, Teams, a phone (ntfy) and email."""
+    cfg = settings()
+    if cfg["slack_webhook"]:
+        discord = any(h in cfg["slack_webhook"] for h in ("discord.com/api/webhooks/", "discordapp.com/api/webhooks/"))
+        try:
+            body = {"content": _truncate_discord(f"**{title}**\n{text}", 1999), "allowed_mentions": {"parse": []}} \
+                if discord else {"text": f"*{slack_escape(title)}*\n{slack_escape(text)}"}
+            httpx.post(cfg["slack_webhook"], json=body, timeout=10).raise_for_status()
+        except Exception:
+            log.exception("notification failed: %s", title)
+    if cfg.get("teams_webhook"):
+        send_teams(cfg["teams_webhook"], title, text)
+    if cfg["ntfy_topic"]:
+        try:
+            httpx.post(cfg["ntfy_server"].rstrip("/"), timeout=10,
+                       json={"topic": cfg["ntfy_topic"], "title": title, "message": text, "priority": 4}).raise_for_status()
+        except Exception:
+            log.exception("phone notification failed: %s", title)
+    send_email(cfg, title, text)
 
 
 # --------------------------------------------------------------------------- history checks
@@ -1338,7 +1418,8 @@ def record_event(ev: EventIn, client: str, client_ip: str | None) -> Decision:
     if stop := stopped_for(ev.source, client, ev.session_id):
         decision, rule = "deny", policy.DEFAULT_RULE
         rule_id = "session-stop" if stop.get("session") else "emergency-stop"
-        reason = (f"This session was stopped by {stop['by']}" if stop.get("session") else f"Emergency stop by {stop['by']}")             + (f": {stop['reason']}" if stop.get("reason") else "")
+        reason = stop_message(stop)
+        remind_if_still_stopped(stop, ev.name)
     else:
         # Policy sees the raw input; storage only ever sees the redacted copy.
         decision, reason, rule_id, rule = policy.evaluate(
@@ -1954,7 +2035,8 @@ async def lifespan(app: FastAPI):
     # usage counts for the pilot programme: does nothing unless this install joined one (squidbrake pilot join)
     tasks.append(asyncio.create_task(pilot.loop(PILOT_DIR, lambda: pilot.usage(
         engine, events, policy.mode, len(policy.rules), VERSION,
-        reasons={r["id"]: r.get("reason", "") for r in policy.rules + policy.sequences}))))
+        reasons={r["id"]: r.get("reason", "") for r in policy.rules + policy.sequences},
+        connected=_agents_connected_here()))))
     yield
     for t in tasks:
         t.cancel()
@@ -2110,6 +2192,7 @@ class StopIn(BaseModel):
     agent: str | None = Field(None, description="an agent's source or key name; omit to stop everything")
     session: str | None = Field(None, max_length=200, description="stop just this session (one conversation)")
     reason: str | None = Field(None, max_length=500)
+    minutes: int | None = Field(None, ge=1, le=7 * 24 * 60, description="end the stop by itself after this long")
 
 
 @app.get("/v1/controls")
@@ -2123,6 +2206,8 @@ def controls_stop(body: StopIn, who: str = Depends(person)):
     if not (can_approve(who) or keystore.is_admin(who)):
         raise HTTPException(403, "only approvers and admins can stop agents")
     entry = {"by": who, "at": utcnow(), "reason": body.reason}
+    if body.minutes:
+        entry["until"] = (datetime.now(timezone.utc) + timedelta(minutes=body.minutes)).isoformat().replace("+00:00", "Z")
     target = f"session:{body.session}" if body.session else body.agent or "*"
     with audited_tx() as conn:
         s = json.loads(conn.execute(select(gateway_state.c.value).where(gateway_state.c.key == "stop")).scalar()
@@ -2161,6 +2246,30 @@ def controls_resume(body: StopIn, who: str = Depends(admin)):
         state_set(conn, "stop", s)
         audit(conn, who, "controls.resumed", f"session:{body.session}" if body.session else body.agent or "*")
     return s
+
+
+def resume_stop(agent: str | None, session: str | None, who: str) -> bool:
+    """`squidbrake resume` on the gateway's own computer: the same as Resume in the dashboard. -> was one on?"""
+    with audited_tx() as conn:
+        s = json.loads(conn.execute(select(gateway_state.c.value).where(gateway_state.c.key == "stop")).scalar()
+                       or '{"all": null, "agents": {}}')
+        was = s.get("sessions", {}).pop(session, None) if session else \
+            s.get("agents", {}).pop(agent, None) if agent else s.get("all")
+        if not agent and not session:
+            s["all"] = None
+        state_set(conn, "stop", s)
+        if was:
+            audit(conn, who, "controls.resumed", f"session:{session}" if session else agent or "*", via="command line")
+    return bool(was)
+
+
+def _cli_resume(args) -> int:
+    if resume_stop(args.agent, args.session, "command-line"):
+        what = f"session {args.session}" if args.session else args.agent or "all agents"
+        print(f"Resumed {what}: their actions are checked as usual again.")
+        return 0
+    print("Nothing to resume: no emergency stop is on" + (f" for {args.session or args.agent}." if args.session or args.agent else "."))
+    return 0
 
 
 # ---- notification settings (admins)
@@ -3170,6 +3279,17 @@ def can_open_browser() -> bool:
     return True
 
 
+def _agents_connected_here() -> list[str] | None:
+    """Which agents on this computer have Squidbrake's hook; None when the gateway can't tell (Docker, a server)."""
+    if IN_DOCKER or PUBLIC_URL:
+        return None
+    try:
+        import connect
+        return connect.connected_agents()
+    except Exception:
+        return None
+
+
 def _cli_run(args) -> int:
     import uvicorn
 
@@ -3202,6 +3322,9 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--workers", type=int, default=int(os.getenv("WORKERS", "1")))
     r.add_argument("--no-browser", action="store_true", help="don't open the dashboard on first start")
     sub.add_parser("init", help="create the first keys (happens automatically on first start)")
+    rs = sub.add_parser("resume", help="turn an emergency stop off (all agents, one agent, or one conversation)")
+    rs.add_argument("--agent")
+    rs.add_argument("--session")
     a = sub.add_parser("add-key", help="create a key for an agent or a person")
     a.add_argument("name")
     a.add_argument("--approver", action="store_true", help="a person who may approve/reject held calls")
@@ -3233,7 +3356,7 @@ def main(argv: list[str] | None = None) -> int:
     if not argv or (argv[0].startswith("-") and argv[0] not in ("-h", "--help")):
         argv = ["run", *argv]  # `python server.py --port 9000` means run
     args = p.parse_args(argv)
-    return {"run": _cli_run, "init": _cli_init, "add-key": _cli_add_key, "remove-key": _cli_remove_key,
+    return {"run": _cli_run, "init": _cli_init, "resume": _cli_resume, "add-key": _cli_add_key, "remove-key": _cli_remove_key,
             "keys": _cli_keys, "verify": lambda a: verify.main([a.file]), "pilot": _cli_pilot,
             "evidence": _cli_evidence, "lockdown": _cli_lockdown, "explain": _cli_explain}[args.cmd](args)
 

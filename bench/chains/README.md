@@ -121,7 +121,7 @@ What changed in the command checks and `rules.yaml`, each with tests in `tests/t
 
 [`risk.py`](../../risk.py) gives every action a score from 0 to 100. The score is built from:
 
-- what the action is (the shell command's kind, money, sending out, secrets, production, the agent's own guard rails)
+- what the action is (the shell command's kind, money, sending out, secrets, production, the agent's own setup)
 - what came before it (the gateway's chain signals)
 - how big it is (what the hook measured)
 
@@ -142,7 +142,7 @@ routine one every time.
 **Tuned once on this benchmark.** After the first run, two factors were added because the first version had left
 them out:
 
-- an agent changing its own guard rails
+- an agent changing its own setup (settings, hooks, MCP servers)
 - SQL that changes every row (no `WHERE`)
 
 The numbers above include those two factors. Real shadow data is the test that counts. The score also gives a low

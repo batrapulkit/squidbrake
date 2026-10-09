@@ -11,7 +11,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 # Every module server.py imports (tests/test_packaging.py checks this list), plus the shipped-rules fingerprints
-COPY server.py commands.py risk.py taint.py verify.py pilot.py evidence.py lockdown.py mcp_catalog.py mcp_hub.py mcp_oauth.py outbound.py policy_edit.py siem.py gateway_proxy.py gw_async.py rules.yaml rules.shipped dashboard.html approve.html ./
+COPY server.py connect.py hooklog.py commands.py risk.py taint.py verify.py pilot.py evidence.py lockdown.py mcp_catalog.py mcp_hub.py mcp_oauth.py outbound.py policy_edit.py siem.py gateway_proxy.py gw_async.py rules.yaml rules.shipped dashboard.html approve.html ./
 COPY squidbrake/__init__.py squidbrake/__init__.py
 RUN useradd -r -u 10001 gateway && mkdir -p /app/data && chown -R gateway /app/data
 USER gateway

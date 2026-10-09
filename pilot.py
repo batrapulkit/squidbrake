@@ -8,8 +8,10 @@ by saying yes when `squidbrake connect all` asks (once, default no).
 
 Nothing is sent unless you join. What is sent, at start and every 6 hours (a hosted dashboard: every 2 minutes):
   - the Squidbrake version, operating system, enforce/shadow mode and number of rules
-  - the agents connected, by their labels (e.g. "claude-code", "antigravity")
-  - per day, for the last 7 days: how many actions were allowed, held, approved, rejected, blocked, timed out or failed
+  - the agents connected, by their labels (e.g. "claude-code", "antigravity"), and which agents on this computer
+    have Squidbrake's hook in their settings (so a pilot that installed but never connected an agent can be helped)
+  - per day, for the last 7 days: how many actions were allowed, held, approved, rejected, blocked, timed out or failed,
+    and how many were paused by an emergency stop (counted apart from what rules blocked)
   - which rules blocked or held things (rule ids such as "command:catastrophic_command")
   - for each action held or blocked in the last 7 days: when, which agent, the program only (e.g. "rm", "git"),
     the rule and its reason, what happened (approved, rejected, blocked, timed out), how long a person took,
@@ -119,7 +121,11 @@ def catches(conn, events, since: str, reasons: dict) -> list[dict]:
     return out
 
 
-def usage(engine, events, mode: str, rules: int, version: str, reasons: dict | None = None) -> dict:
+PAUSE_RULES = ("emergency-stop", "session-stop")
+
+
+def usage(engine, events, mode: str, rules: int, version: str, reasons: dict | None = None,
+          connected: list[str] | None = None) -> dict:
     """Counts, and what was held or blocked as program + rule + outcome + sizes (see the top of this file).
     No inputs, outputs, arguments, file names, names of people."""
     since = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
@@ -127,21 +133,23 @@ def usage(engine, events, mode: str, rules: int, version: str, reasons: dict | N
     human = events.c.decided_by.isnot(None) & (events.c.decided_by != "timeout")
     n = lambda cond: func.sum(case((cond, 1), else_=0))
     in_week = events.c.created_at >= since
+    paused = func.coalesce(events.c.rule_id.in_(PAUSE_RULES), False)
     with engine.connect() as conn:
         days = {d: {"events": int(t or 0), "allowed": int(a or 0), "held": int(h or 0), "approved": int(ap or 0),
                     "rejected": int(rj or 0), "blocked": int(b or 0), "timed_out": int(to or 0), "failed": int(f or 0),
-                    "would_block": int(wb or 0), "would_hold": int(wh or 0)}
-                for d, t, a, h, ap, rj, b, to, f, wb, wh in conn.execute(select(
+                    "would_block": int(wb or 0), "would_hold": int(wh or 0), "paused": int(ps or 0)}
+                for d, t, a, h, ap, rj, b, to, f, wb, wh, ps in conn.execute(select(
                     day, func.count(),
                     n((events.c.decision == "allow") & events.c.decided_by.is_(None)),
                     n(events.c.approval_deadline.isnot(None)),
                     n(human & (events.c.decision == "allow")),
                     n(human & (events.c.decision == "deny")),
-                    n((events.c.status == "denied") & events.c.decided_by.is_(None)),
+                    n((events.c.status == "denied") & events.c.decided_by.is_(None) & paused.is_(False)),
                     n(events.c.decided_by == "timeout"),
                     n(events.c.status == "failed"),
                     n(events.c.would == "deny"),
                     n(events.c.would == "review"),
+                    n((events.c.status == "denied") & events.c.decided_by.is_(None) & paused.is_(True)),
                 ).where(in_week).group_by(day)).all()}
         agent = func.coalesce(events.c.source, events.c.client)
         agents = dict(conn.execute(select(agent, func.count()).where(in_week).group_by(agent)).all())
@@ -154,7 +162,7 @@ def usage(engine, events, mode: str, rules: int, version: str, reasons: dict | N
     return {"version": version, "os": f"{platform.system()} {platform.release()}", "python": platform.python_version(),
             "mode": mode, "rules": rules, "agents": {str(k): v for k, v in agents.items() if k},
             "days": days, "rules_hit": rules_hit, "total_events": total, "first_event": (first or "")[:10],
-            "catches": held}
+            "catches": held, "connected": connected}
 
 
 def _post(server: str, path: str, body: dict) -> dict:

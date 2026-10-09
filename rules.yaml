@@ -141,9 +141,9 @@ rules:
       name: ["read*", "file*", "cat*"]
       input_regex: '\.env\b|id_rsa|\.pem\b|credentials'
 
-  # ---- an agent changing its own guard rails: its settings, hooks and MCP servers, Squidbrake's own files,
+  # ---- an agent changing its own setup: its settings, hooks and MCP servers, Squidbrake's own files,
   # secrets, and files that run code at login or on every commit. Squidbrake would be easy to switch off without this.
-  - id: approve-guard-rail-changes
+  - id: approve-agent-setup-changes
     action: review
     reason: Changes an AI agent's own settings, hooks or MCP servers, Squidbrake itself, a secrets file, or code that runs at login
     match:
@@ -217,7 +217,7 @@ rules:
 
   # ---- coding agents: everyday work runs on its own, so nobody turns Squidbrake off out of approval fatigue.
   # The command checks still hold what can't be undone (git push --force, cloud deletes, DROP TABLE, curl | sh)
-  # and block what's catastrophic (rm -rf ~/, wiping a disk); the rule above holds changes to the guard rails.
+  # and block what's catastrophic (rm -rf ~/, wiping a disk); the rule above holds changes to the agents' own setup.
   - id: allow-coding-work
     action: allow
     reason: Everyday coding work (edits, tests, builds, installs, commits)

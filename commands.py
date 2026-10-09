@@ -293,7 +293,7 @@ def _turns_off_squidbrake(prog: str, lower: list[str]) -> str | None:
     if prog in SELF:
         sub = [w for w in lower[1:] if not w.startswith("-")]
         if "--remove" in lower or sub[:2] in (["service", "stop"], ["service", "remove"], ["service", "uninstall"]) \
-                or sub[:1] in (["stop"], ["uninstall"]):
+                or sub[:1] in (["stop"], ["uninstall"], ["resume"]):
             return f"turns Squidbrake off or takes it out of the agents ({' '.join(lower[:4])})"
         if sub[:1] in (["remove-key"],):
             return f"removes a Squidbrake key ({' '.join(lower[:3])})"

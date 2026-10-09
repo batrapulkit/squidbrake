@@ -26,7 +26,7 @@ SECRETS = re.compile(r"(\.env\b|secret|token|credential|password|passwd|id_rsa|\
 PROD = re.compile(r"\b(prod|production|live|master|main)\b", re.I)
 DESTRUCTIVE_SQL = re.compile(r"\b(drop|truncate|delete\s+from|alter\s+table)\b", re.I)
 UNSCOPED_SQL = re.compile(r"\b(update\s+\S+\s+set|delete\s+from\s+\S+)\b(?![^;]*\bwhere\b)", re.I)
-# an agent's own settings, hooks and MCP servers, and files that run code at login: the guard rails themselves
+# an agent's own settings, hooks and MCP servers, and files that run code at login: the agent's own setup
 GUARD_RAILS = re.compile(r"\.(claude|cursor|codex|gemini|copilot|kiro|windsurf|squidbrake)[\\/]|mcp(_config)?\.json|"
                          r"\.git[\\/]+hooks[\\/]|\.(bashrc|zshrc|bash_profile|zprofile|profile)\b", re.I)
 SIZE = re.compile(r"(\d[\d,]*)\+?\s+(files?|rows?|commits?|resources?|objects?|Kubernetes objects?)\b", re.I)
@@ -69,7 +69,7 @@ def score(name: str, input: Any, signals: list[dict] | None = None, metadata: di
     elif UNSCOPED_SQL.search(text):
         found.append((40, "changes every row (no WHERE)"))
     if GUARD_RAILS.search(text) and (WRITES.search(name) or reading is not None):
-        found.append((40, "changes an agent's own guard rails"))
+        found.append((40, "changes an agent's own setup (settings, hooks, MCP servers)"))
     if SECRETS.search(text):
         found.append((20, "touches secrets"))
     if PROD.search(text) and any(p > 0 for p, _ in found):

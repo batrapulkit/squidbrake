@@ -20,7 +20,7 @@ def test_what_runs_underneath_counts():
     assert risk.score("Bash", {"command": "make clean"}, metadata=runs, shell=True)[0] >= 75
 
 
-def test_chain_signals_money_and_guard_rails():
+def test_chain_signals_money_and_agent_setup():
     s, why = risk.score("payments.transfer", {"amount": 24800}, signals=[{"check": "impersonation"}])
     assert s >= 80 and why[:2] == ["impersonation", "moves money"]
     assert risk.score("Write", {"file_path": ".claude/settings.json", "content": "{}"})[0] >= 40

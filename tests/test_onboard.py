@@ -33,6 +33,7 @@ def world(monkeypatch):
     monkeypatch.setattr(server, "print_banner", lambda url, created: print("KEYS:", created))
     monkeypatch.setattr(connect, "connect_all", lambda a: w["connected"].append((a.url, a.yes)))
     monkeypatch.setattr(connect, "doctor", lambda a: w.__setitem__("checked", w["checked"] + 1) or 0)
+    monkeypatch.setattr(connect, "connected_agents", lambda: w.get("agents_here", ["cursor"]))
     import webbrowser
     monkeypatch.setattr(webbrowser, "open", lambda url: w["opened"].append(url))
     return w
@@ -75,3 +76,9 @@ def test_a_service_that_wont_start_is_said(world, monkeypatch, capsys):
     monkeypatch.setattr(onboard.time, "sleep", lambda s: None)
     assert onboard.main([]) == 1
     assert not world["connected"] and "didn't start" in capsys.readouterr().out
+
+
+def test_no_agent_on_this_computer_is_said(world, capsys):
+    world["agents_here"] = []
+    assert onboard.main(["--no-browser"]) == 0
+    assert "Installed, but no agent connected yet" in capsys.readouterr().out

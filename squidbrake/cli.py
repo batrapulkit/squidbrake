@@ -32,6 +32,7 @@ Data, keys and rules.yaml live in ~/.squidbrake (set SQUIDBRAKE_HOME to move the
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -45,6 +46,58 @@ def _safe_output() -> None:
                 stream.reconfigure(errors="backslashreplace")
         except (AttributeError, ValueError):
             pass
+
+
+UPDATE_COMMANDS = {"start", "setup", "run", "doctor", "connect", "status"}
+
+
+def _upgrade_command() -> str:
+    exe = sys.executable.replace("\\", "/").lower()
+    if "/uv/tools/" in exe:
+        return "uv tool upgrade squidbrake"
+    if "/pipx/" in exe:
+        return "pipx upgrade squidbrake"
+    return f'"{sys.executable}" -m pip install -U squidbrake   (or run the install line again)'
+
+
+def update_notice(argv: list[str], version: str) -> str | None:
+    """Once a day, the newest version number on PyPI (one request, nothing about this computer in it beyond the
+    request itself); said the next time you run a command in a terminal. Off: SQUIDBRAKE_NO_UPDATE_CHECK=1 or
+    DO_NOT_TRACK=1. Never in hooks, scripts or CI."""
+    import json
+    import threading
+    import time
+    command = argv[0] if argv and not argv[0].startswith("-") else "start"
+    if command not in UPDATE_COMMANDS or os.getenv("CI") or \
+            os.getenv("SQUIDBRAKE_NO_UPDATE_CHECK", "").lower() in ("1", "true", "yes") or \
+            os.getenv("DO_NOT_TRACK", "").lower() in ("1", "true", "yes"):
+        return None
+    try:
+        if not sys.stdout.isatty():
+            return None
+    except (AttributeError, ValueError):
+        return None
+    path = Path(os.getenv("SQUIDBRAKE_HOME") or Path.home() / ".squidbrake") / "update-check.json"
+    try:
+        cached = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cached = {}
+
+    def check():
+        try:
+            import httpx
+            latest = httpx.get("https://pypi.org/pypi/squidbrake/json", timeout=5).json()["info"]["version"]
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps({"checked": time.time(), "latest": latest}), encoding="utf-8")
+        except Exception:
+            pass
+    if time.time() - cached.get("checked", 0) > 86400:
+        threading.Thread(target=check, daemon=True).start()     # for next time: never slows this command down
+    latest = str(cached.get("latest") or "")
+    as_tuple = lambda v: tuple(int(n) for n in re.findall(r"\d+", v)[:3])
+    if latest and as_tuple(latest) > as_tuple(version):
+        return f"New version {latest} available (you have {version}). Upgrade: {_upgrade_command()}"
+    return None
 
 
 def main() -> int:
@@ -69,6 +122,11 @@ def main() -> int:
     try:   # asks once in a terminal; never in the hooks, scripts or CI (see telemetry.py)
         import telemetry
         telemetry.maybe(argv, __version__)
+    except Exception:
+        pass
+    try:
+        if note := update_notice(argv, __version__):
+            print(note + "\n", file=sys.stderr)
     except Exception:
         pass
     if argv[:1] == ["doctor"]:     # everything a person would check by hand, with what to fix

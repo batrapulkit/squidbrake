@@ -392,7 +392,7 @@ Rules with `action: review` hold the call until a person approves or rejects it:
   or (in shadow mode) would have been, why, and what it would have changed. *Reports → What it caught* shows it any
   time, with *Copy weekly report*.
 - **Stop asking about what you always approve:** *Settings → Rules* suggests an `allow` rule for anything people
-  approved 5+ times in 30 days and never rejected (never for money, an agent's own guard rails, or what the command,
+  approved 5+ times in 30 days and never rejected (never for money, an agent's own setup, or what the command,
   data or chain checks held). *Allow it* adds the rule right before the one that held it, with a backup.
 - **Starter packs** for a support, finance or ops agent add a block of rules after the read rule, so blocks above
   still win.
@@ -523,7 +523,8 @@ python tests/e2e_business_scenario.py
 
 ## Usage sharing (asked first)
 
-Squidbrake sends nothing anywhere without asking first.
+Squidbrake shares nothing about you or your agents without asking first. The one request it makes on its own is
+the daily update check below, which only asks for the newest version number.
 
 **Anonymous usage stats.** The first time you run `squidbrake` in a terminal, it asks once whether to send
 anonymous stats (Enter means yes): the command name (e.g. `doctor`, never its arguments), version, OS, Python
@@ -531,6 +532,10 @@ version and country, plus the gateway's usage counts described below (what it al
 commands an agent ran, files, prompts, rules, keys or the audit trail. The agent hooks never send anything, and
 scripts, CI and `--yes` are never asked. `squidbrake telemetry off` (or
 `SQUIDBRAKE_TELEMETRY=0`, or `DO_NOT_TRACK=1`) stops it; `squidbrake telemetry status` shows exactly what is sent.
+**Update check.** Once a day, running `squidbrake` in a terminal asks pypi.org for the newest version number, and
+the next time says if there's a newer one. That request carries nothing about you beyond the request itself; never
+in hooks, scripts or CI; off with `SQUIDBRAKE_NO_UPDATE_CHECK=1` or `DO_NOT_TRACK=1`.
+
 If you'd like the team to know who you are, `squidbrake register you@company.com` (asks first). Details:
 [`telemetry.py`](telemetry.py).
 

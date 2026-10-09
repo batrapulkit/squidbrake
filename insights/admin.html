@@ -151,10 +151,13 @@ const ago = (iso) => {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
   return s < 90 ? "just now" : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 129600 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`;
 };
+let d_latest = "";
 const STAGE = { "active": ["Active", "s-active"], "installed": ["Installed, no activity yet", "s-installed"],
   "quiet": ["Gone quiet", "s-quiet"], "opened link": ["Opened the link", "s-opened"], "link sent": ["Link sent", "s-sent"],
   "left": ["Left the pilot", "s-left"], "setting up": ["Setting up", "s-installed"], "keys taken": ["Took keys, not connected yet", "s-opened"],
-  "setup failed": ["Setup failed", "s-quiet"], "deleting": ["Deleting", "s-left"] };
+  "setup failed": ["Setup failed", "s-quiet"], "deleting": ["Deleting", "s-left"],
+  "installed · agent not connected": ["Installed · agent not connected", "s-quiet"],
+  "agent connected": ["Agent connected, no actions yet", "s-installed"] };
 
 function login(msg = "") {
   app.innerHTML = `<div class="login"><div class="brand">Squid<b>brake</b> <small>Pilots</small></div>
@@ -202,6 +205,8 @@ function followUp(p) {
     "opened link": hi + `Saw you opened the Squidbrake setup page. Anything that got in the way? Happy to do a quick 5-minute call and set it up together.\n${p.link}`,
     "keys taken": hi + `Your dashboard is ready, the last bit is connecting Claude Code: step 2 on ${p.link} (one command), then restart Claude Code. Want me to walk you through it?`,
     "installed": hi + `You're all set up! Restart Claude Code if you haven't, then try asking it to print your .env file: Squidbrake should block it.`,
+    "installed · agent not connected": hi + `Squidbrake is installed and running, but no AI agent is connected to it yet, so it can't see anything. One command does it: squidbrake connect all (then restart your agents). Want me to do it with you on a quick call?`,
+    "agent connected": hi + `Your agents are connected! Restart them if you haven't (quit Cursor / Claude Code and open them again), then work as usual: you'll see every action in your dashboard.`,
     "quiet": hi + `Haven't seen activity from Squidbrake in a few days. Was something annoying, like too many approvals? I can tune the rules for you, or switch it to shadow mode (it just records what it would block).`,
     "active": hi + `How's Squidbrake working for you so far? Anything it held that it shouldn't have, or something it should have caught? 2 minutes of feedback would help a lot.`,
   }[p.stage];
@@ -228,6 +233,7 @@ async function load() {
                                                 api("/v1/admin/traction"), api("/v1/admin/install-reports")]); }
   catch (e) { if (e.message !== "unauthorized") app.innerHTML = `<main><p class="err">${esc(e.message)}</p></main>`; return; }
   const w = d.week;
+  d_latest = d.latest_version || "";
   app.innerHTML = `
     <div class="top"><div class="in"><div class="brand">Squid<b>brake</b> <small>Pilots</small></div>
       <nav><a href="#week">This week</a><a href="#stopped">Stopped</a><a href="#traction">Traction</a><a href="#pilots">Pilots</a><a href="#requests">Requests</a><a href="#fails">Failed installs</a><a href="#new">New pilot</a></nav>
@@ -248,7 +254,8 @@ async function load() {
         ${stat("Holds approved", d.scorecard.approve_rate === null ? "–" : d.scorecard.approve_rate + "%",
                d.scorecard.approve_rate > 90 ? "Over 90%: rules may be holding routine work" : "", d.scorecard.approve_rate > 90)}
         ${stat("At risk · churned", `${d.scorecard.at_risk}<small>·</small> ${d.scorecard.churned}`, "3+ / 7+ days without activity", d.scorecard.at_risk + d.scorecard.churned > 0)}
-        ${stat("Stopped", d.scorecard.stopped, savedText(d.scorecard.saved) ? "saved " + savedText(d.scorecard.saved) : "rejected or blocked")}
+        ${stat("Stopped", d.scorecard.stopped, (savedText(d.scorecard.saved) ? "saved " + savedText(d.scorecard.saved) : "caught by a rule") +
+               (d.scorecard.paused ? ` · paused by emergency stop: ${d.scorecard.paused}` : ""))}
       </div></section>
     ${stoppedPanel(d.pilots)}
     ${tractionPanel(inv)}
@@ -330,7 +337,8 @@ function tractionPanel(v) {
           ${stat("Retention", `${v.retention_w1 === null ? "–" : v.retention_w1 + "%"}<small>W1</small> ${v.retention_w4 === null ? "–" : v.retention_w4 + "%"}<small>W4</small>`, "still active 1 and 4 weeks later")}
           ${stat("Time to first action", v.median_days_to_first_action === null ? "–" : `${v.median_days_to_first_action}<small>days</small>`, "median, from the link")}
           ${stat("Depth", `${v.actions_per_active_pilot}<small>actions / wk</small>`, `${v.agents_per_active_install} agents per install`)}
-          ${stat("Stopped", v.stopped_this_week, savedText(v.saved_this_week) ? "saved " + savedText(v.saved_this_week) : "rejected or blocked this week")}
+          ${stat("Stopped", v.stopped_this_week, (savedText(v.saved_this_week) ? "saved " + savedText(v.saved_this_week) : "caught by a rule this week") +
+                 (v.paused_this_week ? ` · paused by emergency stop: ${v.paused_this_week}` : ""))}
           ${stat("Holds approved", v.approve_rate === null ? "–" : v.approve_rate + "%", v.median_seconds_to_decide === null ? "" : "decided in " + fmtSecs(v.median_seconds_to_decide) + " (median)")}
           ${stat("Teams asking", v.inbound_this_week, `${v.inbound_total} total, from the /team form`)}
           ${stat("GitHub", `${o.stars ?? "–"}<small>stars</small>`, `${o.forks ?? "–"} forks · ${o.contributors ?? "–"} contributors`)}
@@ -348,7 +356,7 @@ function tractionUpdate(v) {
     `Pilots: ${f["Pilots created"]} created, ${f["First action"]} activated, ${w.active_pilots} active this week (${pct(v.active_pilots_wow)} WoW), ${f["Active 3+ days this week"]} active 3+ days`,
     `Retention: W1 ${v.retention_w1 ?? "–"}%, W4 ${v.retention_w4 ?? "–"}% · median ${v.median_days_to_first_action ?? "–"} days to first action`,
     `Usage: ${w.actions.toLocaleString()} agent actions this week (${pct(v.actions_wow)} WoW), ${v.actions_per_active_pilot} per active pilot`,
-    `Value: ${v.stopped_this_week} risky actions stopped this week${savedText(v.saved_this_week) ? " (" + savedText(v.saved_this_week) + " saved)" : ""}, ${v.approve_rate ?? "–"}% of holds approved`,
+    `Value: ${v.stopped_this_week} risky actions stopped by a rule this week${savedText(v.saved_this_week) ? " (" + savedText(v.saved_this_week) + " saved)" : ""}${v.paused_this_week ? `, plus ${v.paused_this_week} paused by an emergency stop` : ""}, ${v.approve_rate ?? "–"}% of holds approved`,
     `Inbound: ${v.inbound_this_week} teams asked for help this week (${v.inbound_total} total)`,
     `Open source: ${o.stars ?? "–"} GitHub stars, ${o.forks ?? "–"} forks, ${o.contributors ?? "–"} contributors`].join("\n");
 }
@@ -398,9 +406,9 @@ function weeklyReport(d) {
   const lines = [`Squidbrake pilots, week to ${day}`,
     `Active today: ${s.active_today} · this week: ${s.active_this_week} · 3+ days this week: ${s.active_3_plus_days} (of ${d.pilots.length} pilots, ${d.installs} installs)`,
     `Back from last week: ${s.retained} of ${s.active_last_week}`,
-    `Actions: ${w.events} · held for a person: ${w.held} (approved ${w.approved}, rejected ${w.rejected}) · blocked: ${w.blocked}`,
+    `Actions: ${w.events} · held for a person: ${w.held} (approved ${w.approved}, rejected ${w.rejected}) · blocked by a rule: ${w.blocked}${w.paused ? ` · paused by emergency stop: ${w.paused}` : ""}`,
     `Holds approved: ${s.approve_rate === null ? "none decided yet" : s.approve_rate + "%"}`, "", "Per pilot:"];
-  for (const p of d.pilots) lines.push(`- ${p.company}: active ${p.days_this_week}/7 days, ${p.week.events} actions, ${p.week.held} held, ${p.week.blocked} blocked (${p.stage})`);
+  for (const p of d.pilots) lines.push(`- ${p.company}: active ${p.days_this_week}/7 days, ${p.week.events} actions, ${p.week.held} held, ${p.week.blocked} blocked${p.paused ? `, ${p.paused} paused by emergency stop` : ""} (${p.stage}${p.outdated ? ", outdated version" : ""})`);
   return lines.join("\n");
 }
 
@@ -410,16 +418,19 @@ function row(p) {
   const spark = `<div class="spark" title="Actions per day, last 14 days">${p.daily.map((v) => `<i style="height:${Math.max(1, (v / max) * 34)}px" title="${v}"></i>`).join("")}</div>`;
   const w = p.week;
   const agents = Object.entries(p.agents).map(([a, n]) => `<span class="chip">${esc(a)} · ${n}</span>`).join("") || `<span class="sub">none yet</span>`;
-  const hits = Object.entries(p.rules_hit).map(([r, n]) => `<span class="chip r">${esc(r)} · ${n}</span>`).join("") || `<span class="sub">nothing</span>`;
+  const approvals = (p.rule_approvals || []).slice(0, 5).map((r) => `<div class="mini" title="${r.approved} of ${r.decided} holds approved">${esc(r.rule)}: ${r.approve_pct}% approved (${r.decided})${r.always_allowed ? ` <b>· always allowed: make it auto-allow? (their dashboard: Rules → Allow it)</b>` : ""}</div>`).join("");
+  const hits = (Object.entries(p.rules_hit).map(([r, n]) => `<span class="chip r">${esc(r)} · ${n}</span>`).join("") || `<span class="sub">nothing</span>`) + approvals;
   return `<tr><td><div class="co">${esc(p.company)}</div><div class="sub">${esc(p.contact || "")}</div>
       <div class="sub">${esc(p.note || "")}</div><div class="mini"><span class="code">${esc(p.code)}</span> · link opened ${p.page_views}×</div>
       ${p.hosted ? `<div class="mini">hosted: <a href="${esc(p.dashboard)}" target="_blank" rel="noopener">${esc((p.dashboard || "").replace("https://", ""))}</a></div>
       <div class="mini">${p.keys_revealed_at ? "keys shown " + ago(p.keys_revealed_at) : p.keys_waiting ? "keys waiting on their page" : ""}${p.error ? `<span style="color:var(--accent)"> · ${esc(p.error)}</span>` : ""}</div>` : ""}</td>
     <td><span class="pill ${cls}">${label}</span><div>${healthBadge(p)}</div><div class="mini">last seen ${ago(p.last_seen)}</div>
-      <div class="mini">${p.installs} install${p.installs === 1 ? "" : "s"}${p.versions.length ? " · v" + esc(p.versions.join(", ")) : ""}${p.modes.includes("shadow") ? " · shadow" : ""}</div></td>
+      <div class="mini">${p.installs} install${p.installs === 1 ? "" : "s"}${p.versions.length ? " · v" + esc(p.versions.join(", ")) : ""}${p.outdated ? ` <span class="pill s-quiet" title="Latest is ${esc(d_latest)}">outdated</span>` : ""}${p.modes.includes("shadow") ? " · shadow" : ""}</div>
+      ${p.connected && p.connected.length ? `<div class="mini">connected: ${esc(p.connected.join(", "))}</div>` : ""}</td>
     <td>${spark}<div class="mini"><b>${p.total_events.toLocaleString()}</b> actions all time</div></td>
     <td class="num"><div><b>${w.events}</b> actions</div><div class="mini">${w.held} held · ${w.approved} approved · ${w.rejected} rejected</div>
       <div class="mini">${w.blocked} blocked${w.would_block ? ` · ${w.would_block} would block` : ""}${w.timed_out ? ` · ${w.timed_out} timed out` : ""}</div>
+      ${p.paused ? `<div class="mini">paused by emergency stop: ${p.paused}</div>` : ""}
       ${p.stopped ? `<div class="mini"><b>stopped ${p.stopped}</b>${savedText(p.saved) ? " · saved " + esc(savedText(p.saved)) : ""}</div>` : ""}
       ${p.decide_median_s !== null && p.decide_median_s !== undefined ? `<div class="mini">decided in ${fmtSecs(p.decide_median_s)} (median)</div>` : ""}
       ${p.trend !== null && p.trend !== undefined ? `<div class="mini"><span class="${p.trend >= 0 ? "up" : "down"}">${p.trend > 0 ? "+" : ""}${p.trend}%</span> vs last week</div>` : ""}</td>

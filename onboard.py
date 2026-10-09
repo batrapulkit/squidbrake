@@ -69,6 +69,10 @@ def main(argv: list[str] | None = None) -> int:
     print()
     connect.connect_all(argparse.Namespace(url=shown, key=None, remove=False, yes=True))
 
+    if not connect.connected_agents():
+        _say("!", f"Installed, but no agent connected yet (none of Claude Code, Cursor, Codex, Gemini CLI, VS Code or "
+                  f"Antigravity found here). Install one, then run:  {server.CLI} connect all")
+
     # ---- 3. check every hook end to end
     print("\nChecking every connected agent...\n")
     try:
