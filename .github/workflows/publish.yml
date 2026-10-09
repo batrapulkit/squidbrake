@@ -18,3 +18,15 @@ jobs:
           python-version: "3.12"
       - run: pip install build && python -m build
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  # every release page says how to install exactly that version (and where the others are)
+  install-notes:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    permissions:
+      contents: write   # edits this release's notes
+    steps:
+      - uses: actions/checkout@v4
+      - run: python .github/scripts/install_notes.py "${{ github.event.release.tag_name }}"
+        env:
+          GH_TOKEN: ${{ github.token }}

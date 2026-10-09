@@ -84,7 +84,8 @@ header h1 .mark { flex: none; color: var(--text-primary); }
 header h1 .name { display: flex; flex-direction: column; line-height: 1.05; }
 header h1 .name a { color: inherit; text-decoration: none; }
 header h1 #ver { font-size: 11px; font-weight: 500; letter-spacing: 0; color: var(--text-secondary); text-decoration: none; }
-header h1 #ver:hover { text-decoration: underline; }
+header h1 #ver:hover, header h1 .newver:hover { text-decoration: underline; }
+header h1 .newver { font-size: 11px; font-weight: 600; letter-spacing: 0; color: var(--accent); text-decoration: none; }
 .conn { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12.5px; }
 .conn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--neutral); }
 .conn.ok .dot { background: var(--good); }
@@ -505,7 +506,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
 <div class="wrap">
   <header>
     <h1><svg class="mark" viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg><span class="name"><a href="#activity" id="home" title="Activity">Squidbrake</a>
-      <a id="ver" target="_blank" rel="noopener" href="https://github.com/batrapulkit/squidbrake/releases/latest"
+      <a id="ver" target="_blank" rel="noopener" href="https://github.com/batrapulkit/squidbrake/releases"
          title="Latest release"></a></span></h1>
     <span class="conn" id="conn"><span class="dot"></span><span id="connText">Connecting…</span></span>
     <nav class="tabs" id="tabs" aria-label="Sections">
@@ -1602,8 +1603,14 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     me = await api("/v1/me");
     const ver = $("#ver");
     if (ver && me.version) {
-      ver.textContent = me.latest ? `v${me.version} · new: v${me.latest}` : `v${me.version}`;
-      ver.title = me.latest ? `Version ${me.latest} is out: run the install line again, or pipx upgrade squidbrake` : "Latest release";
+      // this version's release page on GitHub: what changed, and how to install it (or any older one) again
+      const page = (v) => `https://github.com/batrapulkit/squidbrake/releases/tag/v${encodeURIComponent(v)}`;
+      ver.textContent = `v${me.version}`;
+      ver.href = page(me.version);
+      ver.title = "This version on GitHub: what changed, and how to install it or an older one";
+      ver.parentElement.querySelector(".newver")?.remove();
+      if (me.latest) ver.after(el("a", { class: "newver", href: page(me.latest), target: "_blank", rel: "noopener",
+        title: `Version ${me.latest} is out: run the install line again, or pipx upgrade squidbrake`, text: `new: v${me.latest}` }));
     }
     $("#meName").textContent = me.auth_enabled === false ? "Local" : me.client;
     $("#keyBtn").hidden = me.auth_enabled === false;

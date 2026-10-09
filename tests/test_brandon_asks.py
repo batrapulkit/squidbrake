@@ -60,7 +60,7 @@ def test_the_dashboard_shows_the_version_and_a_newer_one(c, monkeypatch, tmp_pat
     (tmp_path / "update-check.json").write_text(json.dumps({"latest": "0.0.1"}))
     assert c.get("/v1/me", headers=BOSS).json()["latest"] is None
     page = (ROOT / "dashboard.html").read_text(encoding="utf-8")
-    assert 'id="home"' in page and 'showView("activity")' in page and "releases/latest" in page
+    assert 'id="home"' in page and 'showView("activity")' in page and "releases/tag/v" in page
 
 
 # ---- the audit trail in S3
@@ -84,3 +84,16 @@ def test_the_audit_trail_goes_to_s3_once_a_day(c, monkeypatch):
     assert server.s3_archive({"s3_bucket": "acme-audit"}) is None and len(put) == 1   # once a day
     import verify                                                        # the copy in S3 checks out offline
     assert verify.verify(json.loads(json.dumps(body, default=str)))["chain"]["ok"]
+
+
+# ---- every release page says how to install exactly that version
+
+def test_release_notes_get_an_install_block_once():
+    sys.path.insert(0, str(ROOT / ".github" / "scripts"))
+    import install_notes
+    once = install_notes.notes("v0.8.0", "What changed.")
+    assert 'SQUIDBRAKE_VERSION="0.8.0"' in once and "SQUIDBRAKE_VERSION=0.8.0 sh" in once
+    assert "pip install squidbrake==0.8.0" in once and "ghcr.io/batrapulkit/squidbrake:0.8.0" in once
+    assert install_notes.notes("v0.8.0", once) is None                  # never twice
+    wf = (ROOT / ".github" / "workflows" / "publish.yml").read_text(encoding="utf-8")
+    assert "install_notes.py" in wf and "contents: write" in wf
