@@ -201,6 +201,8 @@ a { color: var(--accent); }
     const done = outcome(e);
     const note = el("textarea", { placeholder: "Note (optional) — the agent sees it", maxlength: "2000", "aria-label": "Note" });
     const go = (what) => async (ev) => {
+      if (what === "approve" && e.cannot_undo &&
+          !confirm(`This can't be undone once it runs:\n\n${e.reason || e.name}\n\nApprove anyway?`)) return;
       const btns = ev.target.closest(".acts").querySelectorAll("button");
       btns.forEach((b) => (b.disabled = true));
       try {

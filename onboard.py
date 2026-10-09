@@ -27,6 +27,9 @@ def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="squidbrake setup", description="Set Squidbrake up on this computer, in one go.")
     p.add_argument("--port", type=int, default=int(os.getenv("PORT", "8080")))
     p.add_argument("--no-browser", action="store_true", help="don't open the dashboard")
+    p.add_argument("--agent", dest="only", action="append", metavar="AGENT",
+                   help="connect only this agent (repeat, or comma-separated; default: every one found here). "
+                        "The installers pass SQUIDBRAKE_AGENTS")
     args = p.parse_args(argv)
 
     import connect
@@ -67,7 +70,8 @@ def main(argv: list[str] | None = None) -> int:
 
     # ---- 2. every agent on this computer
     print()
-    connect.connect_all(argparse.Namespace(url=shown, key=None, remove=False, yes=True))
+    only = args.only or ([os.environ["SQUIDBRAKE_AGENTS"]] if os.getenv("SQUIDBRAKE_AGENTS") else None)
+    connect.connect_all(argparse.Namespace(url=shown, key=None, remove=False, yes=True, only=only))
 
     if not connect.connected_agents():
         _say("!", f"Installed, but no agent connected yet (none of Claude Code, Cursor, Codex, Gemini CLI, VS Code or "

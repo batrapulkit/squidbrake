@@ -905,7 +905,14 @@ def ago(t) -> str:
 
 def connect_all(args) -> None:
     """Claude Code, the other coding agents' hooks, and the MCP servers they already use, in one go."""
-    claude = bool(shutil.which("claude")) or (Path.home() / ".claude").exists()
+    only = [a.strip().lower() for x in (getattr(args, "only", None) or []) for a in x.split(",") if a.strip()]
+    known = {"claude-code", *hook_agents()}
+    if bad := [a for a in only if a not in known]:
+        sys.exit(f"unknown agent {', '.join(bad)}; pick from: {', '.join(sorted(known))}")
+    claude = (bool(shutil.which("claude")) or (Path.home() / ".claude").exists()) and (not only or "claude-code" in only)
+    others = [a for a in only if a != "claude-code"]
+    if only and not args.remove:
+        print(f"Only: {', '.join(only)} (the other agents here are left as they are)")
     if not args.remove:
         print(f"This sends what every AI agent on this computer does through the gateway at {args.url}:\n"
               f"  - Claude Code: {'every tool call' if claude else 'not found, skipped'}\n"
@@ -919,10 +926,16 @@ def connect_all(args) -> None:
     if claude:
         print("\nClaude Code")
         claude_code(each)
-    print("\nOther coding agents")
-    agents(each)
-    print("\nMCP servers")
-    guard(each)
+    if not only:
+        print("\nOther coding agents")
+        agents(each)
+        print("\nMCP servers")
+        guard(each)
+    for name in others:
+        print(f"\n{name}")
+        agents(argparse.Namespace(**{**vars(each), "agent": name}))
+        if name in ("cursor", "vscode", "gemini-cli", "antigravity"):         # its MCP servers too
+            guard(argparse.Namespace(**{**vars(each), "agent": name}))
     if args.remove:
         return
     print(f"\nUsing Squidbrake with a team? Tell us about it and we'll help you set it up: {TEAM_FORM}?from=cli"
@@ -970,6 +983,9 @@ def main(argv: list[str] | None = None) -> None:
         elif name == "all":
             s.add_argument("--remove", action="store_true", help="undo it for every agent")
             s.add_argument("--yes", action="store_true")
+            s.add_argument("--agent", dest="only", action="append", metavar="AGENT",
+                           help="only this one (repeat, or comma-separated): claude-code, cursor, codex, gemini-cli, "
+                                "vscode, antigravity")
         elif name == "agents":
             s.add_argument("--agent", default="all", help="cursor, gemini-cli, codex, vscode, antigravity, or all (every one installed)")
             s.add_argument("--remove", action="store_true", help="take Squidbrake's hook out again")

@@ -1608,7 +1608,7 @@ def slack_escape(s: str) -> str:
     return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def slack_blocks(title: str, body: str, token: str, link: str, expires: str) -> list[dict]:
+def slack_blocks(title: str, body: str, token: str, link: str, expires: str, undo_warning: bool = False) -> list[dict]:
     """The approval as a Slack message with Approve / Reject buttons (Squidbrake's Slack app sends the click to
     /v1/slack/actions). Each button carries the same signed, one-event token as the one-tap link."""
     text = f"*{slack_escape(title)}*\n{slack_escape(body)}"
@@ -1616,6 +1616,11 @@ def slack_blocks(title: str, body: str, token: str, link: str, expires: str) -> 
         {"type": "section", "text": {"type": "mrkdwn", "text": text[:2900]}},
         {"type": "actions", "block_id": "squidbrake", "elements": [
             {"type": "button", "action_id": "approve", "style": "primary", "value": token,
+             **({"confirm": {"title": {"type": "plain_text", "text": "This can't be undone"},
+                             "text": {"type": "mrkdwn", "text": "Once it runs it can't be taken back. Approve anyway?"},
+                             "confirm": {"type": "plain_text", "text": "Approve"},
+                             "deny": {"type": "plain_text", "text": "Go back"}, "style": "danger"}}
+                if undo_warning else {}),
              "text": {"type": "plain_text", "text": "Approve"}},
             {"type": "button", "action_id": "reject", "style": "danger", "value": token,
              "text": {"type": "plain_text", "text": "Reject"}},
@@ -1723,7 +1728,7 @@ def notify_approval_needed(row: dict) -> None:
                     }
                     if cfg.get("slack_signing_secret"):
                         # Squidbrake's Slack app (Settings): decide right in the message, no page to open
-                        payload["blocks"] = slack_blocks(title, body, token, link, expires)
+                        payload["blocks"] = slack_blocks(title, body, token, link, expires, undo_warning=cannot_undo(row))
                 httpx.post(cfg["slack_webhook"], timeout=10, json=payload).raise_for_status()
             except Exception:
                 log.exception("Slack/webhook notification failed for event %s", row["id"])
@@ -1732,8 +1737,9 @@ def notify_approval_needed(row: dict) -> None:
                 httpx.post(cfg["ntfy_server"].rstrip("/"), timeout=10, json={
                     "topic": cfg["ntfy_topic"], "title": title, "message": body, "priority": 4,
                     "tags": ["raised_hand"], "click": link,
-                    "actions": [
+                    "actions": ([] if cannot_undo(row) else [   # can't be undone: approve on the page, which asks first
                         {"action": "http", "label": "Approve", "url": f"{base}/v1/a/{token}/approve", "method": "POST", "clear": True},
+                    ]) + [
                         {"action": "http", "label": "Reject", "url": f"{base}/v1/a/{token}/reject", "method": "POST", "clear": True},
                     ],
                 }).raise_for_status()
@@ -1864,11 +1870,29 @@ def complete_event(event_id: str, res: ResultIn) -> dict:
     return {"event_id": event_id, "status": status}
 
 
+CANNOT_UNDO_RULES = {"command:irreversible_command", "command:catastrophic_command", "block-sql-drop", "mass-deletes",
+                     "destroy-after-recovery-removed", "approve-money-out", "approve-refunds", "approve-outbound-email"}
+
+
+def cannot_undo(d: dict) -> bool:
+    """Once this runs it can't be taken back (a delete, a force push, money or an email sent): approving warns first."""
+    signals = d.get("signals")
+    if isinstance(signals, str):
+        try:
+            signals = json.loads(signals)
+        except ValueError:
+            signals = []
+    checks = {s.get("check") for s in signals or [] if isinstance(s, dict)}
+    return (d.get("rule_id") in CANNOT_UNDO_RULES or bool(checks & {"irreversible_command", "catastrophic_command"})
+            or "can't be undone" in str(d.get("reason") or ""))
+
+
 def row_to_dict(row) -> dict:
     d = dict(row._mapping)
     for f in ("input", "output", "metadata", "approvers", "signals"):
         if d.get(f) is not None:
             d[f] = json.loads(d[f])
+    d["cannot_undo"] = cannot_undo(d)
     return d
 
 
@@ -2029,7 +2053,7 @@ async def lifespan(app: FastAPI):
     app.state.mcp_http = httpx.AsyncClient(timeout=httpx.Timeout(10.0, read=None), follow_redirects=False)
     if servers := mcp_servers():
         await run_in_threadpool(hub.sync, servers)
-    tasks = [asyncio.create_task(_expiry_loop()), asyncio.create_task(_digest_loop())]
+    tasks = [asyncio.create_task(_expiry_loop()), asyncio.create_task(_digest_loop()), asyncio.create_task(_s3_loop())]
     if RETENTION_DAYS > 0:
         tasks.append(asyncio.create_task(_retention_loop()))
     # usage counts for the pilot programme: does nothing unless this install joined one (squidbrake pilot join)
@@ -2113,7 +2137,17 @@ def me(who: str = Depends(auth)):
     i = keystore.info(who)
     return {"client": who, "kind": i["kind"], "roles": i["roles"], "is_admin": keystore.is_admin(who),
             "can_approve": can_approve(who), "auth_enabled": keystore.enabled,
-            "mode": policy.mode, "shadow_agents": policy.shadow_agents}
+            "mode": policy.mode, "shadow_agents": policy.shadow_agents, "version": VERSION, "latest": latest_known()}
+
+
+def latest_known() -> str | None:
+    """The newest version the CLI's daily update check saw (squidbrake/cli.py); this gateway never asks on its own."""
+    try:
+        latest = json.loads((HOME_DIR / "update-check.json").read_text(encoding="utf-8")).get("latest")
+    except (OSError, ValueError):
+        return None
+    num = lambda v: tuple(int(n) for n in re.findall(r"\d+", str(v))[:3])
+    return latest if latest and num(latest) > num(VERSION) else None
 
 
 @app.get("/v1/me/phone-link")
@@ -2286,6 +2320,9 @@ class SettingsIn(BaseModel):
     slack_signing_secret: str | None = Field(None, max_length=200)  # Squidbrake's Slack app: Approve / Reject buttons
     teams_webhook: str | None = Field(None, max_length=1000)     # a Teams Workflows webhook: approvals and the weekly report
     email_to: str | None = Field(None, max_length=1000)          # comma-separated: approvals and the weekly report by email
+    s3_bucket: str | None = Field(None, max_length=200)          # the audit trail archived there every day (s3_archive)
+    s3_prefix: str | None = Field(None, max_length=200)
+    s3_region: str | None = Field(None, max_length=40)
     smtp_host: str | None = Field(None, max_length=200)
     smtp_port: int | None = Field(None, ge=1, le=65535)
     smtp_user: str | None = Field(None, max_length=200)
@@ -2383,7 +2420,7 @@ def link_event(token: str):
     return {"approver": approver, "context": event_context(row), **{k: d[k] for k in (
         "id", "name", "kind", "source", "client", "session_id", "created_at", "status", "decision", "rule_id",
         "reason", "input", "approval_deadline", "approval_on_timeout", "decided_by", "decided_at", "decision_note",
-        "signals")}}
+        "signals", "cannot_undo")}}
 
 
 # ---- the story behind an action, and what people decided before
@@ -2622,17 +2659,51 @@ def audit_evidence(who: str = Depends(person)):
     """Everything needed to check the history offline: python verify.py <file> (see verify.py)."""
     with audited_tx() as conn:
         audit(conn, who, "audit.exported", None, format="evidence")
+    return Response(json.dumps(evidence_body(who), ensure_ascii=False, indent=1), media_type="application/json", headers={
+        "Content-Disposition": f'attachment; filename="squidbrake-evidence-{datetime.now():%Y%m%d-%H%M}.json"'})
+
+
+def evidence_body(who: str) -> dict:
     with engine.connect() as conn:
         entries = [dict(r._mapping) for r in conn.execute(select(audit_trail).order_by(audit_trail.c.seq)).all()]
         evs = [dict(r._mapping) for r in conn.execute(select(*[events.c[c] for c in EXPORT_COLUMNS])
                                                       .order_by(events.c.created_at)).all()]
         policies = {r.fingerprint: r.content for r in conn.execute(select(policy_versions)).all()}
-    body = {"format": verify.FORMAT, "generated_at": utcnow(), "generated_by": who,
+    return {"format": verify.FORMAT, "generated_at": utcnow(), "generated_by": who,
             "head_hash": entries[-1]["hash"] if entries else GENESIS, "entries": entries, "events": evs,
             "policies": policies,
             "how_to_check": "python verify.py this-file.json   (verify.py is in the Squidbrake repository)"}
-    return Response(json.dumps(body, ensure_ascii=False, indent=1), media_type="application/json", headers={
-        "Content-Disposition": f'attachment; filename="squidbrake-evidence-{datetime.now():%Y%m%d-%H%M}.json"'})
+
+
+def s3_archive(cfg: dict | None = None, force: bool = False) -> str | None:
+    """Once a day: the whole evidence file (audit chain, actions, rule versions) to s3://bucket/prefix/, a copy
+    outside this machine that `python verify.py` checks. Credentials come from AWS's usual places (on EC2, the
+    instance role), never from Squidbrake. -> the object's key, or None if it isn't set up or ran already today."""
+    cfg = cfg or settings()
+    bucket = (cfg.get("s3_bucket") or "").strip()
+    if not bucket:
+        return None
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    if not force and state_get("s3_archived", "") == day:
+        return None
+    import boto3                                  # optional: pip install "squidbrake[s3]"
+    key = f"{(cfg.get('s3_prefix') or 'squidbrake').strip('/')}/squidbrake-evidence-{day}.json"
+    body = json.dumps(evidence_body("s3-archive"), ensure_ascii=False).encode()
+    boto3.client("s3", region_name=(cfg.get("s3_region") or None)).put_object(
+        Bucket=bucket, Key=key, Body=body, ContentType="application/json", ServerSideEncryption="AES256")
+    with audited_tx() as conn:
+        state_set(conn, "s3_archived", day)
+        audit(conn, "s3-archive", "audit.archived", f"s3://{bucket}/{key}", bytes=len(body))
+    return key
+
+
+async def _s3_loop():
+    while True:
+        try:
+            await run_in_threadpool(s3_archive)
+        except Exception:
+            log.exception("S3 archive failed (the evidence file wasn't uploaded; it tries again in an hour)")
+        await asyncio.sleep(3600)
 
 
 @app.get("/v1/audit/log")

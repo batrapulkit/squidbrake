@@ -368,9 +368,11 @@ def test_discord_approval_webhook_escapes_agent_markdown(c, monkeypatch):
 
 def test_me(c):
     assert c.get("/v1/me", headers=H).json()["can_approve"] is False
-    assert c.get("/v1/me", headers=BOSS).json() == {"client": "boss", "can_approve": True, "auth_enabled": True,
-                                                    "kind": "person", "roles": ["admin"], "is_admin": True,
-                                                    "mode": "enforce", "shadow_agents": []}
+    me = c.get("/v1/me", headers=BOSS).json()
+    assert me.pop("version") == server.VERSION and "latest" in me and me.pop("latest") in (None, me.get("latest"))
+    assert me == {"client": "boss", "can_approve": True, "auth_enabled": True,
+                  "kind": "person", "roles": ["admin"], "is_admin": True,
+                  "mode": "enforce", "shadow_agents": []}
 
 
 
