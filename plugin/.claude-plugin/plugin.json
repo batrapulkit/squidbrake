@@ -1,7 +1,7 @@
 {
   "name": "squidbrake",
   "displayName": "Squidbrake",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "description": "Change control for Claude Code: every command and edit goes on a tamper-evident record (which agent, what changed, who approved it). Risky ones wait for a person to sign off (dashboard, phone or Slack), destructive ones keep an undo, and the ones your rules forbid never run.",
   "author": { "name": "Pulkit Batra", "url": "https://github.com/batrapulkit" },
   "homepage": "https://github.com/batrapulkit/squidbrake",
