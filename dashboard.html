@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Squidbrake</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23FFF8F2'/%3E%3Cpath fill='%231E2A23' d='M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z'/%3E%3Cg fill='none' stroke='%231E2A23' stroke-width='5' stroke-linecap='round'%3E%3Cpath d='M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8'/%3E%3Cpath d='M32 34V44.6'/%3E%3Cpath d='M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8'/%3E%3C/g%3E%3Ccircle fill='%231E2A23' cx='32' cy='52.6' r='2.9'/%3E%3Crect fill='%23F2622E' x='11' y='24.5' width='42' height='11' rx='5.5'/%3E%3Ccircle fill='%232FD574' cx='41.2' cy='30' r='2.5'/%3E%3C/svg%3E">
 <style>
 :root {
   color-scheme: light;
@@ -79,10 +80,11 @@ button, input, select { font: inherit; color: inherit; }
 /* header */
 header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
 header h1 { display: flex; align-items: center; gap: 8px; font-size: 20px; font-weight: 680; margin: 0; letter-spacing: -0.03em; }
-header h1::before {
-  content: "S"; width: 26px; height: 26px; border-radius: 8px; background: var(--accent); color: #fff;
-  display: grid; place-items: center; font-size: 14px; font-weight: 750; letter-spacing: 0;
-}
+header h1 .mark { flex: none; color: var(--text-primary); }
+header h1 .name { display: flex; flex-direction: column; line-height: 1.05; }
+header h1 .name a { color: inherit; text-decoration: none; }
+header h1 #ver { font-size: 11px; font-weight: 500; letter-spacing: 0; color: var(--text-secondary); text-decoration: none; }
+header h1 #ver:hover { text-decoration: underline; }
 .conn { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); font-size: 12.5px; }
 .conn .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--neutral); }
 .conn.ok .dot { background: var(--good); }
@@ -502,9 +504,9 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
 <body>
 <div class="wrap">
   <header>
-    <h1><a href="#activity" id="home" title="Activity" style="color:inherit;text-decoration:none">Squidbrake</a></h1>
-    <a id="ver" class="hint" target="_blank" rel="noopener" href="https://github.com/batrapulkit/squidbrake/releases/latest"
-       title="Latest release" style="margin-left:6px"></a>
+    <h1><svg class="mark" viewBox="0 0 64 64" width="28" height="28" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg><span class="name"><a href="#activity" id="home" title="Activity">Squidbrake</a>
+      <a id="ver" target="_blank" rel="noopener" href="https://github.com/batrapulkit/squidbrake/releases/latest"
+         title="Latest release"></a></span></h1>
     <span class="conn" id="conn"><span class="dot"></span><span id="connText">Connecting…</span></span>
     <nav class="tabs" id="tabs" aria-label="Sections">
       <a href="#activity" data-view="activity">Activity</a>
