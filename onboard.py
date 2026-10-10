@@ -69,6 +69,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"      Stop that, or set up on another port:  {server.CLI} setup --port {port + 10}\n")
         return 1
     created = None if server.keystore.disabled else server.keystore.ensure_initialized()
+    shown_keys = []
+
+    def keys_now() -> None:
+        # The keys are shown only once: whatever stops setup from here on, they're printed before it ends
+        if not shown_keys:
+            shown_keys.append(True)
+            server.print_banner(shown, created)
 
     if running:
         _say("OK", f"Squidbrake is already running at {shown}")
@@ -83,6 +90,7 @@ def main(argv: list[str] | None = None) -> int:
         if not service._answering(port):
             _say("X", f"The background service didn't start (see above). Check it with:  {server.CLI} service status")
             print(f"      Run it in a window instead:  {server.CLI} run   then:  {server.CLI} connect all\n")
+            keys_now()
             return 1
         _say("OK", "Squidbrake runs in the background, and starts by itself whenever you log in")
     else:
@@ -93,7 +101,13 @@ def main(argv: list[str] | None = None) -> int:
     # ---- 2. every agent on this computer
     print()
     only = args.only or ([os.environ["SQUIDBRAKE_AGENTS"]] if os.getenv("SQUIDBRAKE_AGENTS") else None)
-    connect.connect_all(argparse.Namespace(url=shown, key=None, remove=False, yes=True, only=only))
+    try:
+        connect.connect_all(argparse.Namespace(url=shown, key=None, remove=False, yes=True, only=only))
+    except (Exception, SystemExit) as e:
+        _say("X", f"Connecting the agents stopped: {e}")
+        print(f"      Fix that, then run:  {server.CLI} connect all\n")
+        keys_now()
+        return 1
 
     if not connect.connected_agents():
         _say("!", f"Installed, but no agent connected yet (none of Claude Code, Cursor, Codex, Gemini CLI, VS Code or "
@@ -110,7 +124,7 @@ def main(argv: list[str] | None = None) -> int:
     offer_terminal_guard(args.terminal_guard)
 
     # ---- 4. the keys (once) and the dashboard
-    server.print_banner(shown, created)
+    keys_now()
     url = f"{shown}/dashboard" + (f"#key={created['admin']}" if created else "")
     if not args.no_browser and server.can_open_browser() and service._answering(port):
         import webbrowser

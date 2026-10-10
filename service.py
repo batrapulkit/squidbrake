@@ -56,7 +56,8 @@ def _port(run_args: list[str]) -> int:
 
 def _answering(port: int) -> bool:
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2):
+        # no proxy: Windows' system proxy often doesn't bypass 127.0.0.1, and this is this computer
+        with urllib.request.build_opener(urllib.request.ProxyHandler({})).open(f"http://127.0.0.1:{port}/health", timeout=2):
             return True
     except Exception:
         return False

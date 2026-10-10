@@ -143,8 +143,9 @@ def test_status_checks_the_dashboard_the_hooks_use(tmp_path, monkeypatch, capsys
     class R:
         def __init__(self, code): self.status_code = code
 
-    def get(url, headers=None, timeout=None):
+    def get(url, headers=None, timeout=None, trust_env=True):
         seen.append((url, (headers or {}).get("X-Gateway-Key")))
+        assert trust_env, "a gateway on another machine still goes through the system proxy"
         return R(401 if url.endswith("/v1/me") else 200)
     import httpx
     monkeypatch.setattr(httpx, "get", get)

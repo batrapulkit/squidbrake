@@ -32,7 +32,7 @@ def home(tmp_path, monkeypatch):
         def json(self): return self._d
     calls = {"key_ok": True}
 
-    def get(url, headers=None, timeout=None):
+    def get(url, headers=None, timeout=None, trust_env=True):
         if "pypi.org" in url:
             return R(200, {"info": {"version": "0.0.1"}})
         if url.endswith("/v1/me"):
@@ -76,7 +76,7 @@ def test_not_connected_says_how_to_connect(home, capsys):
 def test_connected_but_never_used_tells_you_to_restart(home, capsys, monkeypatch):
     tmp, _ = home
     connect_cursor(tmp)
-    monkeypatch.setattr(connect, "_run_hook", lambda cmd, ev: (True, ""))
+    monkeypatch.setattr(connect, "_run_hook", lambda cmd, ev, **kw: (True, ""))
     assert run() == 0
     out = capsys.readouterr().out
     assert "[OK] Dashboard answers: " + URL in out and "[OK] The agents' key works" in out
@@ -88,7 +88,7 @@ def test_connected_but_never_used_tells_you_to_restart(home, capsys, monkeypatch
 def test_working_agent_is_ok(home, capsys, monkeypatch):
     tmp, _ = home
     connect_cursor(tmp)
-    monkeypatch.setattr(connect, "_run_hook", lambda cmd, ev: (True, ""))
+    monkeypatch.setattr(connect, "_run_hook", lambda cmd, ev, **kw: (True, ""))
     time.sleep(0.01)
     hooklog.record("cursor", "beforeShellExecution")          # Cursor ran the hook after it was connected
     assert run() == 0
@@ -100,7 +100,7 @@ def test_rejected_key_and_a_denying_hook_are_explained(home, capsys, monkeypatch
     tmp, calls = home
     connect_cursor(tmp)
     calls["key_ok"] = False
-    monkeypatch.setattr(connect, "_run_hook", lambda cmd, ev: (False, "the gateway rejected the key"))
+    monkeypatch.setattr(connect, "_run_hook", lambda cmd, ev, **kw: (False, "the gateway rejected the key"))
     assert run() == 1
     out = capsys.readouterr().out
     assert "[X] The agents' key is rejected" in out and "AGENT key" in out
@@ -136,7 +136,7 @@ def test_claude_code_hook_with_args_counts_as_connected(home, capsys, monkeypatc
     (tmp / ".claude" / "settings.json").write_text(json.dumps({"hooks": {"PreToolUse": [{"matcher": "*", "hooks": [
         {"type": "command", "command": sys.executable,
          "args": ["/x/claude_hook.py", "--url", URL, "--key", KEY, "--source", "claude-code"]}]}]}}), encoding="utf-8")
-    monkeypatch.setattr(connect, "_run_hook", lambda cmd, ev: (True, ""))
+    monkeypatch.setattr(connect, "_run_hook", lambda cmd, ev, **kw: (True, ""))
     assert run("--quick") == 0
     out = capsys.readouterr().out
     assert "[OK] claude-code: connected; the hook works" in out and "Dashboard answers: " + URL in out
@@ -168,7 +168,7 @@ def test_unused_agents_are_fine_when_another_one_works(home, capsys, monkeypatch
     connect_cursor(tmp)
     (tmp / ".codex").mkdir()
     connect.main(["agents", "--agent", "codex", "--url", URL, "--key", KEY, "--yes"])
-    monkeypatch.setattr(connect, "_run_hook", lambda cmd, ev: (True, ""))
+    monkeypatch.setattr(connect, "_run_hook", lambda cmd, ev, **kw: (True, ""))
     monkeypatch.setattr(connect, "codex_hook_trust", lambda: "trusted")
     time.sleep(0.01)
     hooklog.record("cursor", "beforeShellExecution")

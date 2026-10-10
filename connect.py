@@ -38,6 +38,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+from urllib.parse import urlparse
 import threading
 import time
 from pathlib import Path
@@ -120,7 +121,10 @@ def confirm(question: str, yes: bool) -> bool:
 
 def claude_code(args) -> None:
     path = settings_path(args.project)
-    settings = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    try:
+        settings = _read_json(path)
+    except ValueError as e:     # never overwrite a file we couldn't read: say which one, and stop
+        raise SystemExit(f"{path} isn't valid JSON ({e}). Fix it (or move it away), then run this again.")
     claude = shutil.which("claude")
     scope = ["--scope", "project"] if args.project else ["--scope", "user"]
 
@@ -416,8 +420,17 @@ def _word(path: str) -> str:
     return _q(path)
 
 
+def _get(base: str, url: str, **kw):
+    """GET from the gateway. One on this computer is reached directly: a system proxy (common on company Windows
+    laptops) often doesn't bypass 127.0.0.1, and would make a running gateway look down."""
+    import httpx
+    host = urlparse(base).hostname or ""
+    return httpx.get(url, trust_env=host not in ("localhost", "127.0.0.1", "::1"), **kw)
+
+
 def _read_json(path: Path) -> dict:
-    text = path.read_text(encoding="utf-8").strip() if path.exists() else ""
+    # utf-8-sig: Notepad and PowerShell 5.1 save JSON with a byte-order mark; an empty file is an empty config
+    text = path.read_text(encoding="utf-8-sig").strip() if path.exists() else ""
     return json.loads(text) if text else {}
 
 
@@ -642,8 +655,8 @@ def status(args) -> int:
     hosted = not url.startswith(("http://localhost", "http://127.0.0.1"))
     try:
         import httpx
-        up = httpx.get(f"{url}/health", timeout=8).status_code == 200
-        accepted = None if not key else httpx.get(f"{url}/v1/me", headers={"X-Gateway-Key": key}, timeout=8).status_code == 200
+        up = _get(url, f"{url}/health", timeout=8).status_code == 200
+        accepted = None if not key else _get(url, f"{url}/v1/me", headers={"X-Gateway-Key": key}, timeout=8).status_code == 200
     except Exception:
         up, accepted = False, None
     print(f"gateway       {url}: {'running' if up else 'NOT REACHABLE' + ('' if hosted else ' (start it: squidbrake)')}")
@@ -715,10 +728,11 @@ def _hook_commands(data) -> list[str]:
     return list(dict.fromkeys(found))
 
 
-def _run_hook(cmd: str, event: dict) -> tuple[bool, str]:
+def _run_hook(cmd: str, event: dict, powershell: bool = True) -> tuple[bool, str]:
     """Run the hook exactly as the agent would, with a harmless command. -> (allowed, what it said)
-    On Windows also through PowerShell, which is what Cursor runs hooks with: a line cmd runs can fail there."""
-    if os.name == "nt" and (ps := shutil.which("powershell") or shutil.which("pwsh")):
+    On Windows also through PowerShell, which is what Cursor runs hooks with: a line cmd runs can fail there.
+    Not for Claude Code: it runs "command" with "args" directly, no shell (a quoted path is fine there)."""
+    if powershell and os.name == "nt" and (ps := shutil.which("powershell") or shutil.which("pwsh")):
         ok, said = _run_hook_in(cmd, event, True)
         if not ok:
             return ok, said
@@ -809,8 +823,10 @@ def doctor(args) -> int:
             mine = _v("squidbrake")
         except Exception:
             mine = "?"
-    try:
-        latest = httpx.get("https://pypi.org/pypi/squidbrake/json", timeout=6).json()["info"]["version"]
+    latest = None
+    no_check = os.getenv("SQUIDBRAKE_NO_UPDATE_CHECK") or os.getenv("DO_NOT_TRACK", "").lower() in ("1", "true", "yes")
+    try:     # the same switches as the daily update check turn this off (README)
+        latest = None if no_check else httpx.get("https://pypi.org/pypi/squidbrake/json", timeout=6).json()["info"]["version"]
     except Exception:
         latest = None
     if latest and mine != "?" and tuple(int(x) for x in re.findall(r"\d+", mine)[:3]) < tuple(int(x) for x in re.findall(r"\d+", latest)[:3]):
@@ -823,7 +839,7 @@ def doctor(args) -> int:
     key = args.key or (hooked[1] if hooked and url == hooked[0] else None)
     local = url.startswith(("http://localhost", "http://127.0.0.1"))
     try:
-        up = httpx.get(f"{url}/health", timeout=8).status_code == 200
+        up = _get(url, f"{url}/health", timeout=8).status_code == 200
     except Exception:
         up = False
     if up:
@@ -833,7 +849,7 @@ def doctor(args) -> int:
             "start it with: squidbrake" if local else "it may have been deleted; ask whoever sent you the link for a new one")
     if up and key:
         try:
-            ok = httpx.get(f"{url}/v1/me", headers={"X-Gateway-Key": key}, timeout=8).status_code == 200
+            ok = _get(url, f"{url}/v1/me", headers={"X-Gateway-Key": key}, timeout=8).status_code == 200
         except Exception:
             ok = None
         if ok is False:
@@ -853,21 +869,25 @@ def doctor(args) -> int:
         say("X", "No coding agent found on this computer (Claude Code, Cursor, Codex, Gemini CLI, VS Code, Antigravity)")
     for name, f in agents.items():
         try:
-            cmds = _hook_commands(json.loads(f.read_text(encoding="utf-8"))) if f.exists() else []
+            cmds = _hook_commands(json.loads(f.read_text(encoding="utf-8-sig"))) if f.exists() else []
         except (OSError, ValueError):
             cmds = []
         if not cmds:
             say("X", f"{name}: not connected", "run the install command from your start page again (or: squidbrake connect all)")
             continue
         exe = cmds[0].strip()
-        exe = exe[1:exe.index('"', 1)] if exe.startswith('"') else exe.split()[0]
+        try:     # the program, quoted or not, with spaces in its path (C:\Users\Rahul Kumar\..., /Users/a b/...)
+            exe = shlex.split(exe, posix=os.name != "nt")[0].strip('"')
+        except ValueError:
+            exe = exe.split()[0]
         if not Path(exe).exists() and not shutil.which(exe):
             say("X", f"{name}: its hook points to a Squidbrake that isn't installed any more ({exe})",
                 "run the install command from your start page again")
             continue
         allowed, said = _run_hook(cmds[0], DOCTOR_EVENTS.get(name, {"hook_event_name": "PreToolUse", "tool_name": "Bash",
                                                                       "tool_input": {"command": DOCTOR_COMMAND},
-                                                                      "session_id": "squidbrake-doctor"}))
+                                                                      "session_id": "squidbrake-doctor"}),
+                                  powershell=name != "claude-code")
         if not allowed:
             say("X", f"{name}: the hook runs but answered: {said[:240]}",
                 "fix the dashboard or key line above, then run: squidbrake doctor")
