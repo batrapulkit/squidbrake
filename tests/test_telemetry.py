@@ -48,7 +48,7 @@ def answers(monkeypatch, *replies):
 
 
 def test_enter_means_yes_and_only_the_command_name_is_sent(sent, monkeypatch):
-    answers(monkeypatch, "", "")
+    answers(monkeypatch, "", "", "")   # yes, where from: skipped, email: skipped
     telemetry.maybe(["undo", "SECRET-FILE-ID", "--path", "/home/me/secret.txt"], "9.9.9")
     assert len(sent) == 1
     body = json.dumps(sent[0])
@@ -87,7 +87,7 @@ def test_scripts_ci_and_opt_out_never_ask_or_send(sent, monkeypatch):
 
 def test_without_a_posthog_key_it_still_asks_but_only_counts_are_shared(sent, monkeypatch):
     monkeypatch.setattr(telemetry, "POSTHOG_KEY", "")
-    answers(monkeypatch, "", "me@acme.com")
+    answers(monkeypatch, "", "", "me@acme.com")
     telemetry.maybe(["doctor"], "1")
     assert sent == []
     assert joins == [("/v1/pilot/join", telemetry.COMMUNITY_CODE)]
@@ -107,14 +107,14 @@ def test_a_real_pilot_is_never_moved_to_the_community_code(sent, monkeypatch, tm
     (tmp_path / "data").mkdir()
     (tmp_path / "data" / "pilot.json").write_text(json.dumps({"code": "acme-123abc", "server": "https://x",
                                                               "install_id": "a" * 32}), encoding="utf-8")
-    answers(monkeypatch, "", "")
+    answers(monkeypatch, "", "", "")
     telemetry.maybe(["doctor"], "1")
     telemetry.main(["off"], "1")
     assert joins == [] and pilot.load(tmp_path / "data")["code"] == "acme-123abc"
 
 
 def test_off_stops_sending(sent, monkeypatch):
-    answers(monkeypatch, "", "")
+    answers(monkeypatch, "", "", "")
     telemetry.maybe(["doctor"], "1")
     telemetry.main(["off"], "1")
     sent.clear()
@@ -131,3 +131,33 @@ def test_register_asks_first_and_sends_the_email(sent, monkeypatch):
     assert sent[0]["event"] == "$identify"
     assert sent[0]["properties"]["$set"]["email"] == "me@acme.com"
     assert sent[0]["properties"]["$set"]["company"] == "Acme"
+
+
+def test_where_they_heard_about_it_is_one_word_from_a_list(sent, monkeypatch):
+    joined = []
+    monkeypatch.setattr(pilot, "_post", lambda server, path, body: joined.append(body) or {})
+    monkeypatch.delenv("SQUIDBRAKE_REF", raising=False)
+    answers(monkeypatch, "", "1", "")                                   # yes, LinkedIn, no email
+    telemetry.maybe(["doctor"], "1")
+    assert telemetry.load()["ref"] == "linkedin"
+    assert sent[-1]["properties"]["ref"] == "linkedin" and sent[-1]["properties"]["$set_once"] == {"ref": "linkedin"}
+    assert joined[0]["ref"] == "linkedin"                                # the counts carry it too
+
+
+def test_a_named_link_answers_it_and_free_text_is_never_kept(sent, monkeypatch):
+    monkeypatch.setenv("SQUIDBRAKE_REF", "whatsapp")
+    answers(monkeypatch, "", "")                                        # yes, no email: no where-from question
+    telemetry.maybe(["setup"], "1")
+    assert telemetry.load()["ref"] == "whatsapp"
+    assert telemetry.ref_from_env() == "whatsapp"
+    monkeypatch.setenv("SQUIDBRAKE_REF", "My Name; rm -rf ~/")
+    assert telemetry.ref_from_env() is None                             # only a short lowercase word
+    answers(monkeypatch, "maybe 3")
+    assert telemetry._ask_source() is None                               # not a number from the list: nothing
+
+
+def test_no_never_asks_where_from(sent, monkeypatch):
+    monkeypatch.setenv("SQUIDBRAKE_REF", "linkedin")
+    answers(monkeypatch, "n")                                           # a where-from question would raise
+    telemetry.maybe(["doctor"], "1")
+    assert "ref" not in telemetry.load() and sent == []

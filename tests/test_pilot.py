@@ -328,3 +328,37 @@ def test_the_website_form_may_post_here_other_sites_may_not(insights):
         assert ask(ok).headers.get("access-control-allow-origin") == ok, ok
     for bad in ("https://evil.example", "https://squidbrake.com.evil.example", "http://squidbrake.com"):
         assert "access-control-allow-origin" not in ask(bad).headers, bad
+
+
+def test_where_installs_come_from(insights):
+    """A named link counts clicks (no IP, no cookie) and lands on install commands that carry its name; installs
+    that share stats report it, and the admin sees clicks -> installs -> used -> stopped per channel."""
+    import app as insights_app
+    admin = {"X-Admin-Key": os.environ["INSIGHTS_ADMIN_KEY"]}
+    r = insights.get("/go/LinkedIn", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "/get?ref=linkedin"
+    insights.get("/go/linkedin", follow_redirects=False)
+    assert insights.get("/go/bad%20name", follow_redirects=False).status_code == 404
+    page = insights.get("/get?ref=linkedin").text
+    assert '"ref": "linkedin"' in page and "SQUIDBRAKE_REF=" in page and "__DATA__" not in page
+    assert '"ref": ""' in insights.get("/get?ref=</script><script>alert(1)").text   # not a word: dropped
+    from datetime import datetime, timezone
+
+    code = insights_app.COMMUNITY_CODE
+    with insights_app.db() as c:
+        c.execute("INSERT OR IGNORE INTO pilots (code, company, created_at) VALUES (?, 'Community', ?)", (code, "2026-01-01"))
+    a, b = "a" * 32, "b" * 32
+    assert insights.post("/v1/pilot/join", json={"code": code, "install_id": a, "ref": "linkedin"}).status_code == 200
+    assert insights.post("/v1/pilot/join", json={"code": code, "install_id": b}).status_code == 200
+    assert insights.post("/v1/pilot/join", json={"code": code, "install_id": "c" * 32, "ref": "Not A Word!"}).status_code == 422
+    insights.post("/v1/pilot/join", json={"code": code, "install_id": a})       # joining again keeps where it came from
+    today = datetime.now(timezone.utc).date().isoformat()
+    insights.post("/v1/ping", json={"code": code, "install_id": a, "usage": {
+        "days": {today: {"events": 4, "blocked": 1}},
+        "catches": [{"t": today + "T10:00", "program": "rm", "rule": "command:catastrophic_command", "outcome": "blocked"}]}})
+
+    assert insights.get("/v1/admin/sources").status_code == 401
+    rows = {r["channel"]: r for r in insights.get("/v1/admin/sources", headers=admin).json()["rows"]}
+    assert rows["linkedin"]["clicks"] >= 2 and rows["linkedin"]["installs"] == 1
+    assert rows["linkedin"]["used_this_week"] == 1 and rows["linkedin"]["stopped"] == 1
+    assert rows["not said"]["installs"] >= 1 and rows["not said"]["stopped"] == 0

@@ -528,7 +528,9 @@ the daily update check below, which only asks for the newest version number.
 
 **Anonymous usage stats.** The first time you run `squidbrake` in a terminal, it asks once whether to send
 anonymous stats (Enter means yes): the command name (e.g. `doctor`, never its arguments), version, OS, Python
-version and country, plus the gateway's usage counts described below (what it allowed, held and blocked). Never
+version and country, plus the gateway's usage counts described below (what it allowed, held and blocked). After a
+yes it asks where you heard about Squidbrake (pick from a list, or Enter to skip); if you installed from a named
+link, that name (`SQUIDBRAKE_REF`, e.g. `linkedin`) answers it instead. Never
 commands an agent ran, files, prompts, rules, keys or the audit trail. The agent hooks never send anything, and
 scripts, CI and `--yes` are never asked. `squidbrake telemetry off` (or
 `SQUIDBRAKE_TELEMETRY=0`, or `DO_NOT_TRACK=1`) stops it; `squidbrake telemetry status` shows exactly what is sent.

@@ -27,7 +27,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 HERE = Path(__file__).resolve().parent
@@ -70,7 +70,11 @@ with db() as _c:
     CREATE TABLE IF NOT EXISTS team_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL,
         name TEXT NOT NULL, email TEXT NOT NULL, company TEXT, team_size TEXT, agents TEXT, note TEXT, source TEXT,
         done INTEGER NOT NULL DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS link_clicks (channel TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (channel, day));
     """)
+    if "ref" not in {r[1] for r in _c.execute("PRAGMA table_info(installs)")}:
+        _c.execute("ALTER TABLE installs ADD COLUMN ref TEXT")           # where they heard about it (telemetry.py)
     # hosted pilots: their own gateway at <subdomain>.<HOSTED_DOMAIN>, started by provision.py on the server
     if "connected" not in {r[1] for r in _c.execute("PRAGMA table_info(installs)")}:
         _c.execute("ALTER TABLE installs ADD COLUMN connected TEXT")     # agents with Squidbrake's hook, as JSON
@@ -225,6 +229,7 @@ class JoinIn(BaseModel):
     install_id: str = Field(pattern=r"^[0-9a-f]{32}$")
     version: str = Field(default="", max_length=40)
     os: str = Field(default="", max_length=80)
+    ref: str = Field(default="", pattern=r"^([a-z0-9][a-z0-9-]{0,29})?$")
 
 
 class PingIn(BaseModel):
@@ -270,9 +275,10 @@ def _pilot(c, code: str, request: Request | None = None):
 def join(j: JoinIn, request: Request):
     with _lock, db() as c:
         p = _pilot(c, j.code, request)
-        c.execute("""INSERT INTO installs (install_id, code, joined_at, version, os) VALUES (?,?,?,?,?)
+        c.execute("""INSERT INTO installs (install_id, code, joined_at, version, os, ref) VALUES (?,?,?,?,?,?)
                      ON CONFLICT(install_id) DO UPDATE SET code=excluded.code, left_at=NULL, version=excluded.version,
-                     os=excluded.os""", (j.install_id, p["code"], now(), j.version, j.os))
+                     os=excluded.os, ref=COALESCE(excluded.ref, installs.ref)""",
+                  (j.install_id, p["code"], now(), j.version, j.os, j.ref or None))
     return {"company": p["company"]}
 
 
@@ -908,6 +914,60 @@ def start_page(code: str, request: Request):
             "hosted": bool(p["hosted"]), "dashboard": dashboard_url(p["subdomain"]), "state": p["state"],
             "keys_ready": bool(p["admin_key"]), "keys_shown": bool(p["keys_revealed_at"])}
     return HTMLResponse(PAGE("start.html").replace("__DATA__", json.dumps(data).replace("</", "<\\/")))
+
+
+# --------------------------------------------------------------------------- where people come from
+# A link you post somewhere names its channel: https://pilots.squidbrake.com/go/linkedin. A click is counted per
+# channel and day (no IP address, no cookie) and lands on /get, whose install commands carry SQUIDBRAKE_REF=linkedin;
+# installs that say yes to stats report that word (telemetry.py). Others pick where they heard about it from a list.
+
+CHANNEL_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,29}$")
+
+
+@app.get("/go/{channel}")
+def go(channel: str):
+    channel = channel.lower()
+    if not CHANNEL_RE.match(channel):
+        raise HTTPException(404)
+    with _lock, db() as c:
+        c.execute("INSERT INTO link_clicks (channel, day, n) VALUES (?, ?, 1) ON CONFLICT(channel, day) DO UPDATE SET n=n+1",
+                  (channel, datetime.now(timezone.utc).date().isoformat()))
+    return RedirectResponse(f"/get?ref={channel}", status_code=302)
+
+
+@app.get("/get", response_class=HTMLResponse)
+def get_page(request: Request, ref: str = ""):
+    ref = ref.lower() if CHANNEL_RE.match(ref.lower()) else ""
+    data = {"ref": ref, "server": public_url(request)}
+    return HTMLResponse(PAGE("get.html").replace("__DATA__", json.dumps(data).replace("</", "<\\/")))
+
+
+@app.get("/v1/admin/sources", dependencies=[Depends(admin)])
+def sources(days: int = 30):
+    """Per channel: link clicks -> installs that share stats -> used this week -> stopped something."""
+    days = max(1, min(days, 365))
+    since = (datetime.now(timezone.utc).date() - timedelta(days=days - 1)).isoformat()
+    week = (datetime.now(timezone.utc).date() - timedelta(days=6)).isoformat()
+    with db() as c:
+        clicks = dict(c.execute("SELECT channel, SUM(n) FROM link_clicks WHERE day >= ? GROUP BY channel", (since,)).fetchall())
+        installs = c.execute("SELECT install_id, code, ref, joined_at FROM installs WHERE left_at IS NULL").fetchall()
+        used = {iid for iid, counts in c.execute("SELECT install_id, counts FROM days WHERE day >= ?", (week,))
+                if _int(json.loads(counts).get("events"))}
+        stopped: dict[str, int] = {}
+        for iid, data in c.execute("SELECT install_id, data FROM catches"):
+            if json.loads(data).get("outcome") in ("rejected", "blocked"):
+                stopped[iid] = stopped.get(iid, 0) + 1
+    rows: dict[str, dict] = {}
+    for iid, code, ref, joined in installs:
+        ch = ref or ("pilot" if code != COMMUNITY_CODE else "not said")
+        r = rows.setdefault(ch, {"channel": ch, "clicks": 0, "installs": 0, "new": 0, "used_this_week": 0, "stopped": 0})
+        r["installs"] += 1
+        r["new"] += (joined or "") >= since
+        r["used_this_week"] += iid in used
+        r["stopped"] += stopped.get(iid, 0)
+    for ch, n in clicks.items():
+        rows.setdefault(ch, {"channel": ch, "clicks": 0, "installs": 0, "new": 0, "used_this_week": 0, "stopped": 0})["clicks"] = n
+    return {"days": days, "rows": sorted(rows.values(), key=lambda r: (-r["installs"], -r["clicks"], r["channel"]))}
 
 
 @app.get("/team", response_class=HTMLResponse)

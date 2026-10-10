@@ -16,6 +16,7 @@ Nothing is sent unless you join. What is sent, at start and every 6 hours (a hos
   - for each action held or blocked in the last 7 days: when, which agent, the program only (e.g. "rm", "git"),
     the rule and its reason, what happened (approved, rejected, blocked, timed out), how long a person took,
     and the size of what it would have changed, as numbers only (e.g. 3 commits, 1,204 files, 4,312 rows)
+When you join through the first-run question (telemetry.py), also: where you heard about Squidbrake, if you answered.
 Never sent: commands or their arguments, file or folder names, file contents, prompts, tool inputs or outputs,
 keys, names of people.
 """
@@ -204,7 +205,7 @@ async def loop(home: Path, make_payload) -> None:
 
 # --------------------------------------------------------------------------- command line
 
-def join(home: Path, code: str, server: str | None, yes: bool, version: str) -> int:
+def join(home: Path, code: str, server: str | None, yes: bool, version: str, ref: str | None = None) -> int:
     server = (server or os.getenv("SQUIDBRAKE_PILOT_SERVER") or "").rstrip("/")
     host = urlparse(server).hostname or ""
     # https, or plain http only to this machine or an internal name without dots (a hosted gateway's Docker network)
@@ -226,7 +227,8 @@ def join(home: Path, code: str, server: str | None, yes: bool, version: str) -> 
     install_id = cfg.get("install_id") or uuid.uuid4().hex
     try:
         r = _post(server, "/v1/pilot/join", {"code": code, "install_id": install_id, "version": version,
-                                             "os": f"{platform.system()} {platform.release()}"})
+                                             "os": f"{platform.system()} {platform.release()}",
+                                             **({"ref": ref} if ref else {})})
     except (httpx.HTTPError, RuntimeError) as e:
         print(f"Couldn't join: {e}", file=sys.stderr)
         return 1

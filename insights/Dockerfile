@@ -2,7 +2,7 @@ FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 INSIGHTS_DB=/data/insights.db
 WORKDIR /app
 RUN pip install "fastapi>=0.110" "uvicorn>=0.29" "pydantic>=2"
-COPY app.py admin.html start.html team.html install.ps1 install.sh ./
+COPY app.py admin.html start.html team.html get.html install.ps1 install.sh ./
 RUN useradd -r -u 10002 insights && mkdir -p /data && chown insights /data
 USER insights
 EXPOSE 8090

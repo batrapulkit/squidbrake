@@ -228,9 +228,9 @@ function message(company, link, hosted) {
 
 async function load() {
   if (!key) return login();
-  let d, me, asks, inv, fails;
-  try { [d, me, asks, inv, fails] = await Promise.all([api("/v1/admin/overview"), api("/v1/admin/me"), api("/v1/admin/team-requests"),
-                                                api("/v1/admin/traction"), api("/v1/admin/install-reports")]); }
+  let d, me, asks, inv, fails, src;
+  try { [d, me, asks, inv, fails, src] = await Promise.all([api("/v1/admin/overview"), api("/v1/admin/me"), api("/v1/admin/team-requests"),
+                                                api("/v1/admin/traction"), api("/v1/admin/install-reports"), api("/v1/admin/sources")]); }
   catch (e) { if (e.message !== "unauthorized") app.innerHTML = `<main><p class="err">${esc(e.message)}</p></main>`; return; }
   const w = d.week;
   d_latest = d.latest_version || "";
@@ -266,6 +266,7 @@ async function load() {
         : `<div class="surface empty">No pilots yet. Create a link below and send it to a founder.</div>`}
     </section>
     ${teamPanel(asks)}
+    ${sourcesPanel(src)}
     ${failsPanel(fails)}
     <section id="new"><div class="sec-h"><h2>New pilot</h2><span class="sub">Creates a setup link; with Hosted, their own dashboard too</span></div>
       <div class="surface"><form class="new" id="nf"><input id="nc" placeholder="Company, e.g. Pilot C" required maxlength="80">
@@ -377,6 +378,24 @@ function failsPanel(fails) {
     ${fails.length ? `<div class="table-wrap"><table><thead><tr><th>Who</th><th>Computer</th><th>Where it stopped</th>
       <th>What it said</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
       : `<div class="surface empty">None yet. When an install fails, the installer asks whether to send its last lines here.</div>`}
+  </section>`;
+}
+
+// Where installs come from: clicks on a named link (/go/<channel>) -> installs that share stats -> used -> stopped
+function sourcesPanel(src) {
+  const rows = src.rows.map((r) => `<tr><td><b>${esc(r.channel)}</b></td><td class="num">${r.clicks || "–"}</td>
+    <td class="num">${r.installs}${r.new ? ` <span class="mini">(${r.new} new)</span>` : ""}</td>
+    <td class="num">${r.used_this_week}</td><td class="num">${r.stopped}</td></tr>`).join("");
+  const link = `${location.origin}/go/linkedin`;
+  return `<section class="panel"><h2>Where people come from <span class="sub">last ${src.days} days</span>
+      <button class="btn" style="margin-left:auto" data-copy="${esc(link)}">Copy a tracked link</button></h2>
+    ${src.rows.length ? `<div class="table-wrap"><table><thead><tr><th>Channel</th><th class="num">Link clicks</th>
+      <th class="num">Installs sharing stats</th><th class="num">Used this week</th><th class="num">Stopped something</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>` : `<div class="empty">Nothing yet.</div>`}
+    <div class="sub" style="padding:10px 16px 14px">Post links as <code>${esc(location.origin)}/go/NAME</code> (linkedin,
+      whatsapp, hn...): a click is counted with no IP or cookie, and the install commands on that page carry the name.
+      Installs that say yes to stats report it, or pick where they heard about Squidbrake from a list. "not said": skipped
+      that question; "pilot": joined with a pilot code.</div>
   </section>`;
 }
 

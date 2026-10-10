@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install Squidbrake</title>
+<style>
+:root { --bg:#fafaf9; --card:#fff; --ink:#18181b; --muted:#71717a; --line:#e4e4e7; --code:#f4f4f5; --accent:#dc2626; }
+@media (prefers-color-scheme: dark) { :root { --bg:#111114; --card:#1a1a1f; --ink:#f4f4f5; --muted:#a1a1aa; --line:#2e2e35;
+        --code:#232329; --accent:#ef4444; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+main { max-width:720px; margin:0 auto; padding:40px 16px 64px; }
+.brand { font-weight:800; font-size:20px; letter-spacing:-.01em; } .brand span { color:var(--accent); }
+h1 { font-size:32px; line-height:1.2; margin:18px 0 8px; letter-spacing:-.02em; }
+.lead { color:var(--muted); margin:0 0 24px; font-size:17px; }
+.card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; margin:0 0 14px; }
+.card h2 { font-size:17px; margin:0 0 4px; } .card p { margin:4px 0; color:var(--muted); font-size:15px; }
+.tabs { display:flex; gap:6px; margin:4px 0 10px; flex-wrap:wrap; }
+.tabs button { border:1px solid var(--line); background:var(--code); color:var(--ink); border-radius:999px; padding:5px 12px;
+               font:inherit; font-size:14px; cursor:pointer; }
+.tabs button[aria-selected="true"] { background:var(--ink); color:var(--bg); border-color:var(--ink); }
+.cmd { position:relative; background:var(--code); border:1px solid var(--line); border-radius:10px; margin:8px 0;
+       padding:12px 84px 12px 14px; font:14px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace;
+       white-space:pre-wrap; word-break:break-all; }
+.copy { position:absolute; top:8px; right:8px; border:1px solid var(--line); background:var(--card); color:var(--ink);
+        border-radius:8px; padding:4px 10px; font:13px system-ui,sans-serif; cursor:pointer; }
+ul { margin:6px 0 0; padding-left:20px; color:var(--muted); font-size:15px; } li { margin:3px 0; }
+.foot { color:var(--muted); font-size:14px; margin-top:22px; }
+a { color:var(--accent); }
+@media (max-width:560px) { h1 { font-size:26px; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">Squid<span>brake</span></div>
+  <h1>Agents propose. People approve.</h1>
+  <p class="lead">Squidbrake checks what your AI coding agents do before it happens. Everyday work runs on its own;
+    what can't be undone (force pushes, deletes, destructive SQL, cloud deletes) waits for a person.</p>
+
+  <div class="card">
+    <h2>Install</h2>
+    <p>One line. It installs Squidbrake, connects the agents on this computer and opens the dashboard.</p>
+    <div class="tabs" role="tablist" id="tabs"></div>
+    <div class="cmd" id="cmd"><button class="copy" id="copy">Copy</button><span id="text"></span></div>
+    <ul>
+      <li>Works with Claude Code, Cursor, Codex, Gemini CLI, VS Code and Antigravity.</li>
+      <li>Runs on your computer. The first time, it asks whether to send anonymous usage stats; you can say no.</li>
+    </ul>
+  </div>
+
+  <p class="foot">Open source: <a href="https://github.com/batrapulkit/squidbrake" rel="noopener">github.com/batrapulkit/squidbrake</a>.
+    Setting it up for a team? <a href="/team?from=site">Tell us about it</a>.</p>
+</main>
+<script>
+const D = __DATA__;
+const ref = D.ref;
+const OPTIONS = {
+  "macOS / Linux": `curl -fsSL ${D.server}/install.sh | ${ref ? `SQUIDBRAKE_REF=${ref} ` : ""}sh`,
+  "Windows": `${ref ? `$env:SQUIDBRAKE_REF="${ref}"; ` : ""}irm ${D.server}/install.ps1 | iex`,
+  "pip": `pip install squidbrake\n${ref ? (navigator.platform.startsWith("Win") ? `$env:SQUIDBRAKE_REF="${ref}"; squidbrake setup` : `SQUIDBRAKE_REF=${ref} squidbrake setup`) : "squidbrake setup"}`,
+};
+const tabs = document.getElementById("tabs"), text = document.getElementById("text");
+let current = navigator.platform.startsWith("Win") ? "Windows" : "macOS / Linux";
+function show(name) {
+  current = name;
+  text.textContent = OPTIONS[name];
+  tabs.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", b.dataset.name === name));
+}
+for (const name of Object.keys(OPTIONS)) {
+  const b = document.createElement("button");
+  b.textContent = name; b.dataset.name = name; b.setAttribute("role", "tab");
+  b.onclick = () => show(name);
+  tabs.appendChild(b);
+}
+show(current);
+document.getElementById("copy").onclick = async (e) => {
+  try { await navigator.clipboard.writeText(OPTIONS[current]); e.target.textContent = "Copied"; }
+  catch { e.target.textContent = "Select and copy"; }
+  setTimeout(() => (e.target.textContent = "Copy"), 1500);
+};
+</script>
+</body>
+</html>

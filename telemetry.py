@@ -13,6 +13,8 @@ What is sent, once each time you run a command:
   - the command name only (e.g. "connect", "doctor", "undo"), never its arguments
   - the Squidbrake version, operating system, CPU type and Python version, and whether it came from pip
   - the country, worked out by the stats service from the address the request comes from
+  - where you heard about Squidbrake, if you answered (one word from a list, e.g. "linkedin"), or the name of the
+    link you installed from (SQUIDBRAKE_REF, e.g. "whatsapp")
 Never sent: commands an agent ran, file or folder names, file contents, prompts, rules, keys, the audit trail,
 names of people, your email (unless you run `squidbrake register`).
 The agent hooks (`hook`, `agent-hook`, `shell-guard`, `proxy`) send nothing, so nothing slows a tool call down.
@@ -27,6 +29,7 @@ import atexit
 import json
 import os
 import platform
+import re
 import sys
 import threading
 import uuid
@@ -42,6 +45,28 @@ COMMANDS = {"start", "setup", "connect", "doctor", "lockdown", "evidence", "undo
 WHAT_IS_SENT = __doc__.split("What is sent, once each time you run a command:")[1].strip()
 # the gateway's counts go where `squidbrake connect all` sends them (connect.py), as the community "pilot"
 COMMUNITY_SERVER, COMMUNITY_CODE = "https://pilots.squidbrake.com", "community-opt-in-ins-a42929"
+
+
+# Where people heard about Squidbrake: one word, from this list or from the link they installed from (SQUIDBRAKE_REF).
+SOURCES = [("linkedin", "LinkedIn"), ("github", "GitHub"), ("hn-reddit", "Hacker News or Reddit"),
+           ("community", "WhatsApp, Discord or another community"), ("friend", "A friend or colleague"),
+           ("search", "A search or an AI assistant"), ("other", "Somewhere else")]
+REF_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,29}$")
+
+
+def ref_from_env() -> str | None:
+    ref = os.getenv("SQUIDBRAKE_REF", "").strip().lower()
+    return ref if REF_RE.match(ref) else None
+
+
+def _ask_source() -> str | None:
+    print("Optional: where did you hear about Squidbrake? It tells one small team where to spend its time.")
+    for i, (_, label) in enumerate(SOURCES, 1):
+        print(f"  {i}. {label}")
+    answer = _ask("Number (Enter to skip): ")
+    if answer and answer.isdigit() and 1 <= int(answer) <= len(SOURCES):
+        return SOURCES[int(answer) - 1][0]
+    return None
 
 
 def _path() -> Path:
@@ -80,7 +105,7 @@ def _pilot_dir() -> Path:
     return Path(home) / "data"
 
 
-def _share_counts(on: bool, version: str) -> None:
+def _share_counts(on: bool, version: str, ref: str | None = None) -> None:
     """Join (or leave) the community pilot, so the gateway sends its counts. A real pilot's membership is kept."""
     import contextlib
     import io
@@ -90,7 +115,7 @@ def _share_counts(on: bool, version: str) -> None:
         mine = pilot.load(home)
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             if on and not mine:
-                pilot.join(home, COMMUNITY_CODE, COMMUNITY_SERVER, True, version)
+                pilot.join(home, COMMUNITY_CODE, COMMUNITY_SERVER, True, version, ref=ref)
             elif not on and mine and mine.get("code") == COMMUNITY_CODE:
                 pilot.leave(home)
         home.mkdir(parents=True, exist_ok=True)     # so `connect all` doesn't ask the same thing again
@@ -124,20 +149,23 @@ def _ask_once(cfg: dict, version: str) -> dict:
     cfg = {"id": cfg.get("id") or str(uuid.uuid4()), "enabled": answer is not None and answer.lower() in ("", "y", "yes"),
            "asked": datetime.now(timezone.utc).date().isoformat()}
     if cfg["enabled"]:
+        if ref := ref_from_env() or _ask_source():
+            cfg["ref"] = ref
         email = _ask("Optional: your work email, if you'd like the team to reach you (Enter to skip): ")
         if email and "@" in email:
             cfg["email"] = email
             if POSTHOG_KEY:
                 _send("$identify", cfg["id"], {"$set": {"email": email}}, wait=True)
     _save(cfg)
-    _share_counts(cfg["enabled"], version)
+    _share_counts(cfg["enabled"], version, cfg.get("ref"))
     print("Thanks. " + ("Stats are on." if cfg["enabled"] else "Nothing will be sent.") + "\n")
     return cfg
 
 
-def _props(command: str, version: str) -> dict:
+def _props(command: str, version: str, ref: str | None = None) -> dict:
     here = Path(__file__).resolve()
-    return {"command": command if command in COMMANDS else "other", "version": version,
+    extra = {"ref": ref, "$set_once": {"ref": ref}} if ref else {}
+    return {**extra, "command": command if command in COMMANDS else "other", "version": version,
             "os": platform.system(), "os_release": platform.release(), "arch": platform.machine(),
             "python": "%d.%d" % sys.version_info[:2], "install": "pip" if "site-packages" in here.parts else "source",
             "$lib": "squidbrake-cli"}
@@ -174,8 +202,11 @@ def maybe(argv: list[str], version: str) -> None:
         if command == "pilot" or not _interactive() or "--yes" in argv or any(a in ("-h", "--help") for a in argv):
             return
         cfg = _ask_once(cfg, version)
+    if cfg.get("enabled") and not cfg.get("ref") and (ref := ref_from_env()):
+        cfg["ref"] = ref                    # said yes before, then installed again from a named link
+        _save(cfg)
     if cfg.get("enabled") and POSTHOG_KEY:
-        _send("cli_command", cfg["id"], _props(command, version))
+        _send("cli_command", cfg["id"], _props(command, version, cfg.get("ref")))
 
 
 def register(argv: list[str], version: str) -> int:
