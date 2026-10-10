@@ -182,6 +182,47 @@ th { background:color-mix(in srgb, var(--line-2) 60%, transparent); }
 .empty { padding:34px 16px; }
 .login { box-shadow:var(--shadow); border-radius:16px; }
 
+/* ---------- overview: the weekly report at the top */
+:root { --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+        --c-approved:#3b82f6; --c-rejected:#dc2626; --c-timeout:#71717a; }
+.ov-title { font:500 30px/1.15 var(--serif); letter-spacing:-.01em; margin:8px 0 10px; }
+.ov-lede { font-size:15px; line-height:1.55; max-width:900px; color:var(--muted); margin:0 0 26px; }
+.ov-lede b { color:var(--ink); font-weight:600; }
+.kpis { display:grid; grid-template-columns:repeat(6, minmax(0, 1fr)); gap:14px; margin-bottom:22px; }
+@media (max-width:1100px) { .kpis { grid-template-columns:repeat(3, minmax(0, 1fr)); } }
+@media (max-width:620px) { .kpis { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
+.kpi { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:18px 16px 16px; min-width:0; }
+.kpi .k { font-size:12.5px; color:var(--muted); line-height:1.35; min-height:2.7em; }
+.kpi .v { font:500 40px/1.05 var(--serif); letter-spacing:-.01em; margin:8px 0 10px; font-variant-numeric:tabular-nums; }
+.kpi .n { font-size:12.5px; color:var(--muted); line-height:1.45; }
+.kpi.warn .n { color:var(--warn); } .kpi.warn { border-color:color-mix(in srgb, var(--warn) 35%, var(--line)); }
+.ov-row { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:16px; margin-bottom:22px; }
+@media (max-width:900px) { .ov-row { grid-template-columns:1fr; } }
+.ov-card { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:18px 16px; min-width:0; }
+.ov-card h3 { margin:0 0 6px; font-size:16px; font-weight:600; }
+.ov-card .sub { margin-bottom:16px; display:block; }
+.hb { display:grid; grid-template-columns:minmax(110px, 170px) minmax(0, 1fr); align-items:center; gap:6px 14px; }
+.hb .l { font-size:13px; color:var(--ink-2); }
+.hb .r { display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--muted); white-space:nowrap; min-width:0; }
+.hb .r i { display:block; height:20px; border-radius:3px; background:var(--c-approved); flex:none; }
+.hb .r i.zero { width:2px !important; }
+.hb .r b { color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums; }
+.hb .drop { color:var(--bad); }
+.stack { display:flex; height:28px; border-radius:4px; overflow:hidden; background:var(--line-2); gap:2px; }
+.stack i { display:block; height:100%; }
+.keys { display:flex; gap:16px; flex-wrap:wrap; font-size:13px; color:var(--ink-2); margin:10px 0 18px; }
+.keys span::before { content:""; display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; background:var(--c); }
+.catch { border-left:3px solid var(--c-rejected); padding:2px 0 2px 12px; }
+.catch .k { font-size:12.5px; color:var(--muted); }
+.catch .what { font-size:15px; margin:4px 0; }
+.catch .what code { font:500 24px var(--serif); }
+.catch .mini { font-size:12.5px; }
+.ptable { min-width:860px; font-size:13px; }
+.ptable th, .ptable td { padding:9px 10px; white-space:nowrap; }
+.ptable th { text-transform:none; letter-spacing:0; font-size:12.5px; background:none; }
+.ptable td.n, .ptable th.n { text-align:right; font-variant-numeric:tabular-nums; }
+.ptable td.act { background:linear-gradient(90deg, transparent calc(100% - var(--w)), color-mix(in srgb, var(--c-approved) 30%, transparent) 0); }
+
 /* where people come from: a little funnel per channel */
 .src-bar { display:flex; height:6px; border-radius:3px; overflow:hidden; background:var(--line-2); width:160px; margin-top:7px; }
 .src-bar i { display:block; height:100%; }
@@ -305,29 +346,10 @@ async function load() {
     <main>
     ${me.has_password ? "" : `<div class="notice"><span><b>Set your own password</b> so you don't have to sign in with the server key.</span>
       <button class="btn" id="pw2" style="margin-left:auto">Set password</button></div>`}
-    <div class="hello"><div><h1>${greeting()}</h1>
-        <div class="sub">${new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })} ·
-          ${d.pilots.length} pilots · ${d.installs} installs</div></div>
-      <div class="chips"><span class="big-chip ok"><i></i><b>${d.scorecard.active_this_week}</b> active this week</span>
-        <span class="big-chip accent"><i></i><b>${d.scorecard.stopped}</b> stopped</span>
-        ${asks.filter((a) => !a.done).length ? `<a class="big-chip warn" href="#requests"><i></i><b>${asks.filter((a) => !a.done).length}</b> waiting for a reply</a>` : ""}</div></div>
-    <section id="week"><div class="sec-h"><h2>This week</h2>
-        <span class="sub">${d.pilots.length} pilots · ${d.installs} installs · ${w.events.toLocaleString()} actions${w.would_block ? ` · ${w.would_block} would block (shadow)` : ""}</span>
-        <div class="act"><button class="btn" data-copy="${esc(weeklyReport(d))}">Copy weekly report</button></div></div>
-      <div class="stats cols4">
-        ${stat("Active this week", d.scorecard.active_this_week, `${d.scorecard.active_today} today`, false, "ok")}
-        ${stat("Active 3+ days", d.scorecard.active_3_plus_days, "", false, "ok")}
-        ${stat("Back from last week", `${d.scorecard.retained}<small>of ${d.scorecard.active_last_week}</small>`, "", false, "link")}
-        ${stat("Held for a person", w.held, "", false, "warn")}${stat("Blocked", w.blocked, "", false, "bad")}
-        ${stat("Holds approved", d.scorecard.approve_rate === null ? "–" : d.scorecard.approve_rate + "%",
-               d.scorecard.approve_rate > 90 ? "Over 90%: rules may be holding routine work" : "", d.scorecard.approve_rate > 90, "link")}
-        ${stat("At risk · churned", `${d.scorecard.at_risk}<small>·</small> ${d.scorecard.churned}`, "3+ / 7+ days without activity", d.scorecard.at_risk + d.scorecard.churned > 0, "warn")}
-        ${stat("Stopped", d.scorecard.stopped, (savedText(d.scorecard.saved) ? "saved " + savedText(d.scorecard.saved) : "caught by a rule") +
-               (d.scorecard.paused ? ` · paused by emergency stop: ${d.scorecard.paused}` : ""), false, "accent")}
-      </div></section>
+    ${overview(d, inv, asks)}
     ${stoppedPanel(d.pilots)}
     ${tractionPanel(inv)}
-    <section id="pilots"><div class="sec-h"><h2>Pilots</h2><span class="sub">Hosted dashboards report every 2 minutes</span>
+    <section id="pilots"><div class="sec-h"><h2>Pilot details</h2><span class="sub">Hosted dashboards report every 2 minutes</span>
         <div class="act"><a class="btn" href="#new">New pilot</a></div></div>
       ${d.pilots.length ? `<div class="table-wrap"><table><thead><tr><th>Company</th><th>Status</th><th>Last 14 days</th>
         <th>Last 7 days</th><th>Agents</th><th>What fired</th><th></th></tr></thead><tbody>${d.pilots.map(row).join("")}</tbody></table></div>`
@@ -380,6 +402,84 @@ async function load() {
   });
 }
 
+// The weekly report at the top: one sentence, six numbers, the funnel, what happened to the holds, one row per pilot
+const PAUSED_RULES = ["emergency-stop", "session-stop"];
+function overview(d, inv, asks) {
+  const sc = d.scorecard, wk = d.week, pilots = d.pilots.filter((p) => !p.community);   // pip users who opted in aren't a pilot
+  const active = pilots.filter((p) => p.days_this_week).length, active3 = pilots.filter((p) => p.days_this_week >= 3).length;
+  const first = pilots.map((p) => p.created_at).filter(Boolean).sort()[0];
+  const weekNo = first ? Math.max(1, Math.floor((Date.now() - new Date(first)) / (7 * 864e5)) + 1) : 1;
+  const catches = pilots.flatMap((p) => (p.catches || []).map((x) => ({ ...x, company: p.company })))
+    .filter((x) => STOPPED.includes(x.outcome) && !PAUSED_RULES.includes(x.rule)).sort((a, b) => (b.t || "").localeCompare(a.t || ""));
+  const decided = wk.approved + wk.rejected + wk.timed_out;
+  const funnel = inv ? inv.funnel : [];
+  const notConnected = pilots.filter((p) => /not connected|keys taken|installed/i.test(p.stage)).length;
+  const fixes = [notConnected ? "installs that never connect an agent" : "", sc.approve_rate > 90 ? "rules that hold routine work" : "",
+                 sc.at_risk + sc.churned ? "pilots that went quiet" : ""].filter(Boolean);
+  const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+  const lede = `<b>${active} of ${pilots.length} pilots active, ${plural(wk.events, "real agent action", "real agent actions")},
+    ${plural(sc.stopped, "risky action", "risky actions")} stopped.</b>${fixes.length ? ` Next to fix: ${fixes.join(", and ")}.` : ""}`;
+
+  const kpi = (k, v, n = "", warn = false) => `<div class="kpi${warn ? " warn" : ""}"><div class="k">${k}</div><div class="v">${v}</div>${n ? `<div class="n">${n}</div>` : ""}</div>`;
+  const kpis = [
+    kpi("Active pilots · this week", active, `of ${pilots.length} created · ${active3} active 3+ days`),
+    kpi("Agent actions · this week", wk.events.toLocaleString(), "Real agent actions seen by Squidbrake"),
+    kpi("Held for a person · this week", wk.held.toLocaleString(), inv && inv.median_seconds_to_decide !== null ? `decided in ${fmtSecs(inv.median_seconds_to_decide)} (median)` : "waiting for a person to decide"),
+    kpi("Real catches · this week", sc.stopped, [savedText(sc.saved) ? savedText(sc.saved) + " saved" : "rejected or blocked",
+        sc.paused ? `excludes ${sc.paused} emergency-stop pauses` : ""].filter(Boolean).join(" · ")),
+    kpi("Holds approved · this week", sc.approve_rate === null ? "–" : sc.approve_rate + "%",
+        sc.approve_rate > 90 ? "Share of decided holds a person approved. Over 90% means rules are holding routine work." : "Share of decided holds a person approved",
+        sc.approve_rate > 90),
+    kpi("Paying (recurring)", inv ? inv.paying.length : 0, inv ? `$${inv.mrr.toLocaleString()} MRR` : ""),
+  ].join("");
+
+  const top = Math.max(1, ...funnel.map((f) => f.count));
+  const steps = funnel.map((f, i) => {
+    const prev = i ? funnel[i - 1].count : null;
+    const kept = prev ? Math.round(100 * f.count / prev) : null;     // nothing in the step before: no share to show
+    const pct = i && kept !== null ? `<span class="${kept < 60 ? "drop" : ""}">${kept}% of step before</span>` : "";
+    return `<span class="l">${esc(f.step)}</span><span class="r"><i class="${f.count ? "" : "zero"}" style="width:${70 * f.count / top}%"></i><b>${f.count}</b>${pct ? " · " + pct : ""}</span>`;
+  }).join("");
+
+  const part = (n, c) => n ? `<i style="width:${100 * n / Math.max(1, decided)}%;background:${c}"></i>` : "";
+  const c = catches[0];
+  const catchHtml = c ? `<div class="catch"><div class="k">${catches.length === 1 ? "The one real catch" : `The latest of ${catches.length} real catches`}</div>
+      <div class="what"><code>${esc(c.program || c.tool || "action")}</code> on ${esc(c.agent || "an agent")}, ${esc(c.outcome)}${c.decide_s !== undefined && c.decide_s !== null ? ` in ${fmtSecs(c.decide_s)}` : ""}</div>
+      <div class="mini">${esc(c.company)} · ${esc((c.t || "").replace("T", " "))} · reason: ${esc(c.why || c.rule || "")}${savedText(c.saved) ? " · would have changed " + esc(savedText(c.saved)) : ""}</div></div>`
+    : `<div class="sub">Nothing stopped yet this week.</div>`;
+
+  const maxA = Math.max(1, ...pilots.map((p) => p.week.events));
+  const prow = (p) => {
+    const [label, cls] = STAGE[p.stage] || [p.stage, "s-sent"];
+    const agents = Object.entries(p.agents || {}).sort((a, b) => b[1] - a[1]).map(([a, n]) => `${esc(a)} ${n}`).join(", ") || "–";
+    return `<tr><td><b>${esc(p.company)}</b></td><td><span class="pill ${cls}">${esc(label)}</span></td>
+      <td class="n act" style="--w:${Math.round(100 * p.week.events / maxA)}%">${p.week.events.toLocaleString()}</td>
+      <td class="n">${p.week.held}</td><td class="n">${p.week.approved}</td><td class="n">${p.week.rejected}</td><td class="n">${p.week.timed_out}</td>
+      <td class="n">${p.paused || 0}</td><td>${esc(p.versions.length ? "v" + p.versions.join(", v") : "–")}</td><td>${agents}</td></tr>`;
+  };
+  const sorted = [...pilots].sort((a, b) => b.week.events - a.week.events);
+
+  return `<section id="week">
+    <div class="sec-h" style="margin-bottom:0"><h1 class="ov-title">Squidbrake pilots, week ${weekNo}</h1>
+      <div class="act"><button class="btn" data-copy="${esc(weeklyReport(d))}">Copy weekly report</button></div></div>
+    <p class="ov-lede">${lede}</p>
+    <div class="kpis">${kpis}</div>
+    <div class="ov-row">
+      <div class="ov-card"><h3>From pilot link to paying</h3><span class="sub">Each step as a count of pilots, with the share kept from the step before. Big drops in red.</span>
+        ${funnel.length ? `<div class="hb">${steps}</div>` : `<div class="sub">No pilots yet.</div>`}</div>
+      <div class="ov-card"><h3>What happened to the holds</h3><span class="sub">Every action Squidbrake paused for a person this week, by outcome.</span>
+        ${decided ? `<div class="stack">${part(wk.approved, "var(--c-approved)")}${part(wk.rejected, "var(--c-rejected)")}${part(wk.timed_out, "var(--c-timeout)")}</div>
+        <div class="keys"><span style="--c:var(--c-approved)">Approved ${wk.approved}</span><span style="--c:var(--c-rejected)">Rejected ${wk.rejected}</span>
+          <span style="--c:var(--c-timeout)">Timed out ${wk.timed_out}</span></div>` : `<div class="sub" style="margin-bottom:18px">No holds decided this week.</div>`}
+        ${catchHtml}</div>
+    </div>
+    <div class="ov-card"><h3>Pilots</h3><span class="sub">One row per pilot, this week. The shaded bar in Actions is on one shared scale.</span>
+      ${pilots.length ? `<div style="overflow-x:auto"><table class="ptable"><thead><tr><th>Pilot</th><th>Status</th><th class="n">Actions</th><th class="n">Held</th>
+        <th class="n">Approved</th><th class="n">Rejected</th><th class="n">Timed out</th><th class="n">Emergency stops</th><th>Version</th><th>Agents (actions)</th></tr></thead>
+        <tbody>${sorted.map(prow).join("")}</tbody></table></div>` : `<div class="sub">No pilots yet. Create one below.</div>`}</div>
+  </section>`;
+}
+
 // Traction: activation, retention, value, revenue, and open-source pull
 const pct = (v) => v === null || v === undefined ? "–" : `${v > 0 ? "+" : ""}${v}%`;
 function tractionPanel(v) {
@@ -395,8 +495,7 @@ function tractionPanel(v) {
   const paying = v.paying.length ? v.paying.map((p) => `${p.company} $${p.mrr}`).join(", ") : "mark a pilot as paying from its row";
   return `<section id="traction"><div class="sec-h"><h2>Traction</h2><span class="sub">From signup to paying, and whether teams keep using it</span>
       <div class="act"><button class="btn" data-copy="${esc(tractionUpdate(v))}">Copy update</button></div></div>
-    <div class="grid2">
-      <div class="surface fun">${funnel}</div>
+    <div>
       <div class="surface" style="overflow:hidden">
         <div class="stats" style="border:0;border-radius:0">
           ${stat("MRR", `$${v.mrr.toLocaleString()}`, paying)}
@@ -489,7 +588,6 @@ function teamPanel(asks) {
 }
 
 const stat = (k, v, note = "", warn = false, tone = "") => `<div class="stat${warn ? " warn" : ""}${tone ? " t-" + tone : ""}"><div class="k">${k}</div><div class="v">${typeof v === "number" ? v.toLocaleString() : v}</div>${note ? `<div class="n">${esc(note)}</div>` : ""}</div>`;
-const greeting = () => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; };
 const trend = (v) => v === null || v === undefined ? "" : `<small class="${v >= 0 ? "up" : "down"}">${v > 0 ? "+" : ""}${v}%</small>`;
 
 // What to send a cofounder every week: usage, not output

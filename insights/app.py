@@ -588,7 +588,7 @@ def overview(request: Request):
         health = ("not started" if last_day is None else "active" if idle <= 2 else "at risk" if idle <= 6 else "churned")
         if stage == "active" and health in ("at risk", "churned"):
             stage = "quiet"           # reporting in, but its agents haven't done anything for 3+ days
-        out.append({**p, "dashboard": dashboard_url(p["subdomain"]), "keys_waiting": keys_waiting,
+        out.append({**p, "community": p["code"] == COMMUNITY_CODE, "dashboard": dashboard_url(p["subdomain"]), "keys_waiting": keys_waiting,
                     "catches": mine_caught[:25], "stopped": len(stopped), "paused": week["paused"], "saved": saved,
                     "connected": connected, "rule_approvals": rule_approvals(mine_caught),
                     "outdated": bool(latest) and any(_version(v) < _version(latest) for v in
@@ -705,7 +705,7 @@ def traction():
     with db() as c:
         pilots = [dict(r) for r in c.execute(
             "SELECT code, company, created_at, page_views, keys_revealed_at, mrr, paying_since FROM pilots "
-            "WHERE COALESCE(state, '') != 'deleting'")]
+            "WHERE COALESCE(state, '') != 'deleting' AND code != ?", (COMMUNITY_CODE,))]   # pip users aren't a pilot
         installs = [dict(r) for r in c.execute("SELECT install_id, code, left_at, agents, connected, total_events "
                                                "FROM installs")]
         days = c.execute("SELECT install_id, day, counts FROM days").fetchall()
