@@ -8,7 +8,8 @@ The web app itself never touches Docker; this script asks it what to do and repo
                          and joined to its pilot, so the dashboard shows its counts
 
 Settings (environment): INSIGHTS_ADMIN_KEY, INSIGHTS_URL (http://127.0.0.1:8090), HOSTED_IMAGE, HOSTED_NETWORK,
-PILOT_SERVER_INTERNAL (http://insights:8090), HOSTED_MEMORY (192m). Python 3.8+, standard library only.
+PILOT_SERVER_INTERNAL (http://insights:8090), HOSTED_MEMORY (192m), HOSTED_CPUS (0.5: one busy pilot can't
+slow down the pilots site and everyone else on this small server). Python 3.8+, standard library only.
 """
 import json
 import os
@@ -25,6 +26,7 @@ IMAGE = os.environ.get("HOSTED_IMAGE", "ghcr.io/batrapulkit/squidbrake:latest")
 NETWORK = os.environ.get("HOSTED_NETWORK", "tool-gateway_default")
 PILOT_SERVER = os.environ.get("PILOT_SERVER_INTERNAL", "http://insights:8090")
 MEMORY = os.environ.get("HOSTED_MEMORY", "192m")
+CPUS = os.environ.get("HOSTED_CPUS", "0.5")
 KEY_RE = re.compile(r"^\s*(admin|agent)\s+(gw_[A-Za-z0-9_\-]+)", re.M)
 
 
@@ -67,7 +69,7 @@ def start(p):
         return
     log("starting", name)
     docker("pull", "-q", IMAGE, check=False)
-    docker("run", "-d", "--name", name, "--network", NETWORK, "--restart", "unless-stopped", "--memory", MEMORY,
+    docker("run", "-d", "--name", name, "--network", NETWORK, "--restart", "unless-stopped", "--memory", MEMORY, "--cpus", CPUS,
            "--label", "squidbrake.hosted=1", "--label", f"squidbrake.pilot={p['code']}",
            "-v", f"{name}:/app/data", "-e", f"PUBLIC_URL={p['dashboard']}", "-e", "FORWARDED_ALLOW_IPS=*",
            "-e", "SQUIDBRAKE_PILOT_INTERVAL=120", "--log-opt", "max-size=20m", "--log-opt", "max-file=3", IMAGE)
