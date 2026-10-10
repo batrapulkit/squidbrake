@@ -184,44 +184,101 @@ th { background:color-mix(in srgb, var(--line-2) 60%, transparent); }
 
 /* ---------- overview: the weekly report at the top */
 :root { --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
-        --c-approved:#3b82f6; --c-rejected:#dc2626; --c-timeout:#71717a; }
-.ov-title { font:500 30px/1.15 var(--serif); letter-spacing:-.01em; margin:8px 0 10px; }
-.ov-lede { font-size:15px; line-height:1.55; max-width:900px; color:var(--muted); margin:0 0 26px; }
+        --c-approved:#3b82f6; --c-rejected:#ef4444; --c-timeout:#71717a; --c-ok:#22c55e; }
+.hero { display:grid; grid-template-columns:minmax(0, 5fr) minmax(0, 6fr); gap:20px; align-items:stretch; margin:4px 0 22px; }
+@media (max-width:980px) { .hero { grid-template-columns:1fr; } }
+.hero-l { display:flex; flex-direction:column; justify-content:center; padding:6px 0; }
+.eyebrow { display:inline-flex; align-items:center; gap:8px; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); font-weight:600; }
+.eyebrow::before { content:""; width:8px; height:8px; border-radius:50%; background:var(--accent);
+                   box-shadow:0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); animation:pulse 2.4s infinite; }
+@keyframes pulse { 70% { box-shadow:0 0 0 8px transparent; } 100% { box-shadow:0 0 0 0 transparent; } }
+@media (prefers-reduced-motion: reduce) { .eyebrow::before { animation:none; } }
+.ov-title { font:500 40px/1.08 var(--serif); letter-spacing:-.015em; margin:12px 0 14px; }
+.ov-lede { font-size:15.5px; line-height:1.6; color:var(--muted); margin:0 0 18px; max-width:560px; }
 .ov-lede b { color:var(--ink); font-weight:600; }
+.fixes { display:flex; flex-direction:column; gap:8px; }
+.fix { display:flex; gap:10px; align-items:center; font-size:13px; color:var(--ink-2); padding:9px 12px; border-radius:10px;
+       background:color-mix(in srgb, var(--warn) 9%, var(--surface)); border:1px solid color-mix(in srgb, var(--warn) 25%, var(--line)); }
+.fix b { color:var(--warn); font-weight:600; font-size:11.5px; letter-spacing:.06em; text-transform:uppercase; }
+.fix.good { background:color-mix(in srgb, var(--ok) 8%, var(--surface)); border-color:color-mix(in srgb, var(--ok) 25%, var(--line)); }
+.fix.good b { color:var(--ok); }
+.chart-card { background:linear-gradient(180deg, color-mix(in srgb, var(--accent) 6%, var(--surface)), var(--surface) 60%);
+              border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow); padding:18px 18px 10px; position:relative; overflow:hidden; }
+.chart-card .top-row { display:flex; align-items:flex-start; gap:12px; }
+.chart-card .k { font-size:12.5px; color:var(--muted); }
+.chart-card .big { font:500 44px/1 var(--serif); margin-top:6px; font-variant-numeric:tabular-nums; }
+.chart-card svg { display:block; width:100%; height:150px; margin-top:6px; }
+.chart-card .axis { display:flex; justify-content:space-between; font-size:11px; color:var(--faint); padding:2px 2px 4px; }
+.delta { display:inline-flex; align-items:center; gap:3px; font-size:12px; font-weight:600; padding:2px 8px; border-radius:999px; white-space:nowrap; }
+.delta.up { color:var(--ok); background:var(--tint-ok); } .delta.down { color:var(--bad); background:var(--tint-bad); }
+.delta.flat { color:var(--muted); background:var(--line-2); }
+.chart-card .delta { margin-left:auto; }
+
 .kpis { display:grid; grid-template-columns:repeat(6, minmax(0, 1fr)); gap:14px; margin-bottom:22px; }
-@media (max-width:1100px) { .kpis { grid-template-columns:repeat(3, minmax(0, 1fr)); } }
-@media (max-width:620px) { .kpis { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
-.kpi { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:18px 16px 16px; min-width:0; }
-.kpi .k { font-size:12.5px; color:var(--muted); line-height:1.35; min-height:2.7em; }
-.kpi .v { font:500 40px/1.05 var(--serif); letter-spacing:-.01em; margin:8px 0 10px; font-variant-numeric:tabular-nums; }
-.kpi .n { font-size:12.5px; color:var(--muted); line-height:1.45; }
-.kpi.warn .n { color:var(--warn); } .kpi.warn { border-color:color-mix(in srgb, var(--warn) 35%, var(--line)); }
-.ov-row { display:grid; grid-template-columns:minmax(0, 1fr) minmax(0, 1fr); gap:16px; margin-bottom:22px; }
-@media (max-width:900px) { .ov-row { grid-template-columns:1fr; } }
-.ov-card { background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:18px 16px; min-width:0; }
-.ov-card h3 { margin:0 0 6px; font-size:16px; font-weight:600; }
-.ov-card .sub { margin-bottom:16px; display:block; }
-.hb { display:grid; grid-template-columns:minmax(110px, 170px) minmax(0, 1fr); align-items:center; gap:6px 14px; }
-.hb .l { font-size:13px; color:var(--ink-2); }
-.hb .r { display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--muted); white-space:nowrap; min-width:0; }
-.hb .r i { display:block; height:20px; border-radius:3px; background:var(--c-approved); flex:none; }
-.hb .r i.zero { width:2px !important; }
-.hb .r b { color:var(--ink); font-weight:600; font-variant-numeric:tabular-nums; }
-.hb .drop { color:var(--bad); }
-.stack { display:flex; height:28px; border-radius:4px; overflow:hidden; background:var(--line-2); gap:2px; }
-.stack i { display:block; height:100%; }
-.keys { display:flex; gap:16px; flex-wrap:wrap; font-size:13px; color:var(--ink-2); margin:10px 0 18px; }
-.keys span::before { content:""; display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:6px; vertical-align:-1px; background:var(--c); }
-.catch { border-left:3px solid var(--c-rejected); padding:2px 0 2px 12px; }
-.catch .k { font-size:12.5px; color:var(--muted); }
-.catch .what { font-size:15px; margin:4px 0; }
-.catch .what code { font:500 24px var(--serif); }
-.catch .mini { font-size:12.5px; }
-.ptable { min-width:860px; font-size:13px; }
-.ptable th, .ptable td { padding:9px 10px; white-space:nowrap; }
-.ptable th { text-transform:none; letter-spacing:0; font-size:12.5px; background:none; }
+@media (max-width:1180px) { .kpis { grid-template-columns:repeat(3, minmax(0, 1fr)); } }
+@media (max-width:640px) { .kpis { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
+.kpi { position:relative; background:var(--surface); border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow);
+       padding:16px 16px 14px; min-width:0; overflow:hidden; transition:transform .15s, box-shadow .15s; }
+.kpi:hover { transform:translateY(-2px); box-shadow:0 10px 30px -12px rgba(0,0,0,.35); }
+.kpi .k { display:flex; align-items:center; gap:7px; font-size:12px; color:var(--muted); }
+.kpi .k i { width:22px; height:22px; border-radius:7px; display:grid; place-items:center; font-style:normal; font-size:12px;
+            background:color-mix(in srgb, var(--tone) 14%, transparent); color:var(--tone); flex:none; }
+.kpi .v { font:500 38px/1 var(--serif); letter-spacing:-.01em; margin:12px 0 8px; font-variant-numeric:tabular-nums; }
+.kpi .v small { font:500 13px var(--sans); color:var(--muted); margin-left:4px; }
+.kpi .n { font-size:12px; color:var(--muted); line-height:1.45; }
+.kpi svg.sp { display:block; width:100%; height:30px; margin-top:8px; }
+.kpi.hot { border-color:color-mix(in srgb, var(--accent) 45%, var(--line));
+           background:radial-gradient(240px 120px at 100% 0, color-mix(in srgb, var(--accent) 16%, transparent), transparent 70%), var(--surface); }
+.kpi.warn { border-color:color-mix(in srgb, var(--warn) 40%, var(--line)); } .kpi.warn .n { color:var(--warn); }
+.kpi .meter { height:6px; border-radius:3px; background:var(--line-2); overflow:hidden; margin-top:10px; }
+.kpi .meter i { display:block; height:100%; background:var(--tone); border-radius:3px; }
+.kpi svg.gauge { display:block; width:100%; max-width:150px; height:auto; margin:6px 0 2px; }
+.kpi .gauge-v { font:500 30px/1 var(--serif); margin-top:-30px; text-align:center; max-width:150px; }
+
+.ov-row { display:grid; grid-template-columns:minmax(0, 7fr) minmax(0, 5fr); gap:16px; margin-bottom:22px; }
+@media (max-width:980px) { .ov-row { grid-template-columns:1fr; } }
+.ov-card { background:var(--surface); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow); padding:18px; min-width:0; }
+.ov-card h3 { margin:0 0 4px; font-size:16px; font-weight:600; letter-spacing:-.005em; }
+.ov-card > .sub { margin-bottom:16px; display:block; }
+.pipe { display:flex; align-items:flex-end; gap:6px; height:210px; padding-top:28px; }
+.pipe .st { flex:1; min-width:0; display:flex; flex-direction:column; justify-content:flex-end; align-items:stretch; height:100%; position:relative; }
+.pipe .col { border-radius:8px 8px 4px 4px; background:linear-gradient(180deg, var(--c-approved), color-mix(in srgb, var(--c-approved) 55%, transparent));
+             position:relative; min-height:4px; }
+.pipe .st:last-child .col { background:linear-gradient(180deg, var(--c-ok), color-mix(in srgb, var(--c-ok) 50%, transparent)); }
+.pipe .num { position:absolute; top:-26px; left:0; right:0; text-align:center; font:600 18px var(--sans); font-variant-numeric:tabular-nums; }
+.pipe .conv { position:absolute; top:-22px; right:-15px; z-index:1; font-size:10.5px; font-weight:600; padding:1px 5px; border-radius:999px;
+              background:var(--surface); border:1px solid var(--line); color:var(--muted); }
+.pipe .conv.drop { color:var(--bad); border-color:color-mix(in srgb, var(--bad) 40%, var(--line)); }
+.pipe-l { display:flex; gap:6px; margin-top:8px; }
+.pipe-l span { flex:1; min-width:0; font-size:11.5px; line-height:1.3; color:var(--muted); text-align:center; }
+.holds { display:flex; gap:18px; align-items:center; flex-wrap:wrap; }
+.holds svg { width:132px; height:132px; flex:none; }
+.holds .lg { display:flex; flex-direction:column; gap:8px; font-size:13px; flex:1; min-width:150px; }
+.holds .lg div { display:flex; align-items:center; gap:8px; }
+.holds .lg i { width:10px; height:10px; border-radius:3px; background:var(--c); flex:none; }
+.holds .lg b { margin-left:auto; font-variant-numeric:tabular-nums; }
+.holds .lg small { color:var(--muted); width:38px; text-align:right; font-variant-numeric:tabular-nums; }
+.term { margin-top:16px; border-radius:12px; overflow:hidden; border:1px solid #2a2a30; background:#0c0c0e; color:#e6e6e8; position:relative; }
+.term .bar { display:flex; align-items:center; gap:6px; padding:8px 12px; background:#17171b; font-size:11.5px; color:#9a9aa3; }
+.term .bar i { width:9px; height:9px; border-radius:50%; background:#3a3a40; }
+.term .bar i:nth-child(1) { background:#ff5f57; } .term .bar i:nth-child(2) { background:#febc2e; } .term .bar i:nth-child(3) { background:#28c840; }
+.term .bar span { margin-left:8px; }
+.term pre { margin:0; padding:12px 14px 14px; font:12.5px/1.65 var(--mono); white-space:pre-wrap; }
+.term .p { color:#7dd3fc; } .term .cmd { color:#fff; font-weight:600; } .term .dim { color:#8b8b94; } .term .red { color:#f87171; }
+.stamp { position:absolute; right:14px; bottom:14px; transform:rotate(-8deg); border:2px solid #ef4444; color:#ef4444; border-radius:6px;
+         padding:2px 10px; font:700 13px var(--sans); letter-spacing:.14em; opacity:.92; }
+.stamp.blocked { border-color:#f97316; color:#f97316; }
+
+.ptable { min-width:900px; font-size:13px; }
+.ptable th, .ptable td { padding:10px 10px; white-space:nowrap; vertical-align:middle; }
+.ptable th { text-transform:none; letter-spacing:0; font-size:12px; background:none; }
 .ptable td.n, .ptable th.n { text-align:right; font-variant-numeric:tabular-nums; }
-.ptable td.act { background:linear-gradient(90deg, transparent calc(100% - var(--w)), color-mix(in srgb, var(--c-approved) 30%, transparent) 0); }
+.ptable td.act { background:linear-gradient(90deg, transparent calc(100% - var(--w)), color-mix(in srgb, var(--c-approved) 26%, transparent) 0); font-weight:600; }
+.who { display:flex; align-items:center; gap:10px; }
+.av { width:30px; height:30px; border-radius:9px; display:grid; place-items:center; font:700 12px var(--sans); color:#fff; flex:none;
+      background:linear-gradient(135deg, hsl(var(--h) 70% 55%), hsl(calc(var(--h) + 40) 70% 42%)); }
+.ptable svg { display:block; width:96px; height:24px; }
+.zero { color:var(--faint); }
 
 /* where people come from: a little funnel per channel */
 .src-bar { display:flex; height:6px; border-radius:3px; overflow:hidden; background:var(--line-2); width:160px; margin-top:7px; }
@@ -402,79 +459,160 @@ async function load() {
   });
 }
 
-// The weekly report at the top: one sentence, six numbers, the funnel, what happened to the holds, one row per pilot
+// The weekly report at the top: a sentence, a chart, six numbers with their trend, the funnel, the holds, the pilots
 const PAUSED_RULES = ["emergency-stop", "session-stop"];
+const svgPath = (vals, w, h, pad = 3) => {
+  const max = Math.max(1, ...vals), n = Math.max(1, vals.length - 1);
+  return vals.map((v, i) => [pad + (w - 2 * pad) * i / n, h - pad - (h - 2 * pad) * v / max]);
+};
+function areaChart(vals, w = 600, h = 150) {
+  if (!vals.length) return "";
+  const pts = svgPath(vals, w, h, 6), line = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join("");
+  const last = pts[pts.length - 1];
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-label="Agent actions per day">
+    <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".35"/>
+      <stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+    ${[0.25, 0.5, 0.75].map((f) => `<line x1="0" x2="${w}" y1="${h * f}" y2="${h * f}" stroke="var(--line)" stroke-dasharray="3 5" vector-effect="non-scaling-stroke"/>`).join("")}
+    <path d="${line}L${last[0]},${h}L${pts[0][0]},${h}Z" fill="url(#ag)"/>
+    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+    <circle cx="${last[0]}" cy="${last[1]}" r="4.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function spark(vals, color = "var(--tone)", w = 120, h = 30) {
+  if (!vals || vals.length < 2) return "";
+  const pts = svgPath(vals, w, h), d = pts.map((p, i) => `${i ? "L" : "M"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join("");
+  return `<svg class="sp" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${d}L${pts.at(-1)[0]},${h}L${pts[0][0]},${h}Z" fill="${color}" opacity=".12"/>
+    <path d="${d}" fill="none" stroke="${color}" stroke-width="1.8" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function gauge(pct) {                       // a half circle, with a mark at 90%: above it, rules hold routine work
+  const r = 52, c = Math.PI * r, f = pct === null ? 0 : Math.min(100, pct) / 100;
+  const color = pct === null ? "var(--faint)" : pct > 90 ? "var(--warn)" : "var(--ok)";
+  const a = Math.PI * (1 - 0.9), mx = 70 + r * Math.cos(a), my = 66 - r * Math.sin(a);
+  return `<svg class="gauge" viewBox="0 0 140 74"><path d="M18 66A52 52 0 0 1 122 66" fill="none" stroke="var(--line-2)" stroke-width="11" stroke-linecap="round"/>
+    <path d="M18 66A52 52 0 0 1 122 66" fill="none" stroke="${color}" stroke-width="11" stroke-linecap="round" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}"/>
+    <line x1="${mx.toFixed(1)}" y1="${(my - 9).toFixed(1)}" x2="${(70 + (r + 9) * Math.cos(a)).toFixed(1)}" y2="${(66 - (r + 9) * Math.sin(a)).toFixed(1)}" stroke="var(--ink-2)" stroke-width="2"/></svg>`;
+}
+function donut(parts) {                     // [[count, color], ...]
+  const total = parts.reduce((t, [n]) => t + n, 0), r = 46, c = 2 * Math.PI * r;
+  let off = 0;
+  const arcs = parts.filter(([n]) => n).map(([n, col]) => {
+    const len = c * n / total, seg = `<circle cx="66" cy="66" r="${r}" fill="none" stroke="${col}" stroke-width="16"
+      stroke-dasharray="${Math.max(0, len - 2).toFixed(2)} ${c.toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 66 66)"/>`;
+    off += len; return seg;
+  }).join("");
+  return `<svg viewBox="0 0 132 132"><circle cx="66" cy="66" r="${r}" fill="none" stroke="var(--line-2)" stroke-width="16"/>${arcs}
+    <text x="66" y="64" text-anchor="middle" style="font:500 28px var(--serif);fill:var(--ink)">${total}</text>
+    <text x="66" y="83" text-anchor="middle" style="font:500 11px var(--sans);fill:var(--muted)">decided</text></svg>`;
+}
+const deltaChip = (v) => v === null || v === undefined ? "" :
+  `<span class="delta ${v > 0 ? "up" : v < 0 ? "down" : "flat"}">${v > 0 ? "▲" : v < 0 ? "▼" : "•"} ${Math.abs(v)}%</span>`;
+const hue = (t) => [...String(t)].reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) % 360, 7);
+const initials = (t) => String(t).replace(/[^A-Za-z0-9 ]/g, "").split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase() || "?";
+
 function overview(d, inv, asks) {
   const sc = d.scorecard, wk = d.week, pilots = d.pilots.filter((p) => !p.community);   // pip users who opted in aren't a pilot
   const active = pilots.filter((p) => p.days_this_week).length, active3 = pilots.filter((p) => p.days_this_week >= 3).length;
   const first = pilots.map((p) => p.created_at).filter(Boolean).sort()[0];
   const weekNo = first ? Math.max(1, Math.floor((Date.now() - new Date(first)) / (7 * 864e5)) + 1) : 1;
-  const catches = pilots.flatMap((p) => (p.catches || []).map((x) => ({ ...x, company: p.company })))
+  const catches = d.pilots.flatMap((p) => (p.catches || []).map((x) => ({ ...x, company: p.community ? "a pip user" : p.company })))
     .filter((x) => STOPPED.includes(x.outcome) && !PAUSED_RULES.includes(x.rule)).sort((a, b) => (b.t || "").localeCompare(a.t || ""));
   const decided = wk.approved + wk.rejected + wk.timed_out;
-  const funnel = inv ? inv.funnel : [];
-  const notConnected = pilots.filter((p) => /not connected|keys taken|installed/i.test(p.stage)).length;
-  const fixes = [notConnected ? "installs that never connect an agent" : "", sc.approve_rate > 90 ? "rules that hold routine work" : "",
-                 sc.at_risk + sc.churned ? "pilots that went quiet" : ""].filter(Boolean);
-  const plural = (n, one, many) => `${n.toLocaleString()} ${n === 1 ? one : many}`;
-  const lede = `<b>${active} of ${pilots.length} pilots active, ${plural(wk.events, "real agent action", "real agent actions")},
-    ${plural(sc.stopped, "risky action", "risky actions")} stopped.</b>${fixes.length ? ` Next to fix: ${fixes.join(", and ")}.` : ""}`;
+  const plural = (n, one, many) => `${Number(n).toLocaleString()} ${n === 1 ? one : many}`;
 
-  const kpi = (k, v, n = "", warn = false) => `<div class="kpi${warn ? " warn" : ""}"><div class="k">${k}</div><div class="v">${v}</div>${n ? `<div class="n">${n}</div>` : ""}</div>`;
+  // the 14-day chart: every pilot's actions per day
+  const daily = (d.span || []).map((_, i) => d.pilots.reduce((t, p) => t + ((p.daily || [])[i] || 0), 0));
+  const thisWk = daily.slice(-7).reduce((a, b) => a + b, 0), lastWk = daily.slice(0, 7).reduce((a, b) => a + b, 0);
+  const wow = lastWk ? Math.round(100 * (thisWk - lastWk) / lastWk) : null;
+  const fmtDay = (iso) => iso ? new Date(iso + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" }) : "";
+
+  // what to fix next, worked out from the numbers
+  const notConnected = pilots.filter((p) => /not connected|keys taken|installed/i.test(p.stage)).length;
+  const fixes = [
+    notConnected ? [`${plural(notConnected, "pilot", "pilots")} installed but never connected an agent`, "Sit with them on a call until the first action"] : null,
+    sc.approve_rate > 90 ? [`${sc.approve_rate}% of holds get approved`, "Some rules hold routine work: turn those into allow rules"] : null,
+    sc.at_risk + sc.churned ? [`${plural(sc.at_risk + sc.churned, "pilot", "pilots")} went quiet`, "Ask them what got in the way"] : null,
+  ].filter(Boolean);
+  const fixHtml = fixes.length ? fixes.slice(0, 2).map(([what, how]) => `<div class="fix"><b>Fix</b><span>${esc(what)}. ${esc(how)}.</span></div>`).join("")
+    : `<div class="fix good"><b>Good</b><span>Nothing stuck this week: keep going.</span></div>`;
+
+  const weeks = inv ? inv.weeks : [];
+  const kpi = (cls, tone, icon, k, v, n, extra = "") => `<div class="kpi ${cls}" style="--tone:${tone}"><div class="k"><i>${icon}</i>${k}</div>
+    <div class="v">${v}</div>${n ? `<div class="n">${n}</div>` : ""}${extra}</div>`;
+  const heldShare = wk.events ? Math.round(1000 * wk.held / wk.events) / 10 : 0;
   const kpis = [
-    kpi("Active pilots · this week", active, `of ${pilots.length} created · ${active3} active 3+ days`),
-    kpi("Agent actions · this week", wk.events.toLocaleString(), "Real agent actions seen by Squidbrake"),
-    kpi("Held for a person · this week", wk.held.toLocaleString(), inv && inv.median_seconds_to_decide !== null ? `decided in ${fmtSecs(inv.median_seconds_to_decide)} (median)` : "waiting for a person to decide"),
-    kpi("Real catches · this week", sc.stopped, [savedText(sc.saved) ? savedText(sc.saved) + " saved" : "rejected or blocked",
-        sc.paused ? `excludes ${sc.paused} emergency-stop pauses` : ""].filter(Boolean).join(" · ")),
-    kpi("Holds approved · this week", sc.approve_rate === null ? "–" : sc.approve_rate + "%",
-        sc.approve_rate > 90 ? "Share of decided holds a person approved. Over 90% means rules are holding routine work." : "Share of decided holds a person approved",
-        sc.approve_rate > 90),
-    kpi("Paying (recurring)", inv ? inv.paying.length : 0, inv ? `$${inv.mrr.toLocaleString()} MRR` : ""),
+    kpi("", "var(--ok)", "●", "Active pilots", `${active}<small>of ${pilots.length}</small>`, `${active3} active 3+ days ${deltaChip(inv ? inv.active_pilots_wow : null)}`,
+        spark(weeks.map((w) => w.active_pilots))),
+    kpi("", "var(--c-approved)", "↯", "Agent actions", wk.events.toLocaleString(), `this week ${deltaChip(inv ? inv.actions_wow : null)}`, spark(daily)),
+    kpi("", "var(--warn)", "⏸", "Held for a person", wk.held.toLocaleString(),
+        inv && inv.median_seconds_to_decide !== null ? `${heldShare}% of actions · decided in ${fmtSecs(inv.median_seconds_to_decide)}` : `${heldShare}% of actions`,
+        `<div class="meter"><i style="width:${Math.min(100, heldShare * 5)}%"></i></div>`),
+    kpi(sc.stopped ? "hot" : "", "var(--accent)", "✋", "Real catches", sc.stopped,
+        [savedText(sc.saved) ? savedText(sc.saved) + " saved" : "rejected or blocked", sc.paused ? `${sc.paused} emergency-stop pauses not counted` : ""].filter(Boolean).join(" · ")),
+    `<div class="kpi${sc.approve_rate > 90 ? " warn" : ""}" style="--tone:${sc.approve_rate > 90 ? "var(--warn)" : "var(--ok)"}"><div class="k"><i>✓</i>Holds approved</div>
+      ${gauge(sc.approve_rate)}<div class="gauge-v">${sc.approve_rate === null ? "–" : sc.approve_rate + "%"}</div>
+      <div class="n">${sc.approve_rate > 90 ? "Over the 90% mark: rules hold routine work" : "The mark is 90%: above it, rules hold routine work"}</div></div>`,
+    kpi("", "#a855f7", "$", "Paying", inv ? inv.paying.length : 0, inv ? `$${inv.mrr.toLocaleString()} MRR · $${inv.arr.toLocaleString()} ARR` : ""),
   ].join("");
 
+  // funnel as a pipeline: columns shrinking step by step, the share kept between them
+  const funnel = inv ? inv.funnel : [];
   const top = Math.max(1, ...funnel.map((f) => f.count));
-  const steps = funnel.map((f, i) => {
-    const prev = i ? funnel[i - 1].count : null;
-    const kept = prev ? Math.round(100 * f.count / prev) : null;     // nothing in the step before: no share to show
-    const pct = i && kept !== null ? `<span class="${kept < 60 ? "drop" : ""}">${kept}% of step before</span>` : "";
-    return `<span class="l">${esc(f.step)}</span><span class="r"><i class="${f.count ? "" : "zero"}" style="width:${70 * f.count / top}%"></i><b>${f.count}</b>${pct ? " · " + pct : ""}</span>`;
+  const cols = funnel.map((f, i) => {
+    const next = funnel[i + 1];
+    const kept = next && f.count ? Math.round(100 * next.count / f.count) : null;
+    return `<div class="st"><div class="col" style="height:${Math.max(2, 100 * f.count / top)}%"><span class="num">${f.count}</span></div>
+      ${kept !== null ? `<span class="conv${kept < 60 ? " drop" : ""}">${kept}%</span>` : ""}</div>`;
   }).join("");
+  const labels = funnel.map((f) => `<span>${esc(f.step.replace(" (keys or install)", "").replace(" this week", ""))}</span>`).join("");
 
-  const part = (n, c) => n ? `<i style="width:${100 * n / Math.max(1, decided)}%;background:${c}"></i>` : "";
   const c = catches[0];
-  const catchHtml = c ? `<div class="catch"><div class="k">${catches.length === 1 ? "The one real catch" : `The latest of ${catches.length} real catches`}</div>
-      <div class="what"><code>${esc(c.program || c.tool || "action")}</code> on ${esc(c.agent || "an agent")}, ${esc(c.outcome)}${c.decide_s !== undefined && c.decide_s !== null ? ` in ${fmtSecs(c.decide_s)}` : ""}</div>
-      <div class="mini">${esc(c.company)} · ${esc((c.t || "").replace("T", " "))} · reason: ${esc(c.why || c.rule || "")}${savedText(c.saved) ? " · would have changed " + esc(savedText(c.saved)) : ""}</div></div>`
-    : `<div class="sub">Nothing stopped yet this week.</div>`;
+  const term = c ? `<div class="term"><div class="bar"><i></i><i></i><i></i><span>${esc(c.agent || "agent")} · ${esc(c.company)} · ${esc((c.t || "").replace("T", " "))}</span></div>
+      <pre><span class="p">agent $</span> <span class="cmd">${esc(c.program || c.tool || "action")}</span> <span class="dim">…</span>
+<span class="red">✋ Squidbrake: ${esc(c.why || c.rule || "held")}</span>
+<span class="dim">${savedText(c.saved) ? "would have changed " + esc(savedText(c.saved)) : esc(c.rule || "")}${c.decide_s !== undefined && c.decide_s !== null ? ` · a person decided in ${fmtSecs(c.decide_s)}` : ""}</span></pre>
+      <span class="stamp ${c.outcome === "blocked" ? "blocked" : ""}">${esc(c.outcome.toUpperCase())}</span></div>
+      ${catches.length > 1 ? `<div class="mini" style="margin-top:8px"><a href="#stopped">All ${catches.length} catches →</a></div>` : ""}`
+    : `<div class="term"><div class="bar"><i></i><i></i><i></i><span>waiting for the first catch</span></div><pre><span class="dim">Nothing rejected or blocked yet. When a person says no, it shows up here.</span></pre></div>`;
 
+  const pctOf = (n) => decided ? Math.round(100 * n / decided) + "%" : "";
   const maxA = Math.max(1, ...pilots.map((p) => p.week.events));
+  const z = (n) => n ? n.toLocaleString() : `<span class="zero">0</span>`;
   const prow = (p) => {
     const [label, cls] = STAGE[p.stage] || [p.stage, "s-sent"];
-    const agents = Object.entries(p.agents || {}).sort((a, b) => b[1] - a[1]).map(([a, n]) => `${esc(a)} ${n}`).join(", ") || "–";
-    return `<tr><td><b>${esc(p.company)}</b></td><td><span class="pill ${cls}">${esc(label)}</span></td>
-      <td class="n act" style="--w:${Math.round(100 * p.week.events / maxA)}%">${p.week.events.toLocaleString()}</td>
-      <td class="n">${p.week.held}</td><td class="n">${p.week.approved}</td><td class="n">${p.week.rejected}</td><td class="n">${p.week.timed_out}</td>
-      <td class="n">${p.paused || 0}</td><td>${esc(p.versions.length ? "v" + p.versions.join(", v") : "–")}</td><td>${agents}</td></tr>`;
+    const agents = Object.entries(p.agents || {}).sort((a, b) => b[1] - a[1]).map(([a, n]) => `${esc(a)} ${n}`).join(", ") || `<span class="zero">–</span>`;
+    return `<tr><td><div class="who"><span class="av" style="--h:${hue(p.company)}">${esc(initials(p.company))}</span><b>${esc(p.company)}</b></div></td>
+      <td><span class="pill ${cls}">${esc(label)}</span></td><td>${spark(p.daily, "var(--accent)", 96, 24)}</td>
+      <td class="n act" style="--w:${Math.round(100 * p.week.events / maxA)}%">${z(p.week.events)}</td>
+      <td class="n">${z(p.week.held)}</td><td class="n">${z(p.week.approved)}</td><td class="n">${z(p.week.rejected)}</td><td class="n">${z(p.week.timed_out)}</td>
+      <td class="n">${z(p.paused || 0)}</td><td>${esc(p.versions.length ? "v" + p.versions.join(", v") : "–")}</td><td>${agents}</td></tr>`;
   };
-  const sorted = [...pilots].sort((a, b) => b.week.events - a.week.events);
+  const sorted = [...pilots].sort((a, b) => b.week.events - a.week.events || (a.company > b.company ? 1 : -1));
 
   return `<section id="week">
-    <div class="sec-h" style="margin-bottom:0"><h1 class="ov-title">Squidbrake pilots, week ${weekNo}</h1>
-      <div class="act"><button class="btn" data-copy="${esc(weeklyReport(d))}">Copy weekly report</button></div></div>
-    <p class="ov-lede">${lede}</p>
+    <div class="hero">
+      <div class="hero-l"><span class="eyebrow">Week ${weekNo} · ${new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })}</span>
+        <h1 class="ov-title">${active ? `${active} of ${pilots.length} pilots are using Squidbrake` : "No pilot is using Squidbrake yet"}</h1>
+        <p class="ov-lede"><b>${plural(wk.events, "agent action", "agent actions")}</b> went through it this week, <b>${plural(wk.held, "was", "were")} held</b> for a person
+          and <b>${plural(sc.stopped, "risky action was", "risky actions were")} stopped</b>.</p>
+        <div class="fixes">${fixHtml}</div>
+        <div style="margin-top:14px"><button class="btn" data-copy="${esc(weeklyReport(d))}">Copy weekly report</button></div></div>
+      <div class="chart-card"><div class="top-row"><div><div class="k">Agent actions, last 14 days</div><div class="big">${thisWk.toLocaleString()}</div>
+          <div class="k" style="margin-top:4px">this week${lastWk ? ` · ${lastWk.toLocaleString()} the week before` : ""}</div></div>${deltaChip(wow)}</div>
+        ${areaChart(daily)}<div class="axis"><span>${fmtDay((d.span || [])[0])}</span><span>${fmtDay((d.span || [])[7])}</span><span>today</span></div></div>
+    </div>
     <div class="kpis">${kpis}</div>
     <div class="ov-row">
-      <div class="ov-card"><h3>From pilot link to paying</h3><span class="sub">Each step as a count of pilots, with the share kept from the step before. Big drops in red.</span>
-        ${funnel.length ? `<div class="hb">${steps}</div>` : `<div class="sub">No pilots yet.</div>`}</div>
-      <div class="ov-card"><h3>What happened to the holds</h3><span class="sub">Every action Squidbrake paused for a person this week, by outcome.</span>
-        ${decided ? `<div class="stack">${part(wk.approved, "var(--c-approved)")}${part(wk.rejected, "var(--c-rejected)")}${part(wk.timed_out, "var(--c-timeout)")}</div>
-        <div class="keys"><span style="--c:var(--c-approved)">Approved ${wk.approved}</span><span style="--c:var(--c-rejected)">Rejected ${wk.rejected}</span>
-          <span style="--c:var(--c-timeout)">Timed out ${wk.timed_out}</span></div>` : `<div class="sub" style="margin-bottom:18px">No holds decided this week.</div>`}
-        ${catchHtml}</div>
+      <div class="ov-card"><h3>From pilot link to paying</h3><span class="sub">How many pilots reach each step. Between the columns: the share that made it to the next one (red under 60%).</span>
+        ${funnel.length ? `<div class="pipe">${cols}</div><div class="pipe-l">${labels}</div>` : `<div class="sub">No pilots yet.</div>`}</div>
+      <div class="ov-card"><h3>What happened to the holds</h3><span class="sub">Every action paused for a person this week, by what they decided.</span>
+        ${decided ? `<div class="holds">${donut([[wk.approved, "var(--c-approved)"], [wk.rejected, "var(--c-rejected)"], [wk.timed_out, "var(--c-timeout)"]])}
+          <div class="lg"><div><i style="--c:var(--c-approved)"></i>Approved<b>${wk.approved}</b><small>${pctOf(wk.approved)}</small></div>
+            <div><i style="--c:var(--c-rejected)"></i>Rejected<b>${wk.rejected}</b><small>${pctOf(wk.rejected)}</small></div>
+            <div><i style="--c:var(--c-timeout)"></i>Timed out<b>${wk.timed_out}</b><small>${pctOf(wk.timed_out)}</small></div></div></div>`
+          : `<div class="sub">No holds decided this week.</div>`}
+        ${term}</div>
     </div>
-    <div class="ov-card"><h3>Pilots</h3><span class="sub">One row per pilot, this week. The shaded bar in Actions is on one shared scale.</span>
-      ${pilots.length ? `<div style="overflow-x:auto"><table class="ptable"><thead><tr><th>Pilot</th><th>Status</th><th class="n">Actions</th><th class="n">Held</th>
+    <div class="ov-card"><h3>Pilots</h3><span class="sub">One row per pilot, this week, busiest first. The shaded bar in Actions is on one shared scale.</span>
+      ${pilots.length ? `<div style="overflow-x:auto"><table class="ptable"><thead><tr><th>Pilot</th><th>Status</th><th>14 days</th><th class="n">Actions</th><th class="n">Held</th>
         <th class="n">Approved</th><th class="n">Rejected</th><th class="n">Timed out</th><th class="n">Emergency stops</th><th>Version</th><th>Agents (actions)</th></tr></thead>
         <tbody>${sorted.map(prow).join("")}</tbody></table></div>` : `<div class="sub">No pilots yet. Create one below.</div>`}</div>
   </section>`;
