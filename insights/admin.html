@@ -128,6 +128,68 @@ form.new .btn { height:34px; }
 .login .btn { width:100%; justify-content:center; height:36px; }
 .err { color:var(--bad); min-height:1.2em; font-size:13px; margin-top:8px; }
 .modal { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:10; padding:0 16px; }
+/* ---------- polish */
+:root { --shadow: 0 1px 2px rgba(20,20,20,.04), 0 6px 20px -8px rgba(20,20,20,.08); --radius:12px;
+        --tint-ok: color-mix(in srgb, var(--ok) 12%, transparent); --tint-warn: color-mix(in srgb, var(--warn) 13%, transparent);
+        --tint-bad: color-mix(in srgb, var(--bad) 12%, transparent); --tint-link: color-mix(in srgb, var(--link) 11%, transparent); }
+@media (prefers-color-scheme: dark) { :root { --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -10px rgba(0,0,0,.6); } }
+body { background: radial-gradient(1200px 380px at 12% -120px, color-mix(in srgb, var(--accent) 9%, transparent), transparent 70%),
+                   radial-gradient(900px 320px at 95% -140px, color-mix(in srgb, var(--link) 7%, transparent), transparent 70%), var(--bg);
+       background-attachment: fixed; }
+.top .mark { width:22px; height:22px; flex:none; color:var(--ink); }
+.brand { display:inline-flex; align-items:center; gap:8px; }
+.top nav { flex-wrap:nowrap; gap:14px; overflow-x:auto; scrollbar-width:none; min-width:0; }
+.top nav a { padding:4px 0; border-bottom:2px solid transparent; white-space:nowrap; }
+.top nav a:hover { border-bottom-color:var(--accent); }
+.hello { display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap; margin:6px 0 26px; }
+.hello h1 { font-size:26px; line-height:1.15; letter-spacing:-.025em; margin:0 0 4px; font-weight:650; }
+.hello .sub { font-size:14px; }
+.hello .chips { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
+.big-chip { display:inline-flex; align-items:center; gap:8px; padding:6px 12px; border-radius:999px; background:var(--surface);
+            border:1px solid var(--line); box-shadow:var(--shadow); font-size:13px; color:var(--ink-2); }
+a.big-chip:hover { text-decoration:none; border-color:var(--faint); }
+.big-chip b { font-size:15px; color:var(--ink); font-variant-numeric:tabular-nums; }
+.big-chip i { width:8px; height:8px; border-radius:50%; background:var(--faint); }
+.big-chip.ok i { background:var(--ok); } .big-chip.accent i { background:var(--accent); } .big-chip.warn i { background:var(--warn); }
+
+.surface, .stats, .table-wrap { border-radius:var(--radius); box-shadow:var(--shadow); }
+.sec-h h2 { display:inline-flex; align-items:center; gap:9px; font-size:16px; }
+.sec-h h2::before { content:""; width:4px; height:16px; border-radius:2px; background:var(--accent); }
+.stat { position:relative; padding:16px 18px 15px; }
+.stat::before { content:""; position:absolute; left:18px; top:0; width:28px; height:3px; border-radius:0 0 3px 3px; background:var(--tone, var(--faint)); }
+.stat .v { font-size:26px; font-weight:650; }
+.stat.t-ok { --tone:var(--ok); } .stat.t-accent { --tone:var(--accent); } .stat.t-link { --tone:var(--link); }
+.stat.t-warn, .stat.warn { --tone:var(--warn); } .stat.t-bad { --tone:var(--bad); }
+.stat.warn { background:color-mix(in srgb, var(--warn) 5%, transparent); }
+
+.pill { padding:3px 10px 3px 9px; border-radius:999px; background:var(--line-2); font-size:12.5px; }
+.s-active { background:var(--tint-ok); color:var(--ok); } .s-installed { background:var(--tint-link); color:var(--link); }
+.s-quiet, .s-opened { background:var(--tint-warn); color:var(--warn); }
+.health { display:inline-block; margin-top:5px; padding:1px 8px; border-radius:999px; }
+.health.risk { background:var(--tint-warn); } .health.churn { background:var(--tint-bad); }
+.chip { border-radius:999px; padding:1px 9px; background:var(--line-2); border-color:transparent; }
+.spark i { background:var(--accent); opacity:.35; border-radius:2px; width:7px; }
+.spark i:last-child { opacity:1; }
+.fun .bar i { background:linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 55%, #f5b041)); opacity:1; }
+.wbars i { border-radius:3px; }
+th { background:color-mix(in srgb, var(--line-2) 60%, transparent); }
+.table-wrap thead th:first-child { border-top-left-radius:var(--radius); }
+.table-wrap thead th:last-child { border-top-right-radius:var(--radius); }
+.btn { border-radius:8px; transition:border-color .15s, background .15s, transform .05s; }
+.btn:active { transform:translateY(1px); }
+.btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+.btn.primary:hover { background:color-mix(in srgb, var(--accent) 88%, #000); }
+.empty { padding:34px 16px; }
+.login { box-shadow:var(--shadow); border-radius:16px; }
+
+/* where people come from: a little funnel per channel */
+.src-bar { display:flex; height:6px; border-radius:3px; overflow:hidden; background:var(--line-2); width:160px; margin-top:7px; }
+.src-bar i { display:block; height:100%; }
+.src-bar i.c { background:color-mix(in srgb, var(--link) 40%, transparent); } .src-bar i.n { background:var(--link); }
+.src-bar i.u { background:var(--ok); }
+.legend { display:flex; gap:14px; flex-wrap:wrap; font-size:12px; color:var(--muted); padding:10px 16px 12px; border-top:1px solid var(--line-2); }
+.legend span::before { content:""; display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:6px; background:var(--c); }
+
 @media (max-width:900px) { .grid2 { grid-template-columns:1fr; } .top nav { display:none; } }
 @media (max-width:720px) { form.new { grid-template-columns:1fr; } main, .top .in { padding-left:16px; padding-right:16px; } }
 </style>
@@ -235,27 +297,33 @@ async function load() {
   const w = d.week;
   d_latest = d.latest_version || "";
   app.innerHTML = `
-    <div class="top"><div class="in"><div class="brand">Squid<b>brake</b> <small>Pilots</small></div>
-      <nav><a href="#week">This week</a><a href="#stopped">Stopped</a><a href="#traction">Traction</a><a href="#pilots">Pilots</a><a href="#requests">Requests</a><a href="#fails">Failed installs</a><a href="#new">New pilot</a></nav>
+    <div class="top"><div class="in"><div class="brand"><svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg><span>Squid<b>brake</b></span> <small>Pilots</small></div>
+      <nav><a href="#week">This week</a><a href="#stopped">Stopped</a><a href="#traction">Traction</a><a href="#pilots">Pilots</a><a href="#sources">Sources</a><a href="#requests">Requests</a><a href="#fails">Failed installs</a><a href="#new">New pilot</a></nav>
       <span class="spacer"></span>
       <button class="btn ghost" id="refresh">Refresh</button><button class="btn ghost" id="pw">${me.has_password ? "Password" : "Set password"}</button>
       <button class="btn ghost" id="logout">Sign out</button></div></div>
     <main>
     ${me.has_password ? "" : `<div class="notice"><span><b>Set your own password</b> so you don't have to sign in with the server key.</span>
       <button class="btn" id="pw2" style="margin-left:auto">Set password</button></div>`}
+    <div class="hello"><div><h1>${greeting()}</h1>
+        <div class="sub">${new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" })} ·
+          ${d.pilots.length} pilots · ${d.installs} installs</div></div>
+      <div class="chips"><span class="big-chip ok"><i></i><b>${d.scorecard.active_this_week}</b> active this week</span>
+        <span class="big-chip accent"><i></i><b>${d.scorecard.stopped}</b> stopped</span>
+        ${asks.filter((a) => !a.done).length ? `<a class="big-chip warn" href="#requests"><i></i><b>${asks.filter((a) => !a.done).length}</b> waiting for a reply</a>` : ""}</div></div>
     <section id="week"><div class="sec-h"><h2>This week</h2>
         <span class="sub">${d.pilots.length} pilots · ${d.installs} installs · ${w.events.toLocaleString()} actions${w.would_block ? ` · ${w.would_block} would block (shadow)` : ""}</span>
         <div class="act"><button class="btn" data-copy="${esc(weeklyReport(d))}">Copy weekly report</button></div></div>
       <div class="stats cols4">
-        ${stat("Active this week", d.scorecard.active_this_week, `${d.scorecard.active_today} today`)}
-        ${stat("Active 3+ days", d.scorecard.active_3_plus_days)}
-        ${stat("Back from last week", `${d.scorecard.retained}<small>of ${d.scorecard.active_last_week}</small>`)}
-        ${stat("Held for a person", w.held)}${stat("Blocked", w.blocked)}
+        ${stat("Active this week", d.scorecard.active_this_week, `${d.scorecard.active_today} today`, false, "ok")}
+        ${stat("Active 3+ days", d.scorecard.active_3_plus_days, "", false, "ok")}
+        ${stat("Back from last week", `${d.scorecard.retained}<small>of ${d.scorecard.active_last_week}</small>`, "", false, "link")}
+        ${stat("Held for a person", w.held, "", false, "warn")}${stat("Blocked", w.blocked, "", false, "bad")}
         ${stat("Holds approved", d.scorecard.approve_rate === null ? "–" : d.scorecard.approve_rate + "%",
-               d.scorecard.approve_rate > 90 ? "Over 90%: rules may be holding routine work" : "", d.scorecard.approve_rate > 90)}
-        ${stat("At risk · churned", `${d.scorecard.at_risk}<small>·</small> ${d.scorecard.churned}`, "3+ / 7+ days without activity", d.scorecard.at_risk + d.scorecard.churned > 0)}
+               d.scorecard.approve_rate > 90 ? "Over 90%: rules may be holding routine work" : "", d.scorecard.approve_rate > 90, "link")}
+        ${stat("At risk · churned", `${d.scorecard.at_risk}<small>·</small> ${d.scorecard.churned}`, "3+ / 7+ days without activity", d.scorecard.at_risk + d.scorecard.churned > 0, "warn")}
         ${stat("Stopped", d.scorecard.stopped, (savedText(d.scorecard.saved) ? "saved " + savedText(d.scorecard.saved) : "caught by a rule") +
-               (d.scorecard.paused ? ` · paused by emergency stop: ${d.scorecard.paused}` : ""))}
+               (d.scorecard.paused ? ` · paused by emergency stop: ${d.scorecard.paused}` : ""), false, "accent")}
       </div></section>
     ${stoppedPanel(d.pilots)}
     ${tractionPanel(inv)}
@@ -383,19 +451,23 @@ function failsPanel(fails) {
 
 // Where installs come from: clicks on a named link (/go/<channel>) -> installs that share stats -> used -> stopped
 function sourcesPanel(src) {
-  const rows = src.rows.map((r) => `<tr><td><b>${esc(r.channel)}</b></td><td class="num">${r.clicks || "–"}</td>
-    <td class="num">${r.installs}${r.new ? ` <span class="mini">(${r.new} new)</span>` : ""}</td>
-    <td class="num">${r.used_this_week}</td><td class="num">${r.stopped}</td></tr>`).join("");
-  const link = `${location.origin}/go/linkedin`;
-  return `<section class="panel"><h2>Where people come from <span class="sub">last ${src.days} days</span>
-      <button class="btn" style="margin-left:auto" data-copy="${esc(link)}">Copy a tracked link</button></h2>
-    ${src.rows.length ? `<div class="table-wrap"><table><thead><tr><th>Channel</th><th class="num">Link clicks</th>
-      <th class="num">Installs sharing stats</th><th class="num">Used this week</th><th class="num">Stopped something</th></tr></thead>
-      <tbody>${rows}</tbody></table></div>` : `<div class="empty">Nothing yet.</div>`}
-    <div class="sub" style="padding:10px 16px 14px">Post links as <code>${esc(location.origin)}/go/NAME</code> (linkedin,
-      whatsapp, hn...): a click is counted with no IP or cookie, and the install commands on that page carry the name.
-      Installs that say yes to stats report it, or pick where they heard about Squidbrake from a list. "not said": skipped
-      that question; "pilot": joined with a pilot code.</div>
+  const top = Math.max(1, ...src.rows.map((r) => Math.max(r.clicks, r.installs)));
+  const w = (n) => `${(100 * Math.max(0, n)) / top}%`;
+  const bar = (r) => `<div class="src-bar" title="${r.clicks} clicks · ${r.installs} installs · ${r.used_this_week} used this week">
+      <i class="u" style="width:${w(r.used_this_week)}"></i><i class="n" style="width:${w(r.installs - r.used_this_week)}"></i>
+      <i class="c" style="width:${w(r.clicks - r.installs)}"></i></div>`;
+  const rows = src.rows.map((r) => `<tr><td><b>${esc(r.channel)}</b>${bar(r)}</td><td class="num">${r.clicks || "–"}</td>
+    <td class="num"><b>${r.installs}</b>${r.new ? ` <span class="mini">(${r.new} new)</span>` : ""}</td>
+    <td class="num">${r.used_this_week}</td><td class="num">${r.stopped ? `<b style="color:var(--accent)">${r.stopped}</b>` : "0"}</td></tr>`).join("");
+  return `<section id="sources"><div class="sec-h"><h2>Where people come from</h2><span class="sub">last ${src.days} days, per channel</span>
+      <div class="act"><button class="btn" data-copy="${esc(location.origin + "/go/linkedin")}">Copy a tracked link</button></div></div>
+    ${src.rows.length ? `<div class="table-wrap"><table><thead><tr><th>Channel</th><th>Link clicks</th>
+      <th>Installs sharing stats</th><th>Used this week</th><th>Stopped something</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="legend"><span style="--c:var(--ok)">used this week</span><span style="--c:var(--link)">installed</span>
+        <span style="--c:color-mix(in srgb, var(--link) 40%, transparent)">clicked only</span></div></div>`
+      : `<div class="surface empty">Nothing yet. Post links as <code>${esc(location.origin)}/go/linkedin</code>, <code>/go/whatsapp</code>, <code>/go/hn</code>.</div>`}
+    <p class="foot" style="margin-top:10px">A click is counted with no IP or cookie, and the install commands on that page carry the channel's name.
+      Installs that say yes to stats report it, or pick where they heard about Squidbrake. "not said": skipped that question; "pilot": joined with a pilot code.</p>
   </section>`;
 }
 
@@ -416,7 +488,8 @@ function teamPanel(asks) {
   </section>`;
 }
 
-const stat = (k, v, note = "", warn = false) => `<div class="stat${warn ? " warn" : ""}"><div class="k">${k}</div><div class="v">${typeof v === "number" ? v.toLocaleString() : v}</div>${note ? `<div class="n">${esc(note)}</div>` : ""}</div>`;
+const stat = (k, v, note = "", warn = false, tone = "") => `<div class="stat${warn ? " warn" : ""}${tone ? " t-" + tone : ""}"><div class="k">${k}</div><div class="v">${typeof v === "number" ? v.toLocaleString() : v}</div>${note ? `<div class="n">${esc(note)}</div>` : ""}</div>`;
+const greeting = () => { const h = new Date().getHours(); return h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening"; };
 const trend = (v) => v === null || v === undefined ? "" : `<small class="${v >= 0 ? "up" : "down"}">${v > 0 ? "+" : ""}${v}%</small>`;
 
 // What to send a cofounder every week: usage, not output
