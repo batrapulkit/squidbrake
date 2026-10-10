@@ -8,13 +8,13 @@
     "source": "github"
   },
   "websiteUrl": "https://squidbrake.com",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "packages": [
     {
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "squidbrake",
-      "version": "0.8.3",
+      "version": "0.8.4",
       "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
