@@ -85,13 +85,24 @@ manager approves or rejects them. If the editor asks whether to allow tasks that
 
 ## Try it in 30 seconds
 
+One line installs it, runs it in the background, connects every AI agent on this computer and opens the dashboard:
+
 ```bash
-pipx install squidbrake           # or: pip install squidbrake
-squidbrake connect all            # every AI agent on this computer now goes through it
-squidbrake                        # start it: opens the dashboard (asks once about running in the background)
+curl -fsSL https://pilots.squidbrake.com/install.sh | SQUIDBRAKE_REF=github sh        # macOS / Linux
 ```
 
-`connect all` finds the agents you have (Claude Code, Cursor, Codex, Gemini CLI, VS Code Copilot, Antigravity) and
+```powershell
+$env:SQUIDBRAKE_REF="github"; irm https://pilots.squidbrake.com/install.ps1 | iex       # Windows
+```
+
+With pip instead (`SQUIDBRAKE_REF` only tells the usage stats, if you say yes to them, that you came from here):
+
+```bash
+pip install squidbrake            # or: pipx install squidbrake
+squidbrake setup                  # the same as the line above: background, every agent connected, dashboard
+```
+
+`setup` connects the agents you have (Claude Code, Cursor, Codex, Gemini CLI, VS Code Copilot, Antigravity) and
 the MCP servers they already use, and routes them all through Squidbrake. It prints your dashboard key the first
 time, backs up every config it changes, and `squidbrake connect all --remove` undoes it. Restart the agents, then
 ask one to run `rm -rf ~/` and watch it get blocked. `squidbrake connect status` shows which agents are covered, and
