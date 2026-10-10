@@ -251,6 +251,7 @@ main() {
   # script); with no terminal it asks nothing.
   if [ "${SQUIDBRAKE_SETUP:-}" != 0 ]; then
     if (exec </dev/tty) 2>/dev/null; then "$SB" setup </dev/tty; else "$SB" setup </dev/null; fi && exit 0
+    SETUP_FAILED=1
     say ""
     say "Setup stopped (see above). To do it step by step:"
   fi
@@ -265,6 +266,8 @@ Next:
   3. Restart your agents and work as usual. Watch it at http://localhost:8080/dashboard
 
 EOF
+  # installed, but setup didn't finish: say so to whoever ran this (scripts check the exit code)
+  if [ -n "${SETUP_FAILED:-}" ]; then exit 1; fi
 }
 
 main "$@"

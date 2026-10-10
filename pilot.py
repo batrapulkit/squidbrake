@@ -1,6 +1,7 @@
 """
-Pilot programme: share usage COUNTS with the Squidbrake team, only after you join: with a code you were given, or
-by saying yes when `squidbrake connect all` asks (once, default no).
+Pilot programme: share usage COUNTS with the Squidbrake team, only after you join: with a code you were given, by
+saying yes to anonymous usage stats the first time you run `squidbrake` (telemetry.py), or by saying yes when
+`squidbrake connect all` asks (once, default no).
 
     squidbrake pilot join CODE --server URL    start sharing (shows exactly what is sent, and asks first)
     squidbrake pilot status                    what is shared, where, and when it was last sent
@@ -181,8 +182,18 @@ def send(home: Path, payload: dict) -> bool:
     cfg = load(home)
     if not cfg:
         return False
+    body = {"code": cfg["code"], "install_id": cfg["install_id"], "usage": payload}
     try:
-        _post(cfg["server"], "/v1/ping", {"code": cfg["code"], "install_id": cfg["install_id"], "usage": payload})
+        try:
+            _post(cfg["server"], "/v1/ping", body)
+        except RuntimeError as e:
+            # 403: the server doesn't know this install any more (e.g. its record was removed): join again, same id
+            if not str(e).startswith("403") or not str(cfg["code"]).startswith("community-"):
+                raise
+            _post(cfg["server"], "/v1/pilot/join", {"code": cfg["code"], "install_id": cfg["install_id"],
+                                                    "version": str(payload.get("version", ""))[:40],
+                                                    "os": f"{platform.system()} {platform.release()}"[:80]})
+            _post(cfg["server"], "/v1/ping", body)
     except (httpx.HTTPError, RuntimeError) as e:
         log.info("pilot: usage not sent (%s); will try again later", e)
         return False

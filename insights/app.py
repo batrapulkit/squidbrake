@@ -271,10 +271,34 @@ def _pilot(c, code: str, request: Request | None = None):
     return row
 
 
+# The community code ships in the package, so anyone can join with it: a few joins per address and hour keep one
+# script from inventing installs, and a `ref` is kept only if it's a word from the first-run list (telemetry.py) or a
+# channel someone has clicked a named link for.
+JOINS_PER_HOUR = 20
+REF_WORDS = {"linkedin", "github", "hn-reddit", "community", "friend", "search", "other"}
+_joins: dict[str, list[float]] = {}
+
+
+def _rate(bucket: dict, request: Request | None, limit: int, window: float = 3600) -> bool:
+    """True while this address is under `limit` in the last `window` seconds (and counts this one)."""
+    ip, t = _ip(request), time.time()
+    if len(bucket) > 20_000:
+        for k in [k for k, v in bucket.items() if not v or t - v[-1] > window]:
+            bucket.pop(k, None)
+    recent = [x for x in bucket.get(ip, []) if t - x < window]
+    bucket[ip] = recent + [t]
+    return len(recent) < limit
+
+
 @app.post("/v1/pilot/join")
 def join(j: JoinIn, request: Request):
+    if not _rate(_joins, request, JOINS_PER_HOUR):
+        raise HTTPException(429, "too many joins from here: try again in an hour")
     with _lock, db() as c:
         p = _pilot(c, j.code, request)
+        ref = j.ref if j.ref in REF_WORDS or (j.ref and c.execute(
+            "SELECT 1 FROM link_clicks WHERE channel=? LIMIT 1", (j.ref,)).fetchone()) else ""
+        j = j.model_copy(update={"ref": ref})
         c.execute("""INSERT INTO installs (install_id, code, joined_at, version, os, ref) VALUES (?,?,?,?,?,?)
                      ON CONFLICT(install_id) DO UPDATE SET code=excluded.code, left_at=NULL, version=excluded.version,
                      os=excluded.os, ref=COALESCE(excluded.ref, installs.ref)""",
@@ -303,8 +327,12 @@ async def ping(request: Request):
         raise HTTPException(413, "too large")
     p = PingIn.model_validate_json(raw)
     u = p.usage
-    days = {d: {k: _int(v) for k, v in (cnt or {}).items()} for d, cnt in (u.get("days") or {}).items()
-            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(d))}
+    # the 14 days the dashboard shows (and tomorrow, for a clock ahead), each count capped: a gateway sends 7 days
+    today = datetime.now(timezone.utc).date()
+    window = {(today - timedelta(days=i)).isoformat() for i in range(-1, 15)}
+    raw_days = u.get("days") if isinstance(u.get("days"), dict) else {}
+    days = {d: {str(k)[:30]: min(_int(v), DAY_CAP) for k, v in list(cnt.items())[:30]} for d, cnt in raw_days.items()
+            if str(d) in window and isinstance(cnt, dict)}
     clip = lambda m, n=30: json.dumps({str(k)[:60]: _int(v) for k, v in list((m or {}).items())[:n]})
     with _lock, db() as c:
         _pilot(c, p.code, request)
@@ -326,6 +354,7 @@ async def ping(request: Request):
     return {"ok": True}
 
 
+DAY_CAP = 100_000      # actions in one day from one install: far above real use, low enough not to swamp the totals
 CATCH_TEXT = {"agent": 40, "tool": 60, "program": 30, "category": 20, "rule": 80, "why": 100, "outcome": 20}
 
 
@@ -924,11 +953,17 @@ def start_page(code: str, request: Request):
 CHANNEL_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,29}$")
 
 
+_clicks: dict[str, list[float]] = {}
+
+
 @app.get("/go/{channel}")
-def go(channel: str):
+def go(channel: str, request: Request):
     channel = channel.lower()
     if not CHANNEL_RE.match(channel):
         raise HTTPException(404)
+    # link previews (LinkedIn, WhatsApp, Slack, X, Product Hunt) and scanners fetch the link too: not people
+    if PREVIEW_BOTS.search(request.headers.get("user-agent", "")) or not _rate(_clicks, request, 10):
+        return RedirectResponse(f"/get?ref={channel}", status_code=302)
     with _lock, db() as c:
         c.execute("INSERT INTO link_clicks (channel, day, n) VALUES (?, ?, 1) ON CONFLICT(channel, day) DO UPDATE SET n=n+1",
                   (channel, datetime.now(timezone.utc).date().isoformat()))

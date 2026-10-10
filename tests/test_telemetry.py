@@ -161,3 +161,27 @@ def test_no_never_asks_where_from(sent, monkeypatch):
     answers(monkeypatch, "n")                                           # a where-from question would raise
     telemetry.maybe(["doctor"], "1")
     assert "ref" not in telemetry.load() and sent == []
+
+
+def test_a_yes_whose_join_failed_is_retried_once_a_day_and_never_after_leaving(sent, monkeypatch, tmp_path):
+    calls = []
+
+    def flaky(server, path, body):
+        calls.append(path)
+        if len(calls) == 1:
+            raise RuntimeError("offline")
+        return {}
+    monkeypatch.setattr(pilot, "_post", flaky)
+    monkeypatch.delenv("SQUIDBRAKE_REF", raising=False)
+    answers(monkeypatch, "", "", "")                                    # yes, skip where-from, skip email
+    telemetry.maybe(["doctor"], "1")
+    assert telemetry.load()["counts_joined"] is False                    # the join failed (offline)
+    telemetry.maybe(["doctor"], "1")                                     # the same day: not tried again
+    assert calls == ["/v1/pilot/join"]
+    monkeypatch.setattr(telemetry, "_today", lambda: "2099-01-01")
+    telemetry.maybe(["doctor"], "1")                                     # the next day: tried again, and it works
+    assert telemetry.load()["counts_joined"] is True and pilot.load(tmp_path / "data")
+    pilot.leave(tmp_path / "data")                                       # they leave: never joined again
+    n = len(calls)
+    telemetry.maybe(["doctor"], "1")
+    assert pilot.load(tmp_path / "data") is None and "/v1/pilot/join" not in calls[n:]

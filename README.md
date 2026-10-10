@@ -552,12 +552,12 @@ in hooks, scripts or CI; off with `SQUIDBRAKE_NO_UPDATE_CHECK=1` or `DO_NOT_TRAC
 If you'd like the team to know who you are, `squidbrake register you@company.com` (asks first). Details:
 [`telemetry.py`](telemetry.py).
 
-**Usage counts.** There are two ways to share counts of what Squidbrake did, and both show exactly what will be
-sent and ask first (the default answer is no):
+**Usage counts.** There are three ways to share counts of what Squidbrake did:
 
-- `squidbrake connect all`, run in a terminal, asks once at the end whether to share counts with the Squidbrake
-  team. It never asks again after a no, and never asks with `--yes` or in scripts.
-- A pilot joins with the code they were given: `squidbrake pilot join CODE --server URL`.
+- The first-run question above: a yes (Enter) to anonymous usage stats also shares these counts.
+- `squidbrake connect all`, run in a terminal, asks once at the end if you weren't asked already (the default answer
+  is no). It never asks again after a no, and never asks with `--yes` or in scripts.
+- A pilot joins with the code they were given: `squidbrake pilot join CODE --server URL` (asks first, default no).
 
 What is shared is usage **counts**: actions allowed, held, approved and blocked per day, and which agents and
 rules. Never commands, code, prompts or keys. `squidbrake pilot leave` stops it. Details: [`pilot.py`](pilot.py)

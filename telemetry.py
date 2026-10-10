@@ -9,14 +9,15 @@ CI, `--yes` and the agent hooks are never asked, and send nothing until someone 
     squidbrake register EMAIL        tell the Squidbrake team who you are (optional; asks first)
 
 What is sent, once each time you run a command:
-  - a random id made on this computer (not tied to you unless you run `squidbrake register`)
+  - a random id made on this computer (not tied to you unless you give your email, below)
   - the command name only (e.g. "connect", "doctor", "undo"), never its arguments
   - the Squidbrake version, operating system, CPU type and Python version, and whether it came from pip
   - the country, worked out by the stats service from the address the request comes from
   - where you heard about Squidbrake, if you answered (one word from a list, e.g. "linkedin"), or the name of the
     link you installed from (SQUIDBRAKE_REF, e.g. "whatsapp")
 Never sent: commands an agent ran, file or folder names, file contents, prompts, rules, keys, the audit trail,
-names of people, your email (unless you run `squidbrake register`).
+names of people, your email (unless you type it: the first-run question offers to, after a yes and Enter skips,
+or `squidbrake register`).
 The agent hooks (`hook`, `agent-hook`, `shell-guard`, `proxy`) send nothing, so nothing slows a tool call down.
 
 The same yes also shares the gateway's usage counts with the Squidbrake team, exactly as a pilot does (see pilot.py
@@ -105,8 +106,9 @@ def _pilot_dir() -> Path:
     return Path(home) / "data"
 
 
-def _share_counts(on: bool, version: str, ref: str | None = None) -> None:
-    """Join (or leave) the community pilot, so the gateway sends its counts. A real pilot's membership is kept."""
+def _share_counts(on: bool, version: str, ref: str | None = None) -> bool:
+    """Join (or leave) the community pilot, so the gateway sends its counts. A real pilot's membership is kept.
+    Returns whether this install is now sharing counts (False when joining failed, e.g. no network)."""
     import contextlib
     import io
     try:
@@ -120,8 +122,13 @@ def _share_counts(on: bool, version: str, ref: str | None = None) -> None:
                 pilot.leave(home)
         home.mkdir(parents=True, exist_ok=True)     # so `connect all` doesn't ask the same thing again
         (home / "community-asked").write_text("answered in the first-run question (telemetry.py)\n", encoding="utf-8")
+        return bool(pilot.load(home))
     except Exception:     # sharing counts must never break a command
-        pass
+        return False
+
+
+def _today() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
 
 
 def _interactive() -> bool:
@@ -157,7 +164,10 @@ def _ask_once(cfg: dict, version: str) -> dict:
             if POSTHOG_KEY:
                 _send("$identify", cfg["id"], {"$set": {"email": email}}, wait=True)
     _save(cfg)
-    _share_counts(cfg["enabled"], version, cfg.get("ref"))
+    cfg["counts_joined"] = _share_counts(cfg["enabled"], version, cfg.get("ref"))
+    if cfg["enabled"] and not cfg["counts_joined"]:
+        cfg["counts_retry"] = _today()          # tried today: the next try is tomorrow (see maybe)
+    _save(cfg)
     print("Thanks. " + ("Stats are on." if cfg["enabled"] else "Nothing will be sent.") + "\n")
     return cfg
 
@@ -202,6 +212,12 @@ def maybe(argv: list[str], version: str) -> None:
         if command == "pilot" or not _interactive() or "--yes" in argv or any(a in ("-h", "--help") for a in argv):
             return
         cfg = _ask_once(cfg, version)
+    if cfg.get("enabled") and cfg.get("counts_joined") is False and cfg.get("counts_retry") != _today():
+        # said yes, but joining the counts failed (offline, server down): try again, once a day, until it works.
+        # Someone who later left (squidbrake pilot leave) has counts_joined True, so they're never joined again.
+        cfg["counts_retry"] = _today()
+        cfg["counts_joined"] = _share_counts(True, version, cfg.get("ref"))
+        _save(cfg)
     if cfg.get("enabled") and not cfg.get("ref") and (ref := ref_from_env()):
         cfg["ref"] = ref                    # said yes before, then installed again from a named link
         _save(cfg)
@@ -245,8 +261,8 @@ def main(argv: list[str], version: str = "") -> int:
         cfg.setdefault("id", str(uuid.uuid4()))
         cfg["enabled"] = action == "on"
         cfg["asked"] = cfg.get("asked") or datetime.now(timezone.utc).date().isoformat()
+        cfg["counts_joined"] = _share_counts(action == "on", version)
         _save(cfg)
-        _share_counts(action == "on", version)
         print("Anonymous usage stats are " + action + ".")
         return 0
     if action != "status":

@@ -197,6 +197,10 @@ $envKey = (Get-Item "HKCU:\").OpenSubKey("Environment", $true)
 $userPath = [string]$envKey.GetValue("Path", "", [Microsoft.Win32.RegistryValueOptions]::DoNotExpandEnvironmentNames)
 if (-not $env:SQUIDBRAKE_NO_PATH -and ($userPath -split ";") -notcontains $bin) {
     $envKey.SetValue("Path", (($userPath.TrimEnd(";") + ";" + $bin).TrimStart(";")), [Microsoft.Win32.RegistryValueKind]::ExpandString)
+    # Writing the registry doesn't tell Windows; setting a user variable through .NET does (WM_SETTINGCHANGE), so
+    # windows opened from now on (from the Start menu or Explorer) find squidbrake without signing out first
+    [Environment]::SetEnvironmentVariable("SQUIDBRAKE_PATH_REFRESH", "1", "User")
+    [Environment]::SetEnvironmentVariable("SQUIDBRAKE_PATH_REFRESH", $null, "User")
 }
 $envKey.Close()
 if (($env:Path -split ";") -notcontains $bin) { $env:Path = "$env:Path;$bin" }
