@@ -162,7 +162,7 @@ def _unquote(word: str) -> str:
 # --------------------------------------------------------------------------- classification
 
 WRAPPERS = {"sudo", "doas", "env", "time", "nohup", "nice", "ionice", "command", "exec", "builtin", "timeout",
-            "stdbuf", "caffeinate", "npx", "call", "watch", "busybox"}
+            "stdbuf", "caffeinate", "npx", "bunx", "call", "watch", "busybox"}
 SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "fish"}
 POWERSHELLS = {"powershell", "pwsh"}
 
@@ -434,11 +434,12 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         cmd.kind, cmd.why = "irreversible", f"resets or wipes the database ({' '.join(words[:4])})"
         return [cmd], []
     if prog == "dropdb" \
-            or (prog == "prisma" and "migrate" in lower and "reset" in lower) \
-            or (prog == "prisma" and "db" in lower and "push" in lower and "accept-data-loss" in text) \
-            or (prog == "rails" and "db:drop" in lower) \
+            or (prog in ("rails", "rake") and any(w in ("db:drop", "db:reset") for w in lower)) \
             or (prog in ("python", "python3", "py") and "manage.py" in lower and "flush" in lower) \
-            or (prog == "pg_restore" and "--clean" in lower):
+            or (prog == "manage.py" and "flush" in lower) \
+            or (prog == "pg_restore" and ("--clean" in lower or "-c" in lower)) \
+            or (prog == "prisma" and "migrate" in lower and "reset" in lower) \
+            or (prog == "prisma" and "db" in lower and "push" in lower and "accept-data-loss" in text):
         cmd.kind, cmd.why = "irreversible", f"resets or wipes the database ({' '.join(words[:4])})"
         return [cmd], []
 

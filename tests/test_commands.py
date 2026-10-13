@@ -80,6 +80,14 @@ def test_catastrophic(line):
     "python manage.py flush --no-input",
     "supabase db reset",
     "pg_restore --clean -d prod dump.sql",
+
+    # Close relatives the maintainer asked for
+    "rails db:reset",
+    "rake db:drop",
+    "rake db:reset",
+    "./manage.py flush",
+    "pg_restore -c -d prod dump.sql",
+    "bunx prisma migrate reset",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
