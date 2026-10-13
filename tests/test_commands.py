@@ -71,6 +71,15 @@ def test_catastrophic(line):
     "terraform apply", "tofu apply tfplan", "pulumi up --yes",
     'psql "$PROD_DATABASE_URL" -f migrations/0042_add_index.sql', 'psql -h prod-db -c "UPDATE plans SET price = 0"',
     "rm prod.db",
+
+    # Database reset commands: irreversible
+    "dropdb production",
+    "prisma migrate reset --force",
+    "npx prisma db push --accept-data-loss",
+    "rails db:drop",
+    "python manage.py flush --no-input",
+    "supabase db reset",
+    "pg_restore --clean -d prod dump.sql",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -130,6 +139,13 @@ def test_no_false_alarm(line):
     "terraform plan", "terraform validate",
     "psql -d app_dev -f seed.sql", 'psql "$PROD_DATABASE_URL" -c "select count(*) from users"',
     'psql -d products -f seed.sql',                                                     # "products" isn't prod
+
+    # Safe migration commands: must not be flagged
+    "prisma migrate dev",
+    "rails db:migrate",
+    "python manage.py migrate",
+    "supabase db diff",
+
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()

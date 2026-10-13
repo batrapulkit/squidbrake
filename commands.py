@@ -426,6 +426,22 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
     if prog == "git":
         return [_git(cmd, words)], []
 
+    # ---- database reset and migration commands
+    # Framework and database tools wipe a whole database with one word.
+    # These are irreversible: the data is gone, there is no undo.
+    text = " ".join(lower[1:])
+    if prog == "supabase" and "db" in lower and "reset" in lower:
+        cmd.kind, cmd.why = "irreversible", f"resets or wipes the database ({' '.join(words[:4])})"
+        return [cmd], []
+    if prog == "dropdb" \
+            or (prog == "prisma" and "migrate" in lower and "reset" in lower) \
+            or (prog == "prisma" and "db" in lower and "push" in lower and "accept-data-loss" in text) \
+            or (prog == "rails" and "db:drop" in lower) \
+            or (prog in ("python", "python3", "py") and "manage.py" in lower and "flush" in lower) \
+            or (prog == "pg_restore" and "--clean" in lower):
+        cmd.kind, cmd.why = "irreversible", f"resets or wipes the database ({' '.join(words[:4])})"
+        return [cmd], []
+
     # ---- infrastructure and cloud
     if prog in ("terraform", "tofu", "terragrunt"):
         sub = [w for w in lower[1:] if not w.startswith("-")][:2]
