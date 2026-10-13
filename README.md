@@ -7,7 +7,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](requirements.txt)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2.svg)](#2-connect-real-agents)
-[![Real incidents replayed: 12 of 13 stopped](https://img.shields.io/badge/real%20incidents%20replayed-12%20of%2013%20stopped-yellow.svg)](incidents/)
+[![Real incidents replayed: 13 of 14 stopped](https://img.shields.io/badge/real%20incidents%20replayed-13%20of%2014%20stopped-yellow.svg)](incidents/)
 [![Good first issues](https://img.shields.io/github/issues/batrapulkit/squidbrake/good%20first%20issue?label=good%20first%20issues&color=7057ff)](https://github.com/batrapulkit/squidbrake/labels/good%20first%20issue)
 
 <a href="https://www.producthunt.com/products/squidbrake?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&theme=light&t=1791704247916"></a>
@@ -64,9 +64,9 @@ prompts, the audit trail) never leaves it; usage counts go out only if you say y
 - **Fails closed, rule by rule:** if Squidbrake is down, guarded tools don't run, unless a rule says
   `when_unreachable: allow` for its actions (agents keep a copy of those answers).
 
-See [SHOWCASE.md](SHOWCASE.md) for a 5-minute demo with a sandbox company, and [incidents/](incidents/) for **10 real
+See [SHOWCASE.md](SHOWCASE.md) for a 5-minute demo with a sandbox company, and [incidents/](incidents/) for **11 real
 AI-agent incidents replayed against the shipped rules** (Replit, the Railway volume deletion, GitHub MCP, Supabase
-MCP, Postmark MCP, Claude Code and Antigravity deletes...): 12 of 13 harmful actions stopped, checked in CI. The same steps through two other guards (destructive_command_guard, Microsoft's Agent Governance Toolkit), plus everyday coding work: [bench/compare/](bench/compare/).
+MCP, Postmark MCP, CurXecute, Claude Code and Antigravity deletes...): 13 of 14 harmful actions stopped, checked in CI. The same steps through two other guards (destructive_command_guard, Microsoft's Agent Governance Toolkit), plus everyday coding work: [bench/compare/](bench/compare/).
 
 ![Squidbrake dashboard: a git push and a refund wait for approval, while a scam wire transfer was blocked](https://raw.githubusercontent.com/batrapulkit/squidbrake/main/docs/dashboard.png)
 
