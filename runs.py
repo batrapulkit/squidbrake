@@ -14,6 +14,9 @@ stricter: what's found here is checked in addition to the command, never instead
 Only reads files, never runs anything. Bounded: MAX_LINES lines and MAX_FILE_BYTES per file; anything it can't read
 is left out. Not covered: scripts in other languages (python x.py), recipes built at run time ($(shell ...), eval),
 make variables beyond simple `NAME = value` definitions.
+
+`include` files are followed (a few levels deep, cycles skipped) and conditionals are read on BOTH sides, so a
+recipe hidden in an included file or in either branch of an `ifeq` is still checked.
 """
 from __future__ import annotations
 
@@ -33,6 +36,11 @@ SHELLS = {"bash", "sh", "zsh", "dash"}
 _VAR_DEF = re.compile(r"^([A-Za-z_][A-Za-z0-9_.-]*)\s*(?:\?|:|::)?=\s*(.*)$")
 _RULE = re.compile(r"^([^:=#\t][^:=#]*?)\s*::?(?!=)\s*(.*)$")
 _VAR_USE = re.compile(r"\$\(([A-Za-z_][A-Za-z0-9_.-]*)\)|\$\{([A-Za-z_][A-Za-z0-9_.-]*)\}")
+_COND = re.compile(r"^(ifeq|ifneq|ifdef|ifndef)\b")                  # both branches are read, see _parse
+_COND_ELSE = re.compile(r"^else\b")
+_COND_END = re.compile(r"^endif\b")
+_INCLUDE = re.compile(r"^(-?)include\s+(.*)$")
+MAX_INCLUDE_DEPTH = 3                                               # "at most a few levels deep"
 
 
 def _read(path: Path) -> str | None:
@@ -46,23 +54,42 @@ def _read(path: Path) -> str | None:
 
 # --------------------------------------------------------------------------- make
 
-def parse_makefile(text: str) -> tuple[dict[str, tuple[list[str], list[str]]], str | None]:
-    """-> ({target: (prerequisites, recipe lines)}, the default target). Simple variables are expanded."""
+def _parse(text: str, folder: Path, depth: int, seen: set[Path]) -> tuple[dict[str, tuple[list[str], list[str]]], dict[str, str], str | None]:
+    """-> (rules, simple variables, the default target). `include` files are followed and conditionals are read
+    on BOTH sides: `ifeq ... else ... endif` keeps the recipe lines of either branch rather than working out
+    which one make would pick. That can only make a gateway decision stricter — it holds what any branch
+    would run — never looser.
+    """
     text = re.sub(r"[ \t]*\\\r?\n[ \t]*", " ", text)                # joined continuation lines
     variables: dict[str, str] = {}
     rules: dict[str, tuple[list[str], list[str]]] = {}
+    includes: list[str] = []
     default, current = None, []
+    cond_depth = 0
     for raw in text.splitlines():
         if raw.startswith("\t"):
             line = raw[1:].strip()
             if current and line and not line.startswith("#"):
                 for t in current:
-                    rules[t][1].append(line)
+                    rules[t][1].append(line)                        # either branch is kept, see _parse
             continue
         line = raw.split("#", 1)[0].rstrip()
-        if not line.strip():
+        stripped = line.strip()
+        if not stripped:
             continue
-        if m := _VAR_DEF.match(line.strip()):
+        if _COND.match(stripped):
+            cond_depth += 1
+            continue
+        if _COND_END.match(stripped):
+            cond_depth = max(0, cond_depth - 1)
+            continue
+        if _COND_ELSE.match(stripped):
+            continue                                                # the other branch keeps the same target
+        if cond_depth == 0 and (m := _INCLUDE.match(stripped)):
+            includes += m.group(2).split()
+            current = []
+            continue
+        if m := _VAR_DEF.match(stripped):
             variables[m.group(1)] = m.group(2).strip()
             current = []
             continue
@@ -79,6 +106,43 @@ def parse_makefile(text: str) -> tuple[dict[str, tuple[list[str], list[str]]], s
                 default = current[0]
             continue
         current = []
+
+    for name in includes:
+        if depth >= MAX_INCLUDE_DEPTH:                              # "at most a few levels deep"
+            break
+        path = folder / name
+        if not path.is_file():                                      # a missing -include is ignored by make too
+            continue
+        try:
+            resolved = path.resolve()
+        except OSError:
+            continue
+        if resolved in seen:                                        # include cycle: stop, don't hang the hook
+            continue
+        seen.add(resolved)
+        included = _read(path)
+        if included is None:
+            continue
+        inc_rules, inc_vars, inc_default = _parse(included, path.parent, depth + 1, seen)
+        for t, (deps, recipe) in inc_rules.items():                 # the includer's own rules win, both are kept
+            if t not in rules:
+                rules[t] = (deps, recipe)
+            else:
+                rules[t][0].extend(d for d in deps if d not in rules[t][0])
+                rules[t][1].extend(recipe)
+        variables.update(inc_vars)
+        if default is None and inc_default:
+            default = inc_default
+
+    return rules, variables, default
+
+
+def parse_makefile(text: str, folder: Path) -> tuple[dict[str, tuple[list[str], list[str]]], str | None]:
+    """-> ({target: (prerequisites, recipe lines)}, the default target). Simple variables are expanded.
+
+    `folder` is the Makefile's own directory: `include` paths are resolved against it.
+    """
+    rules, variables, default = _parse(text, folder, 0, set())
 
     def expand(s: str, depth: int = 0) -> str:
         if depth > 5:
@@ -119,10 +183,12 @@ def _make(words: list[str], cwd: Path) -> list[dict]:
         except OSError:
             return []
         path = next((directory / n for n in ("GNUmakefile", "makefile", "Makefile") if n in names), None)
-    text = _read(path) if path else None
+    if path is None:
+        return []
+    text = _read(path)
     if text is None:
         return []
-    rules, default = parse_makefile(text)
+    rules, default = parse_makefile(text, path.parent)
     found: list[dict] = []
     seen: set[str] = set()
 

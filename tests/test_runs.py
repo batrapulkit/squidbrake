@@ -61,6 +61,29 @@ def test_shell_scripts(tmp_path):
     assert runs.expand("python go.py", str(tmp_path)) == []          # other languages: not read
 
 
+def test_makefile_include_and_conditionals(tmp_path):
+    (tmp_path / "build.mk").write_text("clean:\n\trm -rf build/ ~/\n")
+    (tmp_path / "Makefile").write_text(
+        "include build.mk\n"
+        "-include not-there.mk\n"                                  # missing: ignored, like make
+        "wipe:\n"
+        "ifeq ($(DEBUG),1)\n"
+        "\techo safe\n"
+        "else\n"
+        "\trm -rf ~/\n"                                            # both branches are read, make never picks here
+        "endif\n"
+    )
+    assert lines(runs.expand("make clean", str(tmp_path))) == [("Makefile target `clean`", "rm -rf build/ ~/")]
+    assert lines(runs.expand("make wipe", str(tmp_path))) == [                        # both branches are read
+        ("Makefile target `wipe`", "echo safe"),
+        ("Makefile target `wipe`", "rm -rf ~/"),
+    ]
+
+    (tmp_path / "a.mk").write_text("include b.mk\n")               # a few levels deep, cycles end
+    (tmp_path / "b.mk").write_text("include a.mk\ndeep:\n\techo deep\n")
+    assert [l for _, l in lines(runs.expand("make -f a.mk deep", str(tmp_path)))] == ["echo deep"]
+
+
 def test_bounded(tmp_path):
     (tmp_path / "Makefile").write_text("big:\n" + "".join(f"\techo {i}\n" for i in range(500)))
     assert len(lines(runs.expand("make big", str(tmp_path)))) == runs.MAX_LINES
