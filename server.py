@@ -47,6 +47,7 @@ from datetime import datetime, timedelta, timezone
 from html import escape as html_escape
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 import httpx
 import yaml
@@ -2475,17 +2476,29 @@ def send_email(cfg: dict, subject: str, text: str) -> bool:
         return False
 
 
-def send_teams(webhook: str, title: str, body: str, link: str | None = None) -> bool:
-    """A Microsoft Teams message (a Workflows webhook: "Post to a channel when a webhook request is received"), as an
-    Adaptive Card. Its button opens the one-tap approval page; Teams can't decide in the card itself without an app."""
+def is_teams_webhook(webhook: str) -> bool:
+    try:
+        host = (urlsplit(webhook).hostname or "").lower()
+    except ValueError:
+        return False
+    return any(host == domain or host.endswith("." + domain) for domain in (
+        "webhook.office.com", "logic.azure.com", "api.powerplatform.com"))
+
+
+def teams_payload(title: str, body: str, link: str | None = None) -> dict:
     card = {"$schema": "http://adaptivecards.io/schemas/adaptive-card.json", "type": "AdaptiveCard", "version": "1.4",
             "body": [{"type": "TextBlock", "text": title[:300], "weight": "Bolder", "size": "Medium", "wrap": True},
                      {"type": "TextBlock", "text": body[:3500], "wrap": True}]}
     if link:
         card["actions"] = [{"type": "Action.OpenUrl", "title": "Review and approve or reject", "url": link}]
+    return {"type": "message", "attachments": [
+        {"contentType": "application/vnd.microsoft.card.adaptive", "content": card}]}
+
+
+def send_teams(webhook: str, title: str, body: str, link: str | None = None) -> bool:
+    """Send a Teams Adaptive Card; its button opens the existing approval page."""
     try:
-        httpx.post(webhook, timeout=10, json={"type": "message", "attachments": [
-            {"contentType": "application/vnd.microsoft.card.adaptive", "content": card}]}).raise_for_status()
+        httpx.post(webhook, timeout=10, json=teams_payload(title, body, link)).raise_for_status()
         return True
     except Exception:
         log.exception("Teams message failed")
@@ -2526,7 +2539,9 @@ def notify_approval_needed(row: dict, escalated_to: list[str] | None = None) -> 
     def send():
         if cfg["slack_webhook"]:
             try:
-                if any(host in cfg["slack_webhook"] for host in (
+                if is_teams_webhook(cfg["slack_webhook"]):
+                    payload = teams_payload(title, f"{body}\n\nExpires {expires}", link)
+                elif any(host in cfg["slack_webhook"] for host in (
                         "discord.com/api/webhooks/", "discordapp.com/api/webhooks/")):
                     link_message = f"[Review and approve or reject]({link}) (expires {expires})"
                     content_limit = 1999
@@ -3620,9 +3635,12 @@ def test_notification(who: str = Depends(admin)):
          else errors.append("Email: the SMTP server didn't accept it (see the gateway log)"))
     if cfg["slack_webhook"]:
         try:
-            httpx.post(cfg["slack_webhook"], json={"text": f":white_check_mark: Squidbrake test from {who}: notifications work."},
+            teams = is_teams_webhook(cfg["slack_webhook"])
+            payload = teams_payload("Squidbrake", f"Test from {who}: notifications work.") if teams else {
+                "text": f":white_check_mark: Squidbrake test from {who}: notifications work."}
+            httpx.post(cfg["slack_webhook"], json=payload,
                        timeout=10).raise_for_status()
-            sent.append("slack")
+            sent.append("Teams" if teams else "slack")
         except Exception as e:
             errors.append(f"Slack: {e}")
     if cfg["ntfy_topic"]:

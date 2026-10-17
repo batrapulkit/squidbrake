@@ -270,6 +270,70 @@ def test_approval_webhook(c, monkeypatch):
     assert got["json"]["event"]["rule_id"] == "pay"
 
 
+TEAMS_WEBHOOKS = [
+    "https://tenant.webhook.office.com/webhookb2/fictional/IncomingWebhook/token",
+    "https://prod-01.westeurope.logic.azure.com/workflows/fictional/triggers/manual/paths/invoke",
+    "https://fictional.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/test",
+]
+
+
+@pytest.mark.parametrize("webhook", TEAMS_WEBHOOKS)
+def test_teams_approval_webhook(c, monkeypatch, webhook):
+    import threading
+    got, done = {}, threading.Event()
+
+    def fake_post(url, json, timeout):
+        got.update(url=url, json=json)
+        done.set()
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(server, "APPROVAL_WEBHOOK_URL", webhook)
+    monkeypatch.setattr(server, "PUBLIC_URL", "https://gw.test")
+    monkeypatch.setattr(server.httpx, "post", fake_post)
+    eid = _held(c, "payments.refund")
+    assert done.wait(3)
+    assert got["url"] == webhook
+    assert got["json"]["type"] == "message"
+    attachment = got["json"]["attachments"][0]
+    assert attachment["contentType"] == "application/vnd.microsoft.card.adaptive"
+    card = attachment["content"]
+    assert card["type"] == "AdaptiveCard" and len(card["body"]) == 2
+    action = card["actions"][0]
+    assert action["type"] == "Action.OpenUrl"
+    assert server.read_link_token(action["url"].rsplit("/", 1)[1]) == (eid, "admin")
+
+
+@pytest.mark.parametrize("webhook", TEAMS_WEBHOOKS + ["https://hooks.test/normal"])
+def test_settings_notification_detects_teams(c, monkeypatch, webhook):
+    got = {}
+
+    def fake_post(url, json, timeout):
+        got.update(url=url, json=json)
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(server, "APPROVAL_WEBHOOK_URL", webhook)
+    monkeypatch.setattr(server.httpx, "post", fake_post)
+    response = c.post("/v1/settings/test", headers=BOSS)
+    assert response.status_code == 200 and not response.json()["errors"]
+    if webhook in TEAMS_WEBHOOKS:
+        assert response.json()["sent"] == ["Teams"]
+        assert got["json"] == server.teams_payload("Squidbrake", "Test from boss: notifications work.")
+    else:
+        assert response.json()["sent"] == ["slack"]
+        assert "text" in got["json"] and "attachments" not in got["json"]
+
+
+@pytest.mark.parametrize("webhook", [
+    "https://webhook.office.com.evil.test/path",
+    "https://hooks.test/path?next=https://tenant.logic.azure.com/",
+    "https://logic.azure.com@hooks.test/path",
+    "https://notlogic.azure.com/path",
+    "https://[invalid/path",
+])
+def test_teams_detection_uses_hostname_boundaries(webhook):
+    assert not server.is_teams_webhook(webhook)
+
+
 def test_slack_approval_escapes_agent_text(c, monkeypatch):
     import threading
     got, done = {}, threading.Event()
