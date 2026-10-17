@@ -564,6 +564,9 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
                 or (sub[:1] == ["compose"] and "down" in lower and ("-v" in lower or "--volumes" in lower)) \
                 or (sub[:1] == ["rm"] and ("-v" in lower or "--volumes" in lower)):
             cmd.kind, cmd.why = "irreversible", f"deletes containers' data ({' '.join(words[:4])})"
+        elif sub[:1] == ["push"] or sub == ["image", "push"]:
+            cmd.kind, cmd.why = "irreversible", \
+                f"pushes an image to a registry, overwriting the tag for everyone who pulls it ({' '.join(words[:3])})"
         return [cmd], []
 
     # ---- API calls that delete (curl -X DELETE, GraphQL mutations like volumeDelete / deleteRepository)
@@ -603,6 +606,20 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
             return [cmd], []
 
     # ---- publishing and machine state
+    why = None
+    if prog in ("npm", "pnpm", "yarn") and "unpublish" in lower[1:3]:
+        why = "removes a published package from the npm registry; others' installs can break and the version can't be reused"
+    elif prog in ("bun", "poetry", "uv") and lower[1:2] == ["publish"]:
+        why = f"publishes a package to a public registry; a released version can't be replaced ({' '.join(words[:2])})"
+    elif prog in ("python", "python3", "py") and lower[1:4] == ["-m", "twine", "upload"]:
+        why = "uploads a package to PyPI; a released version can't be replaced"
+    elif prog == "gem" and lower[1:2] == ["push"]:
+        why = "publishes a gem to RubyGems; a released version can't be replaced"
+    elif prog == "mvn" and "deploy" in lower[1:]:
+        why = "deploys build artifacts to a remote Maven repository"
+    if why:
+        cmd.kind, cmd.why = "irreversible", why
+        return [cmd], []
     if (prog in ("npm", "pnpm", "yarn") and "publish" in lower[1:3]) or (prog == "cargo" and "publish" in lower[1:2]) \
             or (prog == "twine" and "upload" in lower[1:2]) or (prog == "gh" and lower[1:3] in (["repo", "delete"],
                                                                                               ["release", "delete"])) \

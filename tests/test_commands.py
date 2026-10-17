@@ -99,6 +99,16 @@ def test_catastrophic(line):
     "./manage.py flush",
     "pg_restore -c -d prod dump.sql",
     "bunx prisma migrate reset",
+
+    # Publishing to a registry
+    "npm unpublish pkg --force",
+    "bun publish",
+    "poetry publish",
+    "uv publish",
+    "python -m twine upload dist/*",
+    "docker push org/img:latest",
+    "gem push x.gem",
+    "mvn deploy",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -165,6 +175,8 @@ def test_no_false_alarm(line):
     "python manage.py migrate",
     "supabase db diff",
 
+    # Building or fetching packages: not publishing
+    "poetry build", "uv build", "docker pull org/img", "mvn test", "bun install",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
