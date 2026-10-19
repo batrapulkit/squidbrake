@@ -100,8 +100,11 @@ _licensed: dict[str, str] = {}
 def give_license(name, p):
     """A hosted gateway has the Team plan: its license goes into its data folder (once, and again when renewed)."""
     if p.get("license") and _licensed.get(name) != p["license"]:
-        docker("exec", name, "python", "server.py", "license", "set", p["license"], check=False)
-        _licensed[name] = p["license"]
+        try:
+            docker("exec", name, "python", "server.py", "license", "set", p["license"])
+            _licensed[name] = p["license"]
+        except Exception as e:      # an older gateway without `license`: tried again until it's upgraded
+            log("license not set yet", name, str(e)[:120])
 
 
 def remove(p):

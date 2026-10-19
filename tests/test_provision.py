@@ -60,3 +60,20 @@ def test_a_team_trial_gets_a_license_not_the_free_plan_and_a_running_one_gets_it
     provision.start(running | {"license": "LIC2"})          # renewed: written again
     sets = [c for c in calls2 if c[:1] == ("exec",)]
     assert sets == [("exec", "sbp-co2", "python", "server.py", "license", "set", "LIC2")]
+
+
+def test_a_license_that_did_not_take_is_tried_again(monkeypatch):
+    calls, _ = fake(monkeypatch, ["true", "true"])
+    provision._licensed.clear()
+    real = provision.docker
+
+    def old_gateway(*args, check=True):
+        if args[:1] == ("exec",):
+            calls.append(args)
+            raise RuntimeError("invalid choice: 'license'")
+        return real(*args, check=check)
+    monkeypatch.setattr(provision, "docker", old_gateway)
+    p = {"code": "co-3", "subdomain": "co3", "dashboard": "https://co3.app.test", "keys_ready": True, "license": "L"}
+    provision.start(p)
+    provision.start(p)
+    assert sum(1 for c in calls if c[:1] == ("exec",)) == 2
