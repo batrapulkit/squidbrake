@@ -20,7 +20,7 @@ from pathlib import Path
 
 import signing
 
-PUBLIC_KEY_HEX = "__PUBLIC_KEY__"   # its secret half is only on squidbrake.com's server
+PUBLIC_KEY_HEX = "57316a1391b1d078f922eeea02ffa5a5f26098f36b48e2048f3e526b6157fe12"   # its secret half is only on squidbrake.com's server
 GRACE_UNTIL = "2026-11-20"
 FILE = "license.key"
 FEATURES = {"people": "more than one person", "phone": "approvals on a phone",

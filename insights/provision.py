@@ -74,8 +74,10 @@ def start(p):
            "--label", "squidbrake.hosted=1", "--label", f"squidbrake.pilot={p['code']}",
            "-v", f"{name}:/app/data", "-e", f"PUBLIC_URL={p['dashboard']}", "-e", "FORWARDED_ALLOW_IPS=*",
            "-e", "SQUIDBRAKE_PILOT_INTERVAL=120",
-           # a free signup: one person, and after its free days it records but doesn't block (server.py PLAN)
-           *(["-e", f"SQUIDBRAKE_PLAN={p['plan']}", "-e", f"SQUIDBRAKE_TRIAL_ENDS={p['trial_ends']}"] if p.get("plan") else []),
+           # a free signup: one person, and after its free days it records but doesn't block (server.py PLAN). A Team
+           # trial is a license that ends with the trial instead: its Team features stop, blocking goes on
+           *(["-e", f"SQUIDBRAKE_PLAN={p['plan']}", "-e", f"SQUIDBRAKE_TRIAL_ENDS={p['trial_ends']}"]
+             if p.get("plan") == "free" else []),
            "--log-opt", "max-size=20m", "--log-opt", "max-file=3", IMAGE)
     keys = {}
     for _ in range(60):                       # the first start prints the admin and agent keys once

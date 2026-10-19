@@ -56,7 +56,8 @@ def issue_license(org: str, expires: str) -> str | None:
 def _license_for(p) -> str | None:
     """A hosted gateway's license: until its trial ends, else a year from today (renewed as long as it runs)."""
     year = (datetime.now(timezone.utc).date() + timedelta(days=365)).isoformat()
-    return issue_license(p["company"] if "company" in p.keys() else p["code"], p["trial_ends"] or year)  # where a Team plan is paid (e.g. a Stripe payment link)           # shown on start pages, e.g. "WhatsApp +91..., you@x.com"
+    paying = "mrr" in p.keys() and (p["mrr"] or 0) > 0
+    return issue_license(p["company"] or p["code"], year if paying or not p["trial_ends"] else p["trial_ends"])  # where a Team plan is paid (e.g. a Stripe payment link)           # shown on start pages, e.g. "WhatsApp +91..., you@x.com"
 CODE_RE = re.compile(r"^[a-z0-9-]{3,40}$")
 
 app = FastAPI(title="Squidbrake Insights", docs_url=None, redoc_url=None)
@@ -574,7 +575,7 @@ def approve_hosted(code: str):
 def provision_queue():
     with db() as c:
         # keys_ready: the keys arrived here (and may since have been shown to the founder and forgotten)
-        rows = c.execute("SELECT code, company, subdomain, state, plan, trial_ends, "
+        rows = c.execute("SELECT code, company, subdomain, state, plan, trial_ends, mrr, "
                          "(admin_key IS NOT NULL OR keys_revealed_at IS NOT NULL) AS keys_ready "
                          "FROM pilots WHERE hosted=1").fetchall()
     return {"domain": HOSTED_DOMAIN, "pilots": [dict(r) | {"keys_ready": bool(r["keys_ready"]),
