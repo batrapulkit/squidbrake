@@ -1043,7 +1043,8 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
         if had and SUPABASE_URL:                        # signed in again: the same setup page as before
             return {"ok": True, "link": f"{public_url(request)}/start/{had['code']}"}
         if had:
-            raise HTTPException(409, "this email already signed up: use the link you got, or write to us")
+            raise HTTPException(409, "this email already signed up: use your setup link from last time, or write to "
+                                     "hello@squidbrake.com")
         if not s.name.strip() or not s.company.strip():
             raise HTTPException(422, "please add your name and company")
         # hosted: the request waits for you to approve it in the admin (no gateway is started on its own)
