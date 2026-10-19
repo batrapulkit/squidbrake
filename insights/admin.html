@@ -6,11 +6,11 @@
 <title>Squidbrake Insights</title>
 <style>
 [hidden] { display:none !important; }
-:root { --bg:#f7f7f5; --surface:#fff; --ink:#151515; --ink-2:#3d3d42; --muted:#6c6c73; --faint:#a3a3aa;
+:root { --sig-using:#6d4fd1; --sig-for:#16803c; --sig-against:#c2271b; --sig-neutral:#7b8794; --sig-pending:#b45309; --bg:#f7f7f5; --surface:#fff; --ink:#151515; --ink-2:#3d3d42; --muted:#6c6c73; --faint:#a3a3aa;
         --line:#e6e6e1; --line-2:#f1f1ed; --accent:#d9480f; --ok:#16803c; --warn:#b45309; --bad:#c2271b; --link:#1f4fd1;
         --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
         --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
-@media (prefers-color-scheme: dark) { :root { --bg:#0f0f10; --surface:#161618; --ink:#ededee; --ink-2:#c9c9cd; --muted:#8e8e96;
+@media (prefers-color-scheme: dark) { :root { --sig-using:#a898e0; --sig-for:#3fbf6c; --sig-against:#f2554a; --sig-neutral:#93a1af; --sig-pending:#e3a33b; --bg:#0f0f10; --surface:#161618; --ink:#ededee; --ink-2:#c9c9cd; --muted:#8e8e96;
         --faint:#5c5c63; --line:#26262a; --line-2:#1d1d20; --accent:#f06a2f; --ok:#3fbf6c; --warn:#e3a33b; --bad:#f2554a; --link:#7aa2ff; } }
 * { box-sizing:border-box; }
 html { scroll-behavior:smooth; scroll-padding-top:64px; }
@@ -359,23 +359,48 @@ details.rules summary::after { content:" ▸"; color:var(--faint); } details.rul
 @media (max-width:720px) { form.new { grid-template-columns:1fr; } main, .top .in { padding-left:16px; padding-right:16px; } }
 
 /* ---------- pipeline: every person you talk to about Squidbrake */
-.pl-lanes { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:18px; align-items:start; }
-.pl-lane h3 { font-size:13px; font-weight:600; margin:0 0 8px; color:var(--ink-2); display:flex; gap:8px; align-items:baseline; }
-.pl-lane h3 span { color:var(--muted); font-weight:450; }
-.pl-card { background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--faint); border-radius:10px;
-           padding:11px 13px; margin-bottom:10px; box-shadow:var(--shadow); }
-.pl-card.g-using { border-left-color:#7c5cd6; } .pl-card.g-for { border-left-color:var(--ok); }
-.pl-card.g-against { border-left-color:var(--bad); } .pl-card.g-pending { border-left-style:dashed; border-left-color:var(--warn); }
-.pl-card .hd { display:flex; gap:8px; align-items:flex-start; }
-.pl-card .nm { font-weight:600; } .pl-card .org { color:var(--muted); font-size:12.5px; }
-.pl-card .hd .btn { margin-left:auto; height:24px; padding:0 8px; font-size:12px; }
-.pl-card .st { display:flex; gap:4px; flex-wrap:wrap; margin:7px 0 4px; }
-.pl-card .st .chip.warn { color:var(--warn); } .pl-card .st .chip.ok { color:var(--ok); }
-.pl-card p { margin:5px 0; font-size:13px; } .pl-card p b { font-weight:600; }
-.pl-card .rd { border-top:1px dashed var(--line); padding-top:6px; margin-top:7px; }
-.pl-card .meta { color:var(--faint); font-size:12px; margin-top:6px; }
+.pl-lanes { display:grid; grid-template-columns:repeat(auto-fill, minmax(330px, 1fr)); gap:22px; align-items:start; }
+.pl-lane > h3 { margin:0 0 12px; padding:11px 14px; border-radius:12px; background:var(--surface); border:1px solid var(--line);
+  font-size:14px; font-weight:650; color:var(--ink); display:flex; align-items:center; gap:8px; }
+.pl-lane > h3 span { margin-left:auto; min-width:24px; height:22px; padding:0 7px; border-radius:11px; display:grid; place-items:center;
+  background:var(--line-2); color:var(--muted); font-size:12px; font-weight:600; }
+.pl-card { --sig:var(--faint); position:relative; background:var(--surface); border:1px solid var(--line); border-radius:14px;
+  padding:14px 15px 12px 18px; margin-bottom:12px; box-shadow:0 1px 2px rgba(0,0,0,.04); transition:box-shadow .15s, transform .15s; overflow:hidden; }
+.pl-card::before { content:""; position:absolute; inset:0 auto 0 0; width:4px; background:var(--sig); }
+.pl-card:hover { box-shadow:0 6px 20px rgba(0,0,0,.08); transform:translateY(-1px); }
+.pl-card.g-using { --sig:var(--sig-using); } .pl-card.g-for { --sig:var(--sig-for); } .pl-card.g-against { --sig:var(--sig-against); }
+.pl-card.g-neutral { --sig:var(--sig-neutral); } .pl-card.g-pending { --sig:var(--sig-pending); }
+.pl-card .hd { display:flex; gap:11px; align-items:center; }
+.pl-card .av { width:36px; height:36px; border-radius:50%; flex:none; display:grid; place-items:center; font-size:13px; font-weight:650;
+  color:var(--sig); background:color-mix(in srgb, var(--sig) 14%, transparent); }
+.pl-card .nm { font-weight:650; font-size:15px; line-height:1.25; } .pl-card .org { color:var(--muted); font-size:12.5px; line-height:1.35; }
+.pl-card .hd .btn { margin-left:auto; height:26px; padding:0 9px; font-size:12px; opacity:0; transition:opacity .15s; }
+.pl-card:hover .hd .btn, .pl-card .hd .btn:focus-visible { opacity:1; }
+@media (hover:none) { .pl-card .hd .btn { opacity:1; } }
+.pl-card .st { display:flex; gap:5px; flex-wrap:wrap; margin:10px 0 6px; }
+.pl-card .pill { font-size:11.5px; font-weight:600; padding:2px 9px; border-radius:99px; white-space:nowrap; background:var(--line-2); color:var(--ink-2); }
+.pl-card .pill.sig { color:var(--sig); background:color-mix(in srgb, var(--sig) 13%, transparent); }
+.pl-card .pill.ok { color:var(--ok); background:color-mix(in srgb, var(--ok) 13%, transparent); }
+.pl-card .pill.warn { color:var(--warn); background:color-mix(in srgb, var(--warn) 14%, transparent); }
+.pl-card .said { margin:6px 0 0; font-size:13px; line-height:1.55; color:var(--ink-2); display:-webkit-box; -webkit-line-clamp:4;
+  -webkit-box-orient:vertical; overflow:hidden; cursor:pointer; }
+.pl-card.open .said { -webkit-line-clamp:unset; display:block; }
+.pl-card .rd { margin:9px 0 0; padding:8px 10px; border-radius:9px; font-size:12.5px; line-height:1.5;
+  background:color-mix(in srgb, var(--sig) 8%, var(--line-2)); color:var(--ink-2); }
+.pl-card .rd b { font-weight:650; color:var(--ink); margin-right:4px; }
+.pl-card .nx { margin:8px 0 0; font-size:12.5px; color:var(--accent); font-weight:550; }
+.pl-card .use { margin:8px 0 0; font-size:12px; color:var(--ok); }
+.pl-card .meta { color:var(--faint); font-size:11.5px; margin-top:8px; }
 .pl-card details summary { cursor:pointer; color:var(--muted); font-size:12px; margin-top:6px; }
 .pl-card details ul { margin:6px 0 0; padding-left:16px; font-size:12px; color:var(--muted); }
+.pl-bar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:18px 0; }
+.pl-bar input { height:34px; min-width:220px; flex:1; max-width:380px; border:1px solid var(--line); border-radius:10px; padding:0 12px;
+  background:var(--surface); color:var(--ink); font:inherit; }
+.pl-bar button { height:30px; padding:0 12px; border-radius:99px; border:1px solid var(--line); background:var(--surface); color:var(--ink-2);
+  font:inherit; font-size:12.5px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
+.pl-bar button i { width:8px; height:8px; border-radius:50%; background:var(--c); }
+.pl-bar button[aria-pressed="true"] { background:var(--ink); color:var(--bg); border-color:var(--ink); }
+.pl-hide { display:none !important; }
 .pl-tools { display:grid; grid-template-columns:minmax(0, 3fr) minmax(0, 2fr); gap:16px; margin:16px 0 22px; }
 @media (max-width:900px) { .pl-tools { grid-template-columns:1fr; } }
 .pl-tools .surface { padding:14px 16px; }
@@ -428,23 +453,25 @@ const PL_SIG = { using: "Using or trying", for: "Supports", against: "Against", 
 const money = (n) => "$" + Number(n || 0).toLocaleString("en-US");
 
 function plCard(x) {
-  const p = x.pilot, chips = [
-    x.stage && `<span class="chip">${esc(x.stage)}</span>`,
-    `<span class="chip">${esc(PL_SIG[x.signal] || x.signal)}</span>`,
-    x.loi && `<span class="chip ok">LOI signed</span>`,
-    x.paid_once && `<span class="chip ok">${money(x.paid_once)} paid</span>`,
-    x.monthly && `<span class="chip ok">${money(x.monthly)}/mo</span>`,
-    x.conditional && `<span class="chip">${money(x.conditional)}/mo if it works</span>`,
-    x.needs_outcome && `<span class="chip warn">Outcome missing</span>`].filter(Boolean).join("");
-  return `<div class="pl-card g-${esc(x.signal)}">
-    <div class="hd"><div><div class="nm">${esc(x.name)}</div>${x.org ? `<div class="org">${esc(x.org)}</div>` : ""}</div>
+  const p = x.pilot, initials = (x.name.match(/\b\w/g) || ["?"]).slice(0, 2).join("").toUpperCase(), pills = [
+    `<span class="pill sig">${esc(PL_SIG[x.signal] || x.signal)}</span>`,
+    x.stage && `<span class="pill">${esc(x.stage)}</span>`,
+    x.loi && `<span class="pill ok">LOI signed</span>`,
+    x.paid_once && `<span class="pill ok">${money(x.paid_once)} paid</span>`,
+    x.monthly && `<span class="pill ok">${money(x.monthly)}/mo</span>`,
+    x.conditional && `<span class="pill">${money(x.conditional)}/mo if it works</span>`,
+    x.needs_outcome && `<span class="pill warn">Outcome missing</span>`].filter(Boolean).join("");
+  const text = [x.name, x.org, x.stage, x.lane, x.said, x.read, x.next].join(" ").toLowerCase();
+  return `<div class="pl-card g-${esc(x.signal)}" data-sig="${esc(x.signal)}" data-text="${esc(text)}">
+    <div class="hd"><div class="av" aria-hidden="true">${esc(initials)}</div>
+      <div><div class="nm">${esc(x.name)}</div>${x.org ? `<div class="org">${esc(x.org)}</div>` : ""}</div>
       <button class="btn" data-pl-edit="${esc(x.id)}">Edit</button></div>
-    <div class="st">${chips}</div>
-    ${x.said ? `<p><b>What happened:</b> ${esc(x.said)}</p>` : ""}
-    ${x.read ? `<p class="rd"><b>Real read:</b> ${esc(x.read)}</p>` : ""}
-    ${x.next ? `<p><b>Next:</b> ${esc(x.next)}</p>` : ""}
-    ${p ? `<p class="meta">Pilot ${esc(p.company)}: ${p.actions} agent actions all time, last seen ${esc(ago(p.last_seen))}</p>` : ""}
-    <div class="meta">${x.last_contact ? `Last contact ${esc(x.last_contact)}. ` : ""}Updated ${esc(ago(x.updated_at))} (${esc(x.source || "")})</div>
+    <div class="st">${pills}</div>
+    ${x.said ? `<p class="said" title="Click to read it all">${esc(x.said)}</p>` : ""}
+    ${x.read ? `<p class="rd"><b>Real read</b>${esc(x.read)}</p>` : ""}
+    ${x.next ? `<p class="nx">→ ${esc(x.next.replace(/^Next:\s*/, "").replace(/^./, (c) => c.toUpperCase()))}</p>` : ""}
+    ${p ? `<p class="use">● Pilot: ${p.actions} agent actions, last seen ${esc(ago(p.last_seen))}</p>` : ""}
+    <div class="meta">${x.last_contact ? `Last contact ${esc(x.last_contact)} · ` : ""}Updated ${esc(ago(x.updated_at))}</div>
     ${x.log.length ? `<details><summary>History</summary><ul>${x.log.map((l) =>
       `<li>${esc(l.t.slice(0, 10))}, ${esc(l.source)}: ${esc(l.text)}</li>`).join("")}</ul></details>` : ""}
   </div>`;
@@ -463,7 +490,7 @@ function pipelinePanel(pl) {
     : s.last_error ? `<span class="pl-sync bad">Last sync failed: ${esc(s.last_error)}</span>`
     : `<span class="pl-sync">${s.last_pull ? `Synced ${esc(ago(s.last_pull))}` : "First sync pending"} from ${esc(s.repo)}</span>`;
   const stat = (k, v, n, tone = "") => `<div class="stat ${tone}"><div class="k">${k}</div><div class="v">${v}</div>${n ? `<div class="n">${n}</div>` : ""}</div>`;
-  return `<section id="pipeline"><div class="sec-h"><h2>Pipeline</h2><span class="sub">Every person you've talked to about Squidbrake, and what it really means</span>
+  return `<section id="pipeline"><div class="sec-h"><h2>CRM</h2><span class="sub">Everyone you've talked to about Squidbrake, and what it really means</span>
       <div class="act">${sync}<button class="btn" id="pl-sync"${s.configured ? "" : " disabled"}>Sync now</button><button class="btn primary" id="pl-add">Add person</button></div></div>
     <div class="stats">
       ${stat("Contacts", t.contacts, `${t.talked} talked to, ${t.intros} intros not yet a conversation`, "t-link")}
@@ -473,6 +500,11 @@ function pipelinePanel(pl) {
       ${stat("Monthly", money(t.monthly), t.conditional ? `plus ${money(t.conditional)}/mo if pilots work` : "committed", t.monthly ? "t-ok" : "t-bad")}
       ${stat("Outcome missing", t.needs_outcome, t.needs_outcome ? "meetings with no notes yet" : "", t.needs_outcome ? "warn" : "")}
     </div>
+    <div class="pl-bar"><input id="pl-q" type="search" placeholder="Search people, companies, notes" aria-label="Search the CRM">
+      ${Object.entries(PL_SIG).map(([k, l]) => `<button type="button" data-pl-sig="${k}" aria-pressed="false" style="--c:var(--sig-${k})"><i></i>${l}</button>`).join("")}</div>
+    ${talked.length ? `<div class="pl-lanes">${order.map((l) => `<div class="pl-lane"><h3>${esc(l)} <span>${lanes[l].length}</span></h3>
+      ${lanes[l].map(plCard).join("")}</div>`).join("")}</div>`
+      : `<div class="surface empty">No one yet. Add a person, paste a conversation, or turn on the sync.</div>`}
     <div class="pl-tools">
       <div class="surface"><h3>Paste a conversation</h3><div class="sub">A call transcript, notes or a DM thread. It's read into a suggested update you check before saving.
         ${pl.reader ? "The text goes to OpenAI and isn't stored here." : "Needs OPENAI_API_KEY on the server."}</div>
@@ -487,9 +519,6 @@ function pipelinePanel(pl) {
           `<li><a href="#" data-pl-edit="${esc(x.id)}">${esc(x.name)}</a>${x.org ? `, ${esc(x.org)}` : ""}${x.stage ? ` (${esc(x.stage)})` : ""}</li>`).join("")}</ul>` : ""}
       </div>
     </div>
-    ${talked.length ? `<div class="pl-lanes">${order.map((l) => `<div class="pl-lane"><h3>${esc(l)} <span>${lanes[l].length}</span></h3>
-      ${lanes[l].map(plCard).join("")}</div>`).join("")}</div>`
-      : `<div class="surface empty">No one yet. Add a person, paste a conversation, or turn on the sync.</div>`}
   </section>`;
 }
 
@@ -549,6 +578,18 @@ function plEdit(x, suggestion) {
 function bindPipeline() {
   const byId = (id) => pl?.contacts.find((c) => c.id === id);
   document.querySelectorAll("[data-pl-edit]").forEach((b) => b.onclick = (e) => { e.preventDefault(); plEdit(byId(b.dataset.plEdit)); });
+  document.querySelectorAll(".pl-card .said").forEach((t) => t.onclick = () => t.closest(".pl-card").classList.toggle("open"));
+  const plFilter = () => {   // search text and signal chips: cards that don't match, and lanes left empty, are hidden
+    const q = (document.getElementById("pl-q")?.value || "").trim().toLowerCase();
+    const sigs = [...document.querySelectorAll("[data-pl-sig][aria-pressed=true]")].map((b) => b.dataset.plSig);
+    document.querySelectorAll(".pl-card").forEach((c) => c.classList.toggle("pl-hide",
+      (q && !c.dataset.text.includes(q)) || (sigs.length && !sigs.includes(c.dataset.sig))));
+    document.querySelectorAll(".pl-lane").forEach((l) => l.classList.toggle("pl-hide", !l.querySelector(".pl-card:not(.pl-hide)")));
+  };
+  document.getElementById("pl-q")?.addEventListener("input", plFilter);
+  document.querySelectorAll("[data-pl-sig]").forEach((b) => b.onclick = () => {
+    b.setAttribute("aria-pressed", String(b.getAttribute("aria-pressed") !== "true")); plFilter();
+  });
   document.getElementById("pl-add")?.addEventListener("click", () => plEdit(null));
   document.getElementById("pl-sync")?.addEventListener("click", async (e) => {
     e.target.textContent = "Syncing...";
