@@ -335,6 +335,9 @@ section[id]{scroll-margin-top:60px}
 .oss-facts span{color:var(--muted);font-size:.88rem}
 .traction{margin:0 0 64px}
 .traction b{font-size:clamp(1.6rem,3vw,2.2rem);line-height:1.1;color:var(--ink)}
+.used-at{margin:-24px 0 64px;text-align:center}
+.used-at ul{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-wrap:wrap;justify-content:center;gap:14px 40px}
+.used-at li{font-size:clamp(1.1rem,2vw,1.45rem);font-weight:600;letter-spacing:-.02em;color:var(--muted)}
 @media (max-width:900px){ .oss-facts{grid-template-columns:repeat(2,minmax(0,1fr))} }
 @media (max-width:560px){ .oss-facts{grid-template-columns:1fr;gap:16px} }
 .team dt{font-weight:500;font-size:1.08rem;letter-spacing:-0.02em;line-height:1.25}
@@ -755,6 +758,12 @@ section .fine code,.faq code{font:400 .92em var(--mono)}
       <li><b>1 signed LOI</b><span>from a managed service provider that resells to its clients</span></li>
       <li><b>5,000+</b><span>PyPI downloads since 1 October</span></li>
     </ul>
+    <div class="used-at">
+      <p class="kicker">5,000+ PyPI downloads, including by engineers at</p>
+      <ul aria-label="Companies whose engineers installed Squidbrake">
+        <li>HCLTech</li><li>Juniper Networks</li><li>World Wide Technology</li><li>Airbyte</li><li>Pax8</li><li>Capslock</li>
+      </ul>
+    </div>
     <div class="trust-row">
       <div>
         <p class="pilot">Four design-partner pilots with engineering teams in the US, Canada and India.</p>
