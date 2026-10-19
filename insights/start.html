@@ -126,14 +126,14 @@ if (D.hosted && !D.missing) {
         <li><b>Never sent:</b> your commands' arguments, file or folder names, code, file contents, prompts, tool inputs or
           outputs, keys, or anyone's names.
           Your agents' activity stays on your machine.</li>
-        <li><b>Stop anytime:</b> <code>squidbrake pilot leave</code>. The code that sends it is open source.</li>
+        <li><b>Stop anytime:</b> <code>squidbrake pilot leave</code>.</li>
       </ul>
     </section>
 
     <p class="foot">Stuck? ${D.contact ? "Reach me: " + esc(D.contact) + "." : "Reply to the message this link came in."}
       To undo everything: <code>squidbrake service stop</code> and <code>squidbrake connect all --remove</code>, then delete
       the <code>.squidbrake</code> folder in your home folder and <code>squidbrake</code> in <code>.local/bin</code> there.
-      Squidbrake is free and open source (Apache 2.0).</p>`;
+      Squidbrake is free.</p>`;
 
   const cmds = { win, mac, manual };
   const box = document.getElementById("installCmd");
@@ -224,7 +224,7 @@ function hostedPage() {
     </section>
 
     <p class="foot">Stuck? ${D.contact ? "Reach me: " + esc(D.contact) + "." : "Reply to the message this link came in."}
-      To disconnect: <code>squidbrake connect claude-code --remove</code>. Squidbrake is free and open source (Apache 2.0).</p>`;
+      To disconnect: <code>squidbrake connect claude-code --remove</code>. Squidbrake is free.</p>`;
 
   let current = cmds(keyless);
   const box = document.getElementById("installCmd");

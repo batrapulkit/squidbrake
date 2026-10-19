@@ -1,6 +1,6 @@
 # Squidbrake
 
-> Squidbrake is open-source (Apache-2.0) change control for AI agents: agents propose, people approve. It checks every tool call an AI agent makes against your rules and what the agent already did, and allows it, holds it for a second person (with what it will change shown first, such as rows deleted or resources destroyed), or blocks it, before the call runs. Approved deletes can be undone, and decisions land in a tamper-evident log with a one-page evidence pack for auditors. Decisions come from rules, not an LLM.
+> Squidbrake is change control for AI agents: agents propose, people approve. It checks every tool call an AI agent makes against your rules and what the agent already did, and allows it, holds it for a second person (with what it will change shown first, such as rows deleted or resources destroyed), or blocks it, before the call runs. Approved deletes can be undone, and decisions land in a tamper-evident log with a one-page evidence pack for auditors. Decisions come from rules, not an LLM.
 
 Squidbrake runs where you run it: a laptop, Docker, or your own cloud. It is backed by Entrepreneur First.
 
@@ -8,7 +8,6 @@ Squidbrake runs where you run it: a laptop, Docker, or your own cloud. It is bac
 
 - [This site as markdown](https://squidbrake.com/index.md): what Squidbrake does, the incidents it was tested on, how policy works, measured latency, FAQ
 - [Quickstart](https://squidbrake.com/docs): install, connect agents, write a policy, block a call
-- [Source code and README](https://github.com/batrapulkit/squidbrake): Apache-2.0
 - [PyPI package](https://pypi.org/project/squidbrake/): `pipx install squidbrake`
 - [Pricing](https://squidbrake.com/pricing): Free (self-hosted, every feature), Team $149/month, Business $699/month, Enterprise from $30,000/year; what is not built yet
 - [Security](https://squidbrake.com/security): where it runs, what it stores, how secrets and keys are kept, what it can't stop, compliance mapping (SOC 2 CC8.1, ISO 27001 A.8.32 and A.8.15, EU AI Act Art. 12 and 14), reporting a vulnerability
