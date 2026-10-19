@@ -700,6 +700,13 @@ function passwordDialog(first) {
   };
 }
 
+// the 4-week paid pilot ($999, Stripe): sent to people you are talking to, never on the website
+const PILOT_PAY_URL = "https://buy.stripe.com/eVq9AT1Lqfs0eIQ0f73Ru0e";
+const payMessage = (p) => `Hi ${p.contact ? p.contact.split(/[ ,]/)[0] : p.company + " team"}! Here's the link for the `
+  + `4-week paid pilot: $999, with the hosted Team plan, a setup call and rules written with you. It's credited to your `
+  + `first month if you continue:
+${PILOT_PAY_URL}`;
+
 function followUp(p) {
   const hi = `Hi ${p.contact ? p.contact.split(/[ ,]/)[0] : p.company + " team"}! `;
   return {
@@ -1231,6 +1238,7 @@ function row(p) {
     <td>${agents}</td><td>${hits}</td>
     <td><div class="acts">${p.state === "waiting" ? `<button class="btn primary" data-approve="${esc(p.code)}" title="Starts their hosted gateway">Approve hosted</button>` : ""}${followUp(p) ? `<button class="btn" data-copy="${esc(followUp(p))}" title="A message for where they are now">Follow-up</button>` : ""}
       <button class="btn" data-copy="${esc(p.link)}">Copy link</button>
+      ${p.mrr ? "" : `<button class="btn" data-copy="${esc(payMessage(p))}" title="A message with the $999 paid pilot link">Paid pilot</button>`}
       <button class="btn" data-mrr="${p.mrr || ""}" data-code="${esc(p.code)}" data-name="${esc(p.company)}" title="Monthly revenue from this pilot">${p.mrr ? "$" + Number(p.mrr).toLocaleString() + "/mo" : "Set revenue"}</button>
       <button class="icon-btn" title="Delete pilot" data-del="${esc(p.code)}" data-warn="${esc(deleteWarning(p))}">Delete</button></div></td></tr>
     ${p.catches && p.catches.length ? `<tr class="catches"><td colspan="7"><details data-k="pilot:${esc(p.code)}"${opened.has("pilot:" + p.code) ? " open" : ""}><summary>What it held or blocked · ${p.catches.length}</summary>
