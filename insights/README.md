@@ -1,6 +1,11 @@
-# Squidbrake Insights
+# Squidbrake Insights (squidbrake.com)
 
-A small service for running pilots: you send a founder a link, they install Squidbrake from it, and you see whether
+The one website: the pages people read (`/`, `/pricing`, `/docs`, `/security`, `/changelog`, from [`site/`](site)),
+sign-up, the setup guides, the demo form and your admin. A visitor signs up (`/signup`, email link through Supabase
+Auth), picks **on my computer** or **on our server (hosted)**, and lands on a setup guide with a checklist for that
+choice.
+
+It is also a small service for running pilots: you send a founder a link, they install Squidbrake from it, and you see whether
 and how they use it, **as counts only**.
 
 - **`/start/<code>`**: the page you send. Their install command, with their pilot code filled in. No GitHub needed.
@@ -22,6 +27,31 @@ one-line command that connects Claude Code to it.
   certificates for hosted pilots that exist.
 - Be clear with founders: on a hosted gateway their agents' actions (commands, tool inputs and results) are stored on
   your server. The start page says so, and offers the private setup instead.
+
+## The database: your Supabase project
+
+Set `INSIGHTS_DATABASE_URL` to the **Session pooler** connection string (Supabase > Connect; port 5432, IPv4). The
+tables live in their own schema (`squidbrake`), which Supabase's public API doesn't serve, with row level security on.
+Without it, everything is kept in a SQLite file (`INSIGHTS_DB`).
+
+Moving the SQLite data over, once (stop writes first, so nothing arrives between the copy and the switch):
+
+```bash
+sudo docker compose stop insights
+sudo docker compose run --rm --no-deps insights python export_to_supabase.py /data/insights.db > supabase_import.sql
+# Supabase > SQL Editor > paste supabase_import.sql > Run   (or: psql "<connection string>" -f supabase_import.sql)
+# add INSIGHTS_DATABASE_URL=... to .env, then:
+sudo docker compose --profile https up -d --build insights
+```
+
+The file is safe to run twice (rows already there are skipped). Keep `/data/insights.db` as the backup.
+
+## One address
+
+`INSIGHTS_PUBLIC_URL=https://squidbrake.com` and `INSIGHTS_REDIRECT_HOSTS=pilots.squidbrake.com`: people opening a
+page on the old address are sent to the same page on squidbrake.com, while installs, posted `/go/...` links and the
+API keep answering there. In Supabase > Authentication > URL configuration, set the Site URL to
+`https://squidbrake.com` and add `https://squidbrake.com/signup` to the redirect URLs.
 
 ## What a pilot install sends
 

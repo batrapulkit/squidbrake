@@ -1,8 +1,9 @@
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1 INSIGHTS_DB=/data/insights.db
 WORKDIR /app
-RUN pip install "fastapi>=0.110" "uvicorn>=0.29" "pydantic>=2"
-COPY app.py pipeline.py admin.html start.html team.html signup.html get.html install.ps1 install.sh ./
+RUN pip install "fastapi>=0.110" "uvicorn>=0.29" "pydantic>=2" "psycopg[binary,pool]>=3.2"
+COPY site ./site
+COPY app.py pg.py export_to_supabase.py pipeline.py admin.html start.html team.html signup.html get.html install.ps1 install.sh ./
 RUN useradd -r -u 10002 insights && mkdir -p /data && chown insights /data
 USER insights
 EXPOSE 8090

@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Squidbrake security</title>
+<meta name="description" content="Where Squidbrake runs, what it stores, how secrets and keys are kept, how decisions can be checked, what it can't stop, and how to report a vulnerability.">
+<link rel="canonical" href="https://squidbrake.com/security">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%23DCE3D8%22/%3E%3Cg%20transform%3D%22translate%288%207%29%20scale%28.75%29%22%3E%3Cpath%20fill%3D%22%231E2A23%22%20d%3D%22M16%2030V21.5C16%2012.4%2023.2%205%2032%205C40.8%205%2048%2012.4%2048%2021.5V30Z%22/%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%231E2A23%22%20stroke-width%3D%225%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M23%2034V48.2C23%2051.4%2021.7%2053.9%2019.6%2055.8%22/%3E%3Cpath%20d%3D%22M32%2034V44.6%22/%3E%3Cpath%20d%3D%22M41%2034V48.2C41%2051.4%2042.3%2053.9%2044.4%2055.8%22/%3E%3C/g%3E%3Ccircle%20fill%3D%22%231E2A23%22%20cx%3D%2232%22%20cy%3D%2252.6%22%20r%3D%222.9%22/%3E%3Crect%20fill%3D%22%23F2622E%22%20x%3D%2211%22%20y%3D%2224.5%22%20width%3D%2242%22%20height%3D%2211%22%20rx%3D%225.5%22/%3E%3Ccircle%20fill%3D%22%232FD574%22%20cx%3D%2241.2%22%20cy%3D%2230%22%20r%3D%222.5%22/%3E%3C/g%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Host+Grotesk:wght@300..700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E6EBE2; --surface:#F4F6F1; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5;
+  --go:#237447; --stop:#C0301C; --hold:#A5560C; --accent:#F2622E; --accent-hover:#E4541F;
+  --code-bg:#1E2A23; --code-ink:#E6EDE4; --code-muted:#93A196;
+  --sans:"Host Grotesk","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:4px}
+.wrap{width:min(780px,100% - 32px);margin-inline:auto}
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 0;border-bottom:1px solid var(--line)}
+.brand{display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:1.2rem;letter-spacing:-0.03em;text-decoration:none}
+.brand svg{width:32px;height:32px}
+header nav{display:flex;gap:20px;font-size:.95rem}
+header nav a{color:var(--muted);text-decoration:none}
+header nav a:hover{color:var(--ink)}
+main{padding:56px 0 80px}
+.kicker{margin:0 0 14px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-weight:500;font-size:clamp(2.2rem,6vw,3.4rem);line-height:1;letter-spacing:-0.05em;margin:0 0 18px}
+.lead{color:var(--muted);font-size:1.1rem;margin:0 0 40px;max-width:52ch}
+h2{display:flex;align-items:baseline;gap:12px;font-weight:500;font-size:1.6rem;letter-spacing:-0.035em;margin:56px 0 12px}
+h2 .n{font:400 .9rem var(--mono);color:var(--muted)}
+p{margin:0 0 14px}
+.muted{color:var(--muted)}
+code{font:400 .9em var(--mono)}
+p code,li code{background:var(--surface);padding:1px 5px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line)}
+pre{margin:0 0 18px;padding:18px 20px;border-radius:10px;background:var(--code-bg);color:var(--code-ink);font:400 .86rem/1.6 var(--mono);overflow-x:auto}
+pre .c{color:var(--code-muted)}
+pre .d{color:#FF8A75}
+pre .h{color:#F7B267}
+.file{display:block;margin:0 0 -6px;padding:8px 20px 14px;border-radius:10px 10px 0 0;background:var(--code-bg);color:var(--code-muted);font:400 .76rem var(--mono)}
+.file+pre{border-radius:0 0 10px 10px}
+.note{margin:18px 0;padding:14px 18px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0;font-size:.95rem}
+ul{padding-left:1.2em;margin:0 0 14px}
+li{margin:4px 0}
+footer{padding:28px 0 40px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem;display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between}
+footer a{text-decoration:none}
+footer a:hover{color:var(--ink)}
+@media (max-width:560px){ header nav a:not(:last-child){display:none} main{padding:36px 0 56px} pre{font-size:.78rem;padding:14px} }
+
+table{width:100%;border-collapse:collapse;margin:8px 0 18px;font-size:.95rem}
+th,td{text-align:left;vertical-align:top;padding:10px 12px 10px 0;border-bottom:1px solid var(--line)}
+th{font:500 .78rem var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+td:first-child{white-space:nowrap;font-weight:500;padding-right:20px}
+dl.facts{margin:0 0 14px}
+dl.facts div{padding:12px 0;border-bottom:1px solid var(--line)}
+dl.facts dt{font-weight:500}
+dl.facts dd{margin:2px 0 0;color:var(--muted)}
+.rel{display:grid;grid-template-columns:90px 70px 1fr;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);align-items:baseline}
+.rel .v{font:500 .9rem var(--mono);text-decoration:none}
+.rel .v:hover{text-decoration:underline}
+.rel time{font:400 .82rem var(--mono);color:var(--muted)}
+.rel p{margin:0}
+h2.plain{display:block;margin:44px 0 6px}
+@media (max-width:560px){ .rel{grid-template-columns:80px 1fr} .rel time{display:none} td:first-child{white-space:normal} }
+.ph-badge{display:inline-block;line-height:0}.ph-badge img{max-width:100%;height:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="./" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>squidbrake</a>
+    <nav aria-label="Site"><a href="./#how">How it works</a><a href="docs">Docs</a><a href="security">Security</a><a href="pricing">Pricing</a><a href="changelog">Changelog</a><a href="https://github.com/batrapulkit/squidbrake" target="_blank" rel="noopener">GitHub</a><a href="/signup"><b>Sign up free</b></a></nav>
+  </header>
+
+  <main>
+    <p class="kicker">Security</p>
+    <h1>What it sees, what it keeps, what it can't stop.</h1>
+    <p class="lead">Squidbrake sits between AI agents and the actions they take, so it has to be the most boring, most checkable part of your stack. Everything below can be checked in the source.</p>
+
+    <h2 class="plain">Where it runs and where your data goes</h2>
+    <dl class="facts">
+      <div><dt>Self-hosted: your data stays with you</dt><dd>On a laptop, in Docker, or on your own server. Tool calls, results, decisions and the audit trail are in your database (SQLite or Postgres) and nowhere else.</dd></div>
+      <div><dt>Hosted dashboards, for pilots</dt><dd>We run the gateway for you on a server we operate. It stores the same things, there. If it has to stay inside your network, self-host it: it's the same software.</dd></div>
+      <div><dt>It fails closed, rule by rule</dt><dd>If an agent can't reach Squidbrake, its tool calls don't run. Each rule can say otherwise (<code>when_unreachable: allow</code>, say for reads), and agents keep a copy of those answers so they follow them while it's down. What runs then isn't recorded, so allow only what you'd accept unrecorded.</dd></div>
+      <div><dt>Usage stats, and how to say no</dt><dd>The first time you run <code>squidbrake</code> in a terminal, it asks once whether to send anonymous usage stats; pressing Enter means yes. Sent: a random id, the command name (never its arguments), version, operating system, CPU type, Python version, country, counts of what was allowed, held and blocked, and for each held or blocked action the program (like <code>rm</code>) and the rule. Never sent: commands an agent ran, file names or contents, prompts, rules, keys, the audit trail. Agent hooks send nothing. Turn it off any time with <code>squidbrake telemetry off</code>, <code>SQUIDBRAKE_TELEMETRY=0</code> or <code>DO_NOT_TRACK=1</code>; <code>squidbrake telemetry status</code> shows exactly what is sent.</dd></div>
+    </dl>
+
+    <h2 class="plain">Secrets and keys</h2>
+    <dl class="facts">
+      <div><dt>Secrets are redacted before anything is stored</dt><dd>Rules see the call as it is; storage only ever gets a redacted copy. Fields named like passwords, tokens, API keys, authorization or cookies are replaced, and so are known secret formats anywhere in the text: GitHub, Stripe, AWS, Slack, OpenAI and Anthropic, Google and npm keys, JWTs, private keys, and passwords inside URLs.</dd></div>
+      <div><dt>People's details are masked too</dt><dd>Email addresses keep their first letter and their domain plus a short fingerprint (so "the same customer again" is still seen); card numbers keep their last four digits. Lists, phone pages, notifications and AI briefs show at most 2 KB of any value.</dd></div>
+      <div><dt>Keys are stored as hashes</dt><dd>Every person and every agent has its own key. Only its SHA-256 hash is kept; the key itself is shown once. Removing a key stops it at once.</dd></div>
+      <div><dt>Agents can't approve</dt><dd>Agent keys can only ask and report. A key never approves its own request, and with second-person approval on, nobody approves what their own agent asked for.</dd></div>
+      <div><dt>Owners, admins, approvers, viewers</dt><dd>Viewers see and change nothing; approvers decide and can stop agents; admins manage the team and settings; only owners make admins and owners, and a team always keeps one.</dd></div>
+      <div><dt>Apps' tokens stay on the gateway</dt><dd>When you connect an app's MCP server in the dashboard, its token is kept on the gateway and never shown again, in the dashboard or the API.</dd></div>
+    </dl>
+
+    <h2 class="plain">Decisions you can check</h2>
+    <dl class="facts">
+      <div><dt>No model decides</dt><dd>Decisions come from your rules, a shell command reader and the agent's recent history. The same call gets the same answer every time, and every answer names the rule that made it. The optional AI brief on a held action is advice for the person deciding: it runs on your own Anthropic key, is sent only what the dashboard shows (redacted), and nothing reads it to decide. With no key set, nothing is sent.</dd></div>
+      <div><dt>A tamper-evident audit trail</dt><dd>Every decision, approval and settings change is hash-chained: editing or deleting a past entry breaks every hash after it. Anyone can verify an exported trail offline with <code>squidbrake verify FILE</code>. Every version of your rules that made a decision is kept with it.</dd></div>
+      <div><dt>Signed checkpoints</dt><dd>Every 50 entries the chain's fingerprint is signed (Ed25519) with the gateway's ledger key. Its public half is published at <code>/v1/audit/public-key</code>; <code>verify.py --key</code> checks an export against it, so even someone who can write to the database can't quietly rewrite history and re-chain it.</dd></div>
+      <div><dt>Approvals signed by a device</dt><dd>Register a phone or laptop as a passkey and each approval is signed by it with Face ID or fingerprint, over exactly which action was approved. The signature is kept in the audit trail and checked offline by <code>verify.py</code>. You can require it for every approval.</dd></div>
+      <div><dt>Approval links are signed</dt><dd>The one-tap links in Slack, Discord and phone notifications are signed (HMAC-SHA256) for one action and one approver, and stop working once it's decided or expires.</dd></div>
+    </dl>
+
+    <h2 class="plain">What's stored</h2>
+    <dl class="facts">
+      <div><dt>On every action</dt><dd>The tool, its input and result (redacted), who asked, the decision and the rule behind it, who approved and when, and the risk notes the checks found.</dd></div>
+      <div><dt>Undo copies</dt><dd>Before a held or irreversible action runs, a copy of what it changes: files and git changes stay on the agent's own computer (<code>squidbrake undo</code>); for API calls through Squidbrake and for your own snapshot functions, the record is kept on the gateway, redacted like everything else. If a copy is required and can't be made, the action doesn't run.</dd></div>
+      <div><dt>Spend and proof</dt><dd>Model token counts agents report (for spend limits), and the answer of each proof check (it looks in Stripe, GitHub or your database with credentials that live only in the gateway's environment, and only reads).</dd></div>
+      <div><dt>Devices</dt><dd>For each passkey: its public key, its name and who registered it. Never a fingerprint or face: those never leave the device.</dd></div>
+    </dl>
+
+    <h2 class="plain">What isn't built yet</h2>
+    <ul>
+      <li>Single sign-on (SAML or OIDC) for the dashboard. People sign in with their own key.</li>
+      <li>Choosing the region where a hosted dashboard keeps data. Self-host to decide that yourself.</li>
+      <li>An uptime guarantee (SLA) for hosted dashboards.</li>
+      <li>A console for service providers managing agents across many client companies.</li>
+      <li>Undo copies for MCP tools: their changes can't be copied from outside the tool, so a rule that requires a copy blocks them, and held ones run without one (the record says so).</li>
+    </ul>
+
+    <h2 class="plain">Certifications</h2>
+    <p>We hold none today: no SOC 2 report, no ISO 27001 certificate. Squidbrake gives you evidence for your own audits; it doesn't make us, or you, certified. We'll say so here when that changes.</p>
+
+    <h2 class="plain">The software itself</h2>
+    <dl class="facts">
+      <div><dt>Open source</dt><dd>Apache-2.0. Every line that decides is on <a href="https://github.com/batrapulkit/squidbrake" target="_blank" rel="noopener">GitHub</a>.</dd></div>
+      <div><dt>Published by CI, not from a laptop</dt><dd>PyPI releases are built and published by GitHub Actions with PyPI trusted publishing, so no upload token exists anywhere, and each release carries a provenance attestation. The Docker image is built by GitHub Actions too.</dd></div>
+      <div><dt>Tested on every change</dt><dd>Hundreds of tests run on Linux, macOS and Windows, on three Python versions, for every change. So do the replays of public incidents and a <a href="https://github.com/batrapulkit/squidbrake/tree/main/bench/chains" target="_blank" rel="noopener">benchmark</a> against normal permissions.</dd></div>
+    </dl>
+
+    <h2 class="plain">What it can't stop</h2>
+    <p>Squidbrake guards what goes through it. Know where that ends:</p>
+    <ul>
+      <li><b>Paths you didn't connect.</b> An agent with its own unguarded shell, credentials or network access can act outside it. Connect every tool path; lockdown makes the agents' managed settings require it.</li>
+      <li><b>Harm hidden inside a tool.</b> A compromised MCP server can add a side effect after a person approves the visible call, like a hidden BCC. No gateway in front of the tool can see that; it's in our <a href="https://github.com/batrapulkit/squidbrake/tree/main/incidents" target="_blank" rel="noopener">incident replays</a> as not stopped.</li>
+      <li><b>A person who says yes.</b> A hold makes sure someone sees the action and the reason. It can't make them read it.</li>
+      <li><b>Hosted apps that only sign in through a browser.</b> Slack, HubSpot and other OAuth-only MCP servers can't be connected by URL yet.</li>
+      <li><b>An agent built to attack you.</b> It's designed for the common case: a cooperative agent that makes a mistake or follows instructions it read somewhere. For an agent you don't trust at all, run it in a sandbox too.</li>
+    </ul>
+
+    <h2 class="plain">Where it helps with compliance</h2>
+    <p>Squidbrake produces evidence for controls like these. It supports your evidence; your auditor decides what it satisfies.</p>
+    <table>
+      <thead><tr><th>Control</th><th>What Squidbrake gives you</th></tr></thead>
+      <tbody>
+        <tr><td>SOC 2 CC8.1<br><span class="muted">Change management</span></td><td>Changes an agent makes are authorized by a rule or approved by a person, with who approved what and when, in a tamper-evident log and a one-page evidence pack.</td></tr>
+        <tr><td>ISO/IEC 27001:2022 A.8.32<br><span class="muted">Change management</span></td><td>The same record of who approved each change, against a versioned policy file.</td></tr>
+        <tr><td>ISO/IEC 27001:2022 A.8.15<br><span class="muted">Logging</span></td><td>Every tool call, decision and approval logged, hash-chained, exportable as CSV or JSONL and verifiable offline.</td></tr>
+        <tr><td>EU AI Act Art. 14<br><span class="muted">Human oversight, high-risk systems</span></td><td>A person can see, hold, reject and stop an agent's actions: one action, one session, or every agent.</td></tr>
+        <tr><td>ISO/IEC 42001<br><span class="muted">AI management system</span></td><td>Records of what each AI agent did and who approved it, protected by signed checkpoints, with an evidence pack mapped to its controls.</td></tr>
+        <tr><td>EU AI Act Art. 12<br><span class="muted">Record-keeping, high-risk systems</span></td><td>Automatic logs of what the agent did and why each action was allowed, held or blocked.</td></tr>
+      </tbody>
+    </table>
+
+    <h2 class="plain">Reporting a vulnerability</h2>
+    <p>Please don't open a public issue. Report it privately on GitHub: <a href="https://github.com/batrapulkit/squidbrake/security/advisories/new" target="_blank" rel="noopener">Security → Report a vulnerability</a>, or email <a href="mailto:hello@squidbrake.com">hello@squidbrake.com</a>. You'll hear back within a few days. Especially interesting: a way to run something a rule blocks or holds, approving without an approver key, secrets stored unredacted, or rewriting the audit trail without the check noticing.</p>
+
+  </main>
+
+  <footer><span>© 2026 Squidbrake, Inc. Apache-2.0.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="./">Home</a> · <a href="docs">Docs</a> · <a href="security">Security</a> · <a href="pricing">Pricing</a> · <a href="changelog">Changelog</a> · <a href="https://github.com/batrapulkit/squidbrake" target="_blank" rel="noopener">GitHub</a> · <a href="mailto:hello@squidbrake.com">hello@squidbrake.com</a></span></footer>
+</div>
+</body>
+</html>

@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 from pathlib import Path
+from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -465,3 +466,39 @@ def test_with_supabase_only_a_verified_sign_in_signs_up_and_signing_in_again_giv
     assert "someone-else" not in p["contact"]
     page = insights.get("/signup").text
     assert '"supabase_url": "https://x.supabase.co"' in page and "__CONFIG__" not in page
+
+
+def test_signup_picks_hosted_or_local_and_hosted_waits_for_a_free_slot(insights, monkeypatch):
+    import app as insights_app
+    insights_app._requests.clear()
+    with insights_app.db() as c:
+        live = c.execute(f"SELECT COUNT(*) FROM pilots WHERE {insights_app.LIVE}").fetchone()[0]
+    monkeypatch.setattr(insights_app, "HOSTED_MAX", live + 1)
+    sign = lambda email, setup: insights.post("/v1/signup", json={"name": "Mei", "email": email, "company": "Gamma",
+                                                                  "agents": ["codex"], "setup": setup})
+    r = sign("mei@gamma.io", "hosted").json()
+    page = insights.get(urlparse(r["link"]).path).text
+    assert '"hosted": true' in page and "gamma.app.example.com" in page and "Your checklist" in page
+    q = insights.get("/v1/admin/provision", headers={"X-Admin-Key": "admin-test-key"}).json()["pilots"]
+    assert any(p["code"] == r["link"].rsplit("/", 1)[1] and p["state"] == "requested" for p in q)   # provision.py starts it
+    full = sign("li@gamma.io", "hosted")                                    # no slot left: told, offered local
+    assert full.status_code == 409 and "On my computer" in full.json()["detail"]
+    assert '"hosted": false' in insights.get(urlparse(sign("li@gamma.io", "local").json()["link"]).path).text
+    assert sign("x@gamma.io", "cloud").status_code == 422
+
+
+def test_one_website_serves_the_pages_and_the_old_address_sends_people_there(insights, monkeypatch):
+    import app as insights_app
+    for path, text in (("/", "Agents propose."), ("/pricing", "Start with Team"), ("/docs.html", "<html"),
+                       ("/security", "<html"), ("/llms.txt", "Squidbrake"), ("/assets/og.png", "")):
+        r = insights.get(path)
+        assert r.status_code == 200 and text in r.text, path
+    assert 'href="/signup"' in insights.get("/").text and "pilots.squidbrake.com" not in insights.get("/").text
+    assert insights.get("/nope").status_code == 404 and insights.get("/app.py").status_code == 404
+    monkeypatch.setattr(insights_app, "PUBLIC_URL", "https://squidbrake.com")
+    monkeypatch.setattr(insights_app, "OLD_HOSTS", {"pilots.squidbrake.com"})
+    old = {"Host": "pilots.squidbrake.com"}
+    r = insights.get("/signup?from=x", headers=old, follow_redirects=False)
+    assert r.status_code == 301 and r.headers["location"] == "https://squidbrake.com/signup?from=x"
+    assert insights.get("/health", headers=old).status_code == 200                      # installs keep working there
+    assert insights.get("/install.sh", headers=old, follow_redirects=False).status_code == 200

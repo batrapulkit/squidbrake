@@ -101,6 +101,11 @@ button.go:disabled { opacity:.6; cursor:default; }
               background:var(--soft); }
 .state h2 { margin:0 0 8px; }
 .state p { color:var(--muted); margin:0 0 6px; }
+.pick { display:grid; gap:10px; margin:16px 0 4px; text-align:left; }
+.pick button { font:inherit; text-align:left; background:var(--surface); color:var(--ink); border:1px solid var(--line);
+               border-radius:10px; padding:14px 16px; cursor:pointer; }
+.pick button:hover, .pick button:focus-visible { border-color:var(--accent); outline:none; }
+.pick b { display:block; font-size:16px; margin-bottom:3px; } .pick span { color:var(--muted); font-size:14px; }
 .spin { width:30px; height:30px; border-radius:50%; border:3px solid var(--line); border-top-color:var(--accent);
         animation:spin .8s linear infinite; margin:6px auto 16px; }
 @keyframes spin { to { transform:rotate(360deg); } }
@@ -139,9 +144,10 @@ footer a { color:var(--muted); }
 </svg>
 <div class="wrap">
   <nav>
-    <a class="brand" href="https://squidbrake.com"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#sb-mark"></use></svg>squidbrake</a>
+    <a class="brand" href="/"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#sb-mark"></use></svg>squidbrake</a>
     <div class="links">
-      <a href="https://squidbrake.com/docs.html">Docs</a>
+      <a href="/pricing">Pricing</a>
+      <a href="/docs">Docs</a>
       <a href="https://github.com/batrapulkit/squidbrake">GitHub</a>
       <a class="cta" href="/team">For teams</a>
     </div>
@@ -154,7 +160,7 @@ footer a { color:var(--muted); }
         <span class="tag"><i></i> Free · open source, Apache-2.0</span>
       </div>
       <h1>Put a brake on your coding agents. <span>In 3 minutes.</span></h1>
-      <p class="lead">Every tool call your agent makes is checked before it runs, on your own computer. Safe work goes
+      <p class="lead">Every tool call your agent makes is checked before it runs, on your computer or on our server. Safe work goes
         straight through, risky steps wait for your OK, and the damaging ones never happen.</p>
 
       <div class="stage">
@@ -194,7 +200,7 @@ footer a { color:var(--muted); }
         </fieldset>
         <div class="hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
         <p class="err full" id="err" role="alert" hidden></p>
-        <button type="submit" class="go" id="go">Get my setup line</button>
+        <button type="submit" class="go" id="go">Sign up free</button>
       </form>
       <p class="fine">Already signed up? Fill in the same email: the link takes you back to your setup line.<br>
         We see your name, email, the agents you picked, and for each action that was blocked or sent for approval:
@@ -204,10 +210,10 @@ footer a { color:var(--muted); }
 
   <div class="steps">
     <div><span class="n">01</span><h3>Sign in with your email</h3><p>One link, no password. It proves the address is yours.</p></div>
-    <div><span class="n">02</span><h3>Paste one line</h3><p>Windows or Mac. It installs Squidbrake and connects Claude Code, Cursor, Codex and more.</p></div>
+    <div><span class="n">02</span><h3>Pick where it runs</h3><p>On your computer (one line, Windows or Mac), or on our server with a dashboard for your team.</p></div>
     <div><span class="n">03</span><h3>Work as usual</h3><p>Approve the risky steps from the dashboard, your phone or Slack.</p></div>
   </div>
-  <footer><span>© Squidbrake · runs on your computer</span><span><a href="https://squidbrake.com/security.html">Security</a> · <a href="https://github.com/batrapulkit/squidbrake">Open source</a></span></footer>
+  <footer><span>© Squidbrake · on your computer or ours</span><span><a href="/security">Security</a> · <a href="https://github.com/batrapulkit/squidbrake">Open source</a></span></footer>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -371,8 +377,21 @@ const sb = CONFIG.supabase_url && window.supabase
   ? window.supabase.createClient(CONFIG.supabase_url, CONFIG.supabase_key, { auth: { flowType: "implicit", persistSession: true } })
   : null;
 
-const fail = (msg) => { err.textContent = msg; err.hidden = false; go.disabled = false; go.textContent = "Get my setup line"; };
+const fail = (msg) => { err.textContent = msg; err.hidden = false; go.disabled = false; go.textContent = "Sign up free"; };
 const state = (html) => { card.innerHTML = `<div class="state">${html}</div>`; };
+
+// signed in: on their computer, or a gateway on our server. Each gets its own setup guide and checklist.
+function choose(body, token) {
+  state(`<h2>How do you want to run Squidbrake?</h2><p>Same checks either way. You can switch later.</p>
+    <div class="pick">
+      <button type="button" data-setup="local"><b>On my computer</b><span>One line installs it. Everything your agents
+        do stays on your machine. Best for one person.</span></button>
+      <button type="button" data-setup="hosted"><b>On our server (hosted)</b><span>We run your gateway and dashboard at your
+        own address, so your team approves from anywhere. Your agents connect to it.</span></button>
+    </div>`);
+  card.querySelectorAll("[data-setup]").forEach((b) => b.addEventListener("click", () =>
+    finish({ ...body, setup: b.dataset.setup }, token)));
+}
 
 async function finish(body, token) {
   state(`<div class="spin"></div><h2>Setting you up…</h2><p>One moment.</p>`);
@@ -383,6 +402,11 @@ async function finish(body, token) {
   if (r.ok) { state(`<div class="big">✓</div><h2>Thanks!</h2><p>We'll be in touch.</p>`); return; }
   state(`<div class="big">!</div><h2>That didn't work</h2><p>${esc(typeof j.detail === "string" ? j.detail : "Please try again.")}</p>
          <p><a href="/signup">Start again</a></p>`);
+  if (r.status === 409 && body.setup === "hosted") {     // hosted is full: the same thing on their computer
+    card.querySelector(".state").insertAdjacentHTML("beforeend",
+      `<p><button type="button" class="go" id="local">Set it up on my computer instead</button></p>`);
+    document.getElementById("local").addEventListener("click", () => finish({ ...body, setup: "local" }, token));
+  }
 }
 
 f.addEventListener("submit", async (e) => {
@@ -396,7 +420,7 @@ f.addEventListener("submit", async (e) => {
   if (FREE_MAIL.includes(body.email.split("@")[1])) return fail("Please use your work email.");
   go.disabled = true; go.textContent = "One moment…";
   try {
-    if (!sb) return await finish(body);
+    if (!sb) return choose(body);
     if (body.website) return state(`<div class="big">✓</div><h2>Thanks!</h2>`);   // a bot
     const { error } = await sb.auth.signInWithOtp({ email: body.email, options: {
       emailRedirectTo: location.origin + "/signup",
@@ -404,7 +428,7 @@ f.addEventListener("submit", async (e) => {
     if (error) return fail(error.message || "Couldn't send the email. Please try again.");
     state(`<div class="big">✉</div><h2>Check your inbox</h2>
            <p>We sent a sign-in link to <span class="mono">${esc(body.email)}</span>.</p>
-           <p>Open it on this computer, and you'll go straight to your setup line.</p>
+           <p>Open it on this computer, then pick where Squidbrake runs.</p>
            <p style="margin-top:14px;font-size:13px">Nothing there? Check spam, or <a href="/signup">try again</a>.</p>`);
   } catch (x) { fail("Couldn't reach Squidbrake. Please try again."); }
 });
@@ -414,7 +438,7 @@ if (sb) sb.auth.getSession().then(({ data }) => {
   const sess = data && data.session;
   if (!sess) return;
   const meta = sess.user.user_metadata || {};
-  finish({ name: meta.name || "", company: meta.company || "", email: sess.user.email,
+  choose({ name: meta.name || "", company: meta.company || "", email: sess.user.email,
            agents: Array.isArray(meta.agents) ? meta.agents : [] }, sess.access_token);
 });
 </script>

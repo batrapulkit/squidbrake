@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Squidbrake quickstart</title>
+<meta name="description" content="Install Squidbrake, write a policy file and watch it block a dangerous tool call, in about five minutes.">
+<link rel="canonical" href="https://squidbrake.com/docs">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%2064%2064%22%3E%3Crect%20width%3D%2264%22%20height%3D%2264%22%20rx%3D%2214%22%20fill%3D%22%23DCE3D8%22/%3E%3Cg%20transform%3D%22translate%288%207%29%20scale%28.75%29%22%3E%3Cpath%20fill%3D%22%231E2A23%22%20d%3D%22M16%2030V21.5C16%2012.4%2023.2%205%2032%205C40.8%205%2048%2012.4%2048%2021.5V30Z%22/%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%231E2A23%22%20stroke-width%3D%225%22%20stroke-linecap%3D%22round%22%3E%3Cpath%20d%3D%22M23%2034V48.2C23%2051.4%2021.7%2053.9%2019.6%2055.8%22/%3E%3Cpath%20d%3D%22M32%2034V44.6%22/%3E%3Cpath%20d%3D%22M41%2034V48.2C41%2051.4%2042.3%2053.9%2044.4%2055.8%22/%3E%3C/g%3E%3Ccircle%20fill%3D%22%231E2A23%22%20cx%3D%2232%22%20cy%3D%2252.6%22%20r%3D%222.9%22/%3E%3Crect%20fill%3D%22%23F2622E%22%20x%3D%2211%22%20y%3D%2224.5%22%20width%3D%2242%22%20height%3D%2211%22%20rx%3D%225.5%22/%3E%3Ccircle%20fill%3D%22%232FD574%22%20cx%3D%2241.2%22%20cy%3D%2230%22%20r%3D%222.5%22/%3E%3C/g%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Host+Grotesk:wght@300..700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E6EBE2; --surface:#F4F6F1; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5;
+  --go:#237447; --stop:#C0301C; --hold:#A5560C; --accent:#F2622E; --accent-hover:#E4541F;
+  --code-bg:#1E2A23; --code-ink:#E6EDE4; --code-muted:#93A196;
+  --sans:"Host Grotesk","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:4px}
+.wrap{width:min(780px,100% - 32px);margin-inline:auto}
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 0;border-bottom:1px solid var(--line)}
+.brand{display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:1.2rem;letter-spacing:-0.03em;text-decoration:none}
+.brand svg{width:32px;height:32px}
+header nav{display:flex;gap:20px;font-size:.95rem}
+header nav a{color:var(--muted);text-decoration:none}
+header nav a:hover{color:var(--ink)}
+main{padding:56px 0 80px}
+.kicker{margin:0 0 14px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-weight:500;font-size:clamp(2.2rem,6vw,3.4rem);line-height:1;letter-spacing:-0.05em;margin:0 0 18px}
+.lead{color:var(--muted);font-size:1.1rem;margin:0 0 40px;max-width:52ch}
+h2{display:flex;align-items:baseline;gap:12px;font-weight:500;font-size:1.6rem;letter-spacing:-0.035em;margin:56px 0 12px}
+h2 .n{font:400 .9rem var(--mono);color:var(--muted)}
+p{margin:0 0 14px}
+.muted{color:var(--muted)}
+code{font:400 .9em var(--mono)}
+p code,li code{background:var(--surface);padding:1px 5px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line)}
+pre{margin:0 0 18px;padding:18px 20px;border-radius:10px;background:var(--code-bg);color:var(--code-ink);font:400 .86rem/1.6 var(--mono);overflow-x:auto}
+pre .c{color:var(--code-muted)}
+pre .d{color:#FF8A75}
+pre .h{color:#F7B267}
+.file{display:block;margin:0 0 -6px;padding:8px 20px 14px;border-radius:10px 10px 0 0;background:var(--code-bg);color:var(--code-muted);font:400 .76rem var(--mono)}
+.file+pre{border-radius:0 0 10px 10px}
+.note{margin:18px 0;padding:14px 18px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0;font-size:.95rem}
+ul{padding-left:1.2em;margin:0 0 14px}
+li{margin:4px 0}
+footer{padding:28px 0 40px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem;display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between}
+footer a{text-decoration:none}
+footer a:hover{color:var(--ink)}
+@media (max-width:560px){ header nav a:not(:last-child){display:none} main{padding:36px 0 56px} pre{font-size:.78rem;padding:14px} }
+.ph-badge{display:inline-block;line-height:0}.ph-badge img{max-width:100%;height:auto}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="./" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>squidbrake</a>
+    <nav aria-label="Docs"><a href="./#how">How it works</a><a href="security">Security</a><a href="pricing">Pricing</a><a href="changelog">Changelog</a><a href="https://github.com/batrapulkit/squidbrake" target="_blank" rel="noopener">GitHub</a><a href="/signup"><b>Sign up free</b></a></nav>
+  </header>
+
+  <main>
+    <p class="kicker">Quickstart</p>
+    <h1>Block your first dangerous tool call.</h1>
+    <p class="lead">Install Squidbrake, connect the agents on your machine, and watch it stop a destructive command. About five minutes. Python 3.10 or newer.</p>
+
+    <h2><span class="n">01</span>Install and connect</h2>
+<pre>pipx install squidbrake      <span class="c"># or: pip install squidbrake</span>
+squidbrake connect all       <span class="c"># routes every agent on this computer through it</span>
+squidbrake                   <span class="c"># starts the gateway and opens the dashboard</span></pre>
+    <p><code>connect all</code> finds Claude Code, Codex, Gemini CLI and the other agents it supports, backs up every config it changes, and can be undone with <code>squidbrake connect all --remove</code>. Run <code>squidbrake connect status</code> to see which agents are covered. Restart your agents after connecting.</p>
+
+    <h2><span class="n">02</span>Watch a call get blocked</h2>
+    <p>Ask your agent to run <code>rm -rf ~/</code>. The call never reaches the shell. This is what Claude Code receives from the hook:</p>
+<pre>{"hookSpecificOutput": {
+  "hookEventName": "PreToolUse",
+  "permissionDecision": <span class="d">"deny"</span>,
+  "permissionDecisionReason": "Squidbrake blocked this (rule 'block-destructive-shell'):
+    Destructive shell command. Don't try to work around it."
+}}</pre>
+    <p>The same decision shows up in the dashboard with the full call, the rule that fired and the session it came from.</p>
+
+    <h2><span class="n">03</span>Write your policy</h2>
+    <p>Policy is one YAML file. Rules are read top to bottom and the first match wins. Each rule says <code>allow</code>, <code>deny</code> or <code>review</code>, which holds the call until a person approves it. Sequences look at what the agent did before.</p>
+    <span class="file">rules.yaml</span>
+<pre>default: review
+default_reason: Changes need a person to approve them
+
+rules:
+  - id: allow-reads
+    action: allow
+    match:
+      name: ["Read", "Grep", "Glob"]
+
+  - id: review-stripe-money-out
+    action: review
+    reason: Refunds and payouts require finance approval
+    approvers: ["role:finance"]
+    match:
+      name: ["stripe.*refund*", "stripe.*payout*"]
+
+sequences:
+  - id: <span class="h">destroy-after-recovery-removed</span>
+    action: review
+    reason: Destroying data right after its backups were turned off
+    match:
+      input_regex: 'delete[-_ ]?db[-_ ]?instance|drop\s+database'
+    after:
+      match:
+        input_regex: 'backup[-_ ]?retention[-_ ]?period\W{0,4}0\b'
+      within_hours: 24</pre>
+    <p class="muted">The default <a href="https://github.com/batrapulkit/squidbrake/blob/main/rules.yaml" target="_blank" rel="noopener">rules.yaml</a> also checks shell commands, prompt injection from fetched content, and history. Set <code>mode: shadow</code> to log what would be blocked without blocking anything.</p>
+
+    <h2><span class="n">04</span>Use it from your own code</h2>
+    <p>Anything that makes tool calls can ask the gateway first. Over HTTP:</p>
+<pre>curl -s localhost:8080/v1/events \
+  -H "X-Gateway-Key: $SQUIDBRAKE_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"kind":"tool","name":"Bash","input":{"command":"rm -rf ~/"},"session_id":"demo"}'
+
+<span class="c"># response</span>
+{"event_id": "20afe04f-…", "decision": <span class="d">"deny"</span>,
+ "reason": "Destructive shell command", "rule_id": "block-destructive-shell",
+ "status": "denied"}</pre>
+    <p>To put an MCP server behind Squidbrake, wrap it:</p>
+<pre>squidbrake proxy --app linear --url https://mcp.linear.app/mcp
+squidbrake proxy --app stripe -- npx -y @stripe/mcp --tools=all</pre>
+
+    <h2><span class="n">05</span>Run it for your team</h2>
+<pre>docker run -d -p 8080:8080 -v squidbrake-data:/app/data \
+  --name squidbrake ghcr.io/batrapulkit/squidbrake
+docker logs squidbrake       <span class="c"># prints the first API keys</span></pre>
+    <p>Postgres, HTTPS with Caddy, Slack approvals and audit export are covered in the <a href="https://github.com/batrapulkit/squidbrake#readme" target="_blank" rel="noopener">README</a>.</p>
+
+    <div class="note">Want help writing a policy for your agents? <a href="./#demo">Book 30 minutes with us.</a></div>
+  </main>
+
+  <footer><span>© 2026 Squidbrake, Inc. Apache-2.0.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="./">Home</a> · <a href="https://github.com/batrapulkit/squidbrake" target="_blank" rel="noopener">GitHub</a> · <a href="mailto:hello@squidbrake.com">hello@squidbrake.com</a></span></footer>
+</div>
+</body>
+</html>

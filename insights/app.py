@@ -45,7 +45,16 @@ app.add_middleware(CORSMiddleware, allow_origin_regex=r"https://([a-z0-9-]+\.)?(
 _lock = threading.Lock()
 
 
+# INSIGHTS_DATABASE_URL set (your Supabase project, see pg.py): everything is kept there. Not set: a SQLite file (INSIGHTS_DB).
+DATABASE_URL = os.getenv("INSIGHTS_DATABASE_URL", "")
+if DATABASE_URL:
+    import pg
+    _pg = pg.pool(DATABASE_URL, os.getenv("INSIGHTS_PG_SCHEMA", "squidbrake"))
+
+
 def db() -> sqlite3.Connection:
+    if DATABASE_URL:
+        return pg.Conn(_pg)
     DB.parent.mkdir(parents=True, exist_ok=True)
     c = sqlite3.connect(DB, timeout=30)
     c.row_factory = sqlite3.Row
@@ -394,6 +403,15 @@ class PilotIn(BaseModel):
     hosted: bool = False
 
 
+def _hosted_slot(c, slug: str, full: str) -> str:
+    """A subdomain for a new hosted gateway (provision.py starts it), if the server has room for one."""
+    if not HOSTED_DOMAIN:
+        raise HTTPException(400, "hosted pilots need HOSTED_DOMAIN set on the insights server")
+    if c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0] >= HOSTED_MAX:
+        raise HTTPException(409, full)
+    return _subdomain(c, slug)
+
+
 def dashboard_url(subdomain: str | None) -> str | None:
     return f"https://{subdomain}.{HOSTED_DOMAIN}" if subdomain and HOSTED_DOMAIN else None
 
@@ -403,15 +421,8 @@ def create_pilot(p: PilotIn, request: Request):
     slug = re.sub(r"[^a-z0-9]+", "-", p.company.lower()).strip("-")[:20].strip("-") or "pilot"
     code = f"{slug}-{secrets.token_hex(6)}"         # 48 random bits: the company's name is easy to guess, this isn't
     with _lock, db() as c:
-        sub = None
-        if p.hosted:
-            if not HOSTED_DOMAIN:
-                raise HTTPException(400, "hosted pilots need HOSTED_DOMAIN set on the insights server")
-            live = c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0]
-            if live >= HOSTED_MAX:
-                raise HTTPException(409, f"all {HOSTED_MAX} hosted slots are in use: delete one, or raise HOSTED_MAX "
-                                         "if the server has the memory")
-            sub = _subdomain(c, slug)
+        sub = _hosted_slot(c, slug, f"all {HOSTED_MAX} hosted slots are in use: delete one, or raise HOSTED_MAX "
+                                    "if the server has the memory") if p.hosted else None
         c.execute("INSERT INTO pilots (code, company, contact, note, created_at, hosted, subdomain, state) VALUES (?,?,?,?,?,?,?,?)",
                   (code, p.company, p.contact, p.note, now(), int(p.hosted), sub, "requested" if p.hosted else None))
     return {"code": code, "link": f"{public_url(request)}/start/{code}", "dashboard": dashboard_url(sub)}
@@ -966,6 +977,7 @@ class SignupIn(BaseModel):
     company: str = Field(default="", max_length=80)
     agents: list[str] = Field(default_factory=list, max_length=12)
     website: str = Field(default="", max_length=200)   # a field people don't see: bots fill it in
+    setup: str = Field(default="local", pattern="^(local|hosted)$")   # on their computer, or a gateway on our server
 
 
 FREE_MAIL = {"gmail.com", "googlemail.com", "yahoo.com", "hotmail.com", "outlook.com", "live.com", "icloud.com",
@@ -1004,9 +1016,13 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
             raise HTTPException(409, "this email already signed up: use the link you got, or write to us")
         if not s.name.strip() or not s.company.strip():
             raise HTTPException(422, "please add your name and company")
-        c.execute("INSERT INTO pilots (code, company, contact, note, created_at, email, uses_agents) VALUES (?,?,?,?,?,?,?)",
-                  (code, s.company.strip(), f"{s.name.strip()} · {email}", "signup · agents: " + (", ".join(agents) or "-"),
-                   now(), email, json.dumps(agents)))
+        sub = _hosted_slot(c, slug, "our hosted servers are full right now: pick \"On my computer\" (same features), "
+                                    "or write to us and we'll make room") if s.setup == "hosted" else None
+        c.execute("INSERT INTO pilots (code, company, contact, note, created_at, email, uses_agents, hosted, subdomain, "
+                  "state) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                  (code, s.company.strip(), f"{s.name.strip()} · {email}",
+                   f"signup ({s.setup}) · agents: " + (", ".join(agents) or "-"), now(), email, json.dumps(agents),
+                   int(bool(sub)), sub, "requested" if sub else None))
     return {"ok": True, "link": f"{public_url(request)}/start/{code}"}
 
 
@@ -1132,7 +1148,7 @@ def go(channel: str, request: Request):
     if PREVIEW_BOTS.search(request.headers.get("user-agent", "")) or not _rate(_clicks, request, 10):
         return RedirectResponse(f"/get?ref={channel}", status_code=302)
     with _lock, db() as c:
-        c.execute("INSERT INTO link_clicks (channel, day, n) VALUES (?, ?, 1) ON CONFLICT(channel, day) DO UPDATE SET n=n+1",
+        c.execute("INSERT INTO link_clicks (channel, day, n) VALUES (?, ?, 1) ON CONFLICT(channel, day) DO UPDATE SET n=link_clicks.n+1",
                   (channel, datetime.now(timezone.utc).date().isoformat()))
     return RedirectResponse(f"/get?ref={channel}", status_code=302)
 
@@ -1200,3 +1216,41 @@ pipeline.setup(app, db, admin, now)
 @app.get("/health")
 def health():
     return {"ok": True}
+
+
+# --------------------------------------------------------------------------- the website (squidbrake.com)
+# One site: the pages people read (home, pricing, docs, security, changelog), sign-up, the setup guides and the admin,
+# all served here. The old address keeps answering installs and links; people opening a page there are sent here.
+
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+
+SITE = HERE / "site"
+SITE_PAGES = {"": "index.html", "docs": "docs.html", "security": "security.html", "pricing": "pricing.html",
+              "changelog": "changelog.html", "index.md": "index.md", "llms.txt": "llms.txt"}
+SITE_PAGES |= {v: v for v in SITE_PAGES.values()}
+OLD_HOSTS = {h.strip().lower() for h in os.getenv("INSIGHTS_REDIRECT_HOSTS", "").split(",") if h.strip()}
+STAY = ("/v1/", "/install.", "/go/", "/health", "/assets/")       # installs and posted links call these by address
+
+if SITE.is_dir():
+    app.mount("/assets", StaticFiles(directory=SITE / "assets"), name="assets")
+
+
+@app.middleware("http")
+async def one_site(request: Request, call_next):
+    host = (request.headers.get("host") or "").split(":")[0].lower()
+    if PUBLIC_URL and host in OLD_HOSTS and request.method == "GET" and not request.url.path.startswith(STAY):
+        return RedirectResponse(PUBLIC_URL + request.url.path + (f"?{request.url.query}" if request.url.query else ""),
+                                status_code=301)
+    return await call_next(request)
+
+
+@app.get("/{page}", include_in_schema=False)
+@app.get("/", include_in_schema=False)
+def site_page(page: str = ""):
+    name = SITE_PAGES.get(page)
+    if not name or not (SITE / name).is_file():
+        raise HTTPException(404)
+    if name.endswith(".html"):
+        return HTMLResponse((SITE / name).read_text(encoding="utf-8"))
+    return PlainTextResponse((SITE / name).read_text(encoding="utf-8"),
+                             media_type="text/markdown; charset=utf-8" if name.endswith(".md") else "text/plain; charset=utf-8")
