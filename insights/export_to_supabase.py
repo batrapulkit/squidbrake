@@ -44,6 +44,9 @@ def export(path: str, out=sys.stdout) -> None:
         while rows := cur.fetchmany(500):
             w(f"INSERT INTO {name} ({cols}) VALUES\n" + ",\n".join(
                 "(" + ", ".join(literal(v) for v in r) + ")" for r in rows) + "\nON CONFLICT DO NOTHING;")
+        if not any(r[5] for r in src.execute(f'PRAGMA table_info("{name}")')):     # no key: a second run copied twice
+            w(f"DELETE FROM {name} a USING {name} b WHERE a.ctid > b.ctid AND " +
+              " AND ".join(f"a.{c} IS NOT DISTINCT FROM b.{c}" for c in cols.split(", ")) + ";")
         if re.search(r"(?i)\bid INTEGER PRIMARY KEY AUTOINCREMENT", ddl):
             w(f"SELECT setval(pg_get_serial_sequence('{SCHEMA}.{name}', 'id'), COALESCE((SELECT MAX(id) FROM {name}), 0) + 1, false);")
     w("""DO $$ DECLARE t text; BEGIN

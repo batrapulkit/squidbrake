@@ -23,9 +23,11 @@ def test_export_loads_into_postgres(tmp_path):
         CREATE TABLE team_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, name TEXT NOT NULL,
             note TEXT);
         CREATE INDEX team_requests_t ON team_requests (created_at);
+        CREATE TABLE catches (install_id TEXT NOT NULL, t TEXT NOT NULL, data TEXT NOT NULL);
         """)
         c.execute("INSERT INTO pilots VALUES ('acme-1', 'O''Neil & Co', '2026-10-01', 3, 99)")
         c.execute("INSERT INTO team_requests (created_at, name, note) VALUES ('2026-10-02', 'Asha', '100% sure; ?')")
+        c.execute("INSERT INTO catches VALUES ('i1', '2026-10-02', '{}')")
     sql = io.StringIO()
     export_to_supabase.export(str(src), sql)
     srv = pgserver.get_server(str(tmp_path / "pg"), cleanup_mode="stop")
@@ -36,6 +38,7 @@ def test_export_loads_into_postgres(tmp_path):
         pgc.execute("SET search_path TO squidbrake")
         assert pgc.execute("SELECT company, page_views FROM pilots").fetchall() == [("O'Neil & Co", 3)]
         assert pgc.execute("SELECT note FROM team_requests").fetchall() == [("100% sure; ?",)]
+        assert pgc.execute("SELECT count(*) FROM catches").fetchone()[0] == 1     # no key, run twice: not doubled
         pgc.execute("INSERT INTO team_requests (created_at, name) VALUES ('2026-10-03', 'Ben')")   # counter moved on
         assert pgc.execute("SELECT max(id) FROM team_requests").fetchone()[0] == 2
         assert pgc.execute("SELECT bool_and(rowsecurity) FROM pg_tables WHERE schemaname='squidbrake'").fetchone()[0]
