@@ -462,6 +462,7 @@ dialog .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 1
   border: 1px solid var(--border); border-left: 4px solid #16803c; border-radius: 0 12px 12px 0; background: var(--surface-1); }
 .saved b { font-size: 15px; } .saved span { color: var(--text-secondary); font-size: 13px; }
 .saved a { margin-left: auto; }
+.saved.plan { border-left-color: #b45309; }
 code { font-family: var(--mono); font-size: .92em; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
 
 /* forms */
@@ -540,6 +541,8 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   <div id="view-activity" class="view">
   <div class="saved" id="savedCard" hidden><div><b id="savedTitle"></b><br><span>Each one was stopped before it ran.</span></div>
     <a class="btn" id="savedShare" target="_blank" rel="noopener">Share on LinkedIn</a></div>
+  <div class="saved plan" id="planCard" hidden><div><b id="planTitle"></b><br><span id="planText"></span></div>
+    <a class="btn" id="planLink" target="_blank" rel="noopener">Start a Team trial</a></div>
   <div class="filters" role="search">
     <div class="seg" id="range" aria-label="Time range">
       <button data-r="1h">1h</button><button data-r="24h">24h</button><button data-r="7d">7d</button><button data-r="30d">30d</button><button data-r="1y">1y</button>
@@ -1726,6 +1729,17 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   // ---------- approvals
   async function loadMe() {
     me = await api("/v1/me");
+    // the Team plan (license.py): what blocks and holds is free; a team's features need a license after the grace date
+    const lic = me.license, card = $("#planCard");
+    if (lic && card) {
+      card.hidden = lic.licensed;
+      const list = lic.features.join(", ");
+      $("#planTitle").textContent = lic.team_features ? `From ${lic.grace_until}, these are part of the Team plan` : "Free plan";
+      $("#planText").textContent = lic.team_features
+        ? `${list[0].toUpperCase()}${list.slice(1)}. Blocking and holding stay free.`
+        : `${list[0].toUpperCase()}${list.slice(1)} are part of the Team plan. Blocking and holding are on.`;
+      $("#planLink").href = lic.upgrade_url;
+    }
     const ver = $("#ver");
     if (ver && me.version) {
       // this version's release page on GitHub: what changed, and how to install it (or any older one) again

@@ -73,6 +73,7 @@ import risk
 import integrity
 import selfguard
 import weekly
+import license
 import siem
 import signing
 import taint
@@ -2355,7 +2356,10 @@ def settings() -> dict:
                 "smtp_user": os.getenv("SMTP_USER", ""), "smtp_password": os.getenv("SMTP_PASSWORD", ""),
                 "smtp_from": os.getenv("SMTP_FROM", ""), "siem_url": os.getenv("SIEM_URL", ""),
                 "siem_token": os.getenv("SIEM_TOKEN", ""), "siem_format": os.getenv("SIEM_FORMAT", "json")}
-    return {**defaults, **state_get("settings", {})}
+    cfg = {**defaults, **state_get("settings", {})}
+    if not license.paid(KEYS_PATH.parent):       # Team plan: Slack, Teams, email and phone push
+        cfg.update(slack_webhook="", teams_webhook="", email_to="", ntfy_topic="")
+    return cfg
 
 
 _secret_cache: bytes | None = None
@@ -3174,7 +3178,8 @@ def me(who: str = Depends(auth)):
             "is_owner": keystore.is_owner(who), "access": keystore.access(who),
             "can_approve": can_approve(who), "auth_enabled": keystore.enabled,
             "mode": policy.mode, "shadow_agents": policy.shadow_agents, "version": VERSION, "latest": latest_known(),
-            "plan": PLAN or None, "trial_ends": TRIAL_ENDS or None, "trial_over": trial_over(), "upgrade_url": UPGRADE_URL}
+            "plan": PLAN or None, "trial_ends": TRIAL_ENDS or None, "trial_over": trial_over(), "upgrade_url": UPGRADE_URL,
+            "license": license.status(KEYS_PATH.parent)}
 
 
 def _local_only(request: Request) -> None:
@@ -3338,6 +3343,8 @@ def team_add(m: MemberIn, who: str = Depends(admin)):
     approver, roles = m.approver, m.roles
     if PLAN == "free" and m.kind == "person":
         raise HTTPException(402, f"The free plan is for one person. To add your team: {UPGRADE_URL}")
+    if m.kind == "person" and any(x["kind"] == "person" for x in keystore.listing()):
+        license.need(KEYS_PATH.parent, "people")
     if m.kind == "person":
         approver, roles = _with_access(m.access, m.approver, m.roles, [])
         _check_level_change(who, m.name, [], [r.strip().lower() for r in roles])
@@ -3588,7 +3595,8 @@ def public_settings() -> dict:
     """Settings as the dashboard sees them: the AI key is never sent back, only whether one is set."""
     s = settings()
     key = s.pop("ai_key", "") or ""
-    return {**s, "ai_key_set": bool(key), "ai_key_hint": f"…{key[-4:]}" if len(key) > 8 else ""}
+    return {**s, "ai_key_set": bool(key), "ai_key_hint": f"…{key[-4:]}" if len(key) > 8 else "",
+            "license": license.status(KEYS_PATH.parent)}
 
 
 @app.get("/v1/settings")
@@ -3615,6 +3623,10 @@ def put_settings(body: SettingsIn, who: str = Depends(admin)):
                                          "you can still approve once this is on")
     if changes.get("ntfy_topic") and not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", changes["ntfy_topic"]):
         raise HTTPException(400, "ntfy_topic: letters, digits, '-' and '_' only")
+    if any(changes.get(k) for k in ("slack_webhook", "teams_webhook", "email_to")):
+        license.need(KEYS_PATH.parent, "channels")
+    if changes.get("ntfy_topic"):
+        license.need(KEYS_PATH.parent, "phone")
     if changes.get("notify_as") and not can_approve(changes["notify_as"]):
         raise HTTPException(400, f"'{changes['notify_as']}' can't approve, so links sent as them wouldn't work")
     if "customers" in changes:
@@ -3945,6 +3957,7 @@ def _approver(who: str) -> str:
 @app.post("/v1/devices/register/start")
 def device_register_start(request: Request, who: str = Depends(person)):
     import passkeys
+    license.need(KEYS_PATH.parent, "phone")
     _approver(who)
     rp = _rp_id(request)
     with engine.connect() as conn:
@@ -4136,6 +4149,7 @@ def build_evidence(days: int, who: str) -> dict:
 @app.get("/v1/audit/evidence-pack")
 def evidence_pack(days: int = Query(90, ge=1, le=3650), who: str = Depends(person)):
     """A printable page for an auditor: controls in place, what happened, and the requirements it speaks to."""
+    license.need(KEYS_PATH.parent, "audit")
     with audited_tx() as conn:
         audit(conn, who, "audit.exported", None, format="evidence-pack", days=days)
     return Response(evidence.render_html(build_evidence(days, who)), media_type="text/html", headers={
@@ -4201,6 +4215,7 @@ def audit_verify(_: str = Depends(person)):
 
 @app.get("/v1/audit/export.json")
 def audit_evidence(who: str = Depends(person)):
+    license.need(KEYS_PATH.parent, "audit")
     """Everything needed to check the history offline: python verify.py <file> (see verify.py)."""
     with audited_tx() as conn:
         audit(conn, who, "audit.exported", None, format="evidence")
@@ -4289,6 +4304,7 @@ EXPORT_COLUMNS = ["created_at", "id", "source", "client", "session_id", "kind", 
 @app.get("/v1/audit/export.csv")
 def audit_export(days: int = Query(30, ge=1, le=3650), who: str = Depends(person)):
     import csv, io
+    license.need(KEYS_PATH.parent, "audit")
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat().replace("+00:00", "Z")
     buf = io.StringIO()
     w = csv.writer(buf)
@@ -4309,6 +4325,7 @@ def audit_export(days: int = Query(30, ge=1, le=3650), who: str = Depends(person
 @app.get("/v1/audit/export.jsonl")
 def audit_export_jsonl(days: int = Query(30, ge=1, le=3650), who: str = Depends(person)):
     import io
+    license.need(KEYS_PATH.parent, "audit")
     since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat().replace("+00:00", "Z")
     buf = io.StringIO()
     head = verify_audit_chain()
@@ -5069,6 +5086,9 @@ def main(argv: list[str] | None = None) -> int:
     e = sub.add_parser("evidence", help="write the evidence pack (a printable page for an auditor)")
     e.add_argument("--days", type=int, default=90, help="period to cover (default 90)")
     e.add_argument("--out", default=None, help="file to write (default squidbrake-evidence-pack-DATE.html)")
+    li = sub.add_parser("license", help="the Team plan's license: status, or set the one you were sent")
+    li.add_argument("action", nargs="?", choices=["status", "set"], default="status")
+    li.add_argument("token", nargs="?", help="with set: the license line from squidbrake.com")
     rp = sub.add_parser("report", help="the weekly report: actions, holds, blocks, false positives, latency, chains")
     rp.add_argument("--week", action="store_true", help="the last 7 days (the default)")
     rp.add_argument("--days", type=int, default=7)
@@ -5097,7 +5117,7 @@ def main(argv: list[str] | None = None) -> int:
             "keys": _cli_keys, "verify": lambda a: verify.main([a.file]), "pilot": _cli_pilot,
             "evidence": _cli_evidence, "lockdown": _cli_lockdown, "explain": _cli_explain,
             "report": _cli_report, "feedback": _cli_feedback, "integrity": _cli_integrity,
-            "audit": _cli_audit, "capabilities": _cli_capabilities}[args.cmd](args)
+            "audit": _cli_audit, "capabilities": _cli_capabilities, "license": _cli_license}[args.cmd](args)
 
 
 def _cli_capabilities(args) -> int:
@@ -5172,6 +5192,28 @@ def _cli_lockdown(args) -> int:
     for f in files:
         print(f"  {f}")
     print("Read its README.md: where each file goes, and the GATEWAY_API_KEY every machine needs.")
+    return 0
+
+
+def _cli_license(args) -> int:
+    data = KEYS_PATH.parent
+    if args.action == "set":
+        terms = license.check(args.token or "")
+        if not terms:
+            print("That license isn't valid (or has expired). Copy the whole line you were sent.")
+            return 1
+        data.mkdir(parents=True, exist_ok=True)
+        (data / license.FILE).write_text(args.token.strip() + "\n", encoding="utf-8")
+        print(f"Team plan on for {terms['org']} until {terms['expires']}. Restart the gateway: squidbrake service restart")
+        return 0
+    st = license.status(data)
+    if st["licensed"]:
+        print(f"Team plan: {st['org']}, until {st['expires']}.")
+    elif st["in_grace"]:
+        print(f"No license. Team features ({', '.join(st['features'])}) stay on until {st['grace_until']}; "
+              f"after that they need the Team plan: {st['upgrade_url']}")
+    else:
+        print(f"Free plan. Team features ({', '.join(st['features'])}) need the Team plan: {st['upgrade_url']}")
     return 0
 
 

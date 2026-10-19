@@ -807,6 +807,14 @@ async function load() {
   document.getElementById("pw").onclick = () => passwordDialog(!me.has_password);
   document.getElementById("pw2")?.addEventListener("click", () => passwordDialog(true));
   document.getElementById("nf").onsubmit = create;
+  document.querySelectorAll("[data-license]").forEach((b) => b.onclick = async () => {
+    try {
+      const r = await api(`/v1/admin/pilots/${encodeURIComponent(b.dataset.license)}/license`, { method: "POST" });
+      const text = `Your Squidbrake Team plan license (${r.org}, until ${r.expires}). Run this once on the computer or server `
+        + `where Squidbrake runs:\n\nsquidbrake license set ${r.license}`;
+      try { await navigator.clipboard.writeText(text); b.textContent = "Copied"; } catch { prompt("Copy this:", text); }
+    } catch (e) { if (e.message !== "unauthorized") alert(e.message); }
+  });
   document.querySelectorAll("[data-approve]").forEach((b) => b.onclick = async () => {
     try { await api(`/v1/admin/pilots/${encodeURIComponent(b.dataset.approve)}/approve`, { method: "POST" }); load(); }
     catch (e) { if (e.message !== "unauthorized") alert(e.message); }
@@ -1238,6 +1246,7 @@ function row(p) {
     <td>${agents}</td><td>${hits}</td>
     <td><div class="acts">${p.state === "waiting" ? `<button class="btn primary" data-approve="${esc(p.code)}" title="Starts their hosted gateway">Approve hosted</button>` : ""}${followUp(p) ? `<button class="btn" data-copy="${esc(followUp(p))}" title="A message for where they are now">Follow-up</button>` : ""}
       <button class="btn" data-copy="${esc(p.link)}">Copy link</button>
+      <button class="btn" data-license="${esc(p.code)}" title="A Team plan license for their own gateway (one year)">License</button>
       ${p.mrr ? "" : `<button class="btn" data-copy="${esc(payMessage(p))}" title="A message with the $999 paid pilot link">Paid pilot</button>`}
       <button class="btn" data-mrr="${p.mrr || ""}" data-code="${esc(p.code)}" data-name="${esc(p.company)}" title="Monthly revenue from this pilot">${p.mrr ? "$" + Number(p.mrr).toLocaleString() + "/mo" : "Set revenue"}</button>
       <button class="icon-btn" title="Delete pilot" data-del="${esc(p.code)}" data-warn="${esc(deleteWarning(p))}">Delete</button></div></td></tr>

@@ -451,6 +451,7 @@ def test_me(c):
     assert c.get("/v1/me", headers=H).json()["can_approve"] is False
     me = c.get("/v1/me", headers=BOSS).json()
     assert me.pop("version") == server.VERSION and "latest" in me and me.pop("latest") in (None, me.get("latest"))
+    assert me.pop("license")["team_features"] is True                # the tests keep the Team features on (conftest)
     assert me == {"client": "boss", "can_approve": True, "auth_enabled": True,
                   "kind": "person", "roles": ["admin"], "is_admin": True, "is_owner": True, "access": "admin",
                   "mode": "enforce", "shadow_agents": [], "plan": None, "trial_ends": None, "trial_over": False,

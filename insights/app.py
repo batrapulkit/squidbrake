@@ -36,7 +36,27 @@ DB = Path(os.getenv("INSIGHTS_DB", HERE / "data" / "insights.db"))
 ADMIN_KEY = os.getenv("INSIGHTS_ADMIN_KEY", "")
 PUBLIC_URL = os.getenv("INSIGHTS_PUBLIC_URL", "").rstrip("/")
 CONTACT = os.getenv("INSIGHTS_CONTACT", "")
-CHECKOUT_URL = os.getenv("INSIGHTS_CHECKOUT_URL", "")  # where a Team plan is paid (e.g. a Stripe payment link)           # shown on start pages, e.g. "WhatsApp +91..., you@x.com"
+CHECKOUT_URL = os.getenv("INSIGHTS_CHECKOUT_URL", "")
+# Signs Team plan licenses (license.py in the gateway checks them with the public half). Hex, 32 bytes; only here.
+LICENSE_SECRET = os.getenv("INSIGHTS_LICENSE_SECRET", "")
+
+
+def issue_license(org: str, expires: str) -> str | None:
+    """The same format as license.issue in the gateway: base64url(JSON) "." base64url(Ed25519 signature)."""
+    if not LICENSE_SECRET:
+        return None
+    import base64
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    body = json.dumps({"org": org, "plan": "team", "expires": expires}, separators=(",", ":")).encode()
+    sig = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(LICENSE_SECRET)).sign(body)
+    enc = lambda b: base64.urlsafe_b64encode(b).decode().rstrip("=")
+    return enc(body) + "." + enc(sig)
+
+
+def _license_for(p) -> str | None:
+    """A hosted gateway's license: until its trial ends, else a year from today (renewed as long as it runs)."""
+    year = (datetime.now(timezone.utc).date() + timedelta(days=365)).isoformat()
+    return issue_license(p["company"] if "company" in p.keys() else p["code"], p["trial_ends"] or year)  # where a Team plan is paid (e.g. a Stripe payment link)           # shown on start pages, e.g. "WhatsApp +91..., you@x.com"
 CODE_RE = re.compile(r"^[a-z0-9-]{3,40}$")
 
 app = FastAPI(title="Squidbrake Insights", docs_url=None, redoc_url=None)
@@ -554,11 +574,26 @@ def approve_hosted(code: str):
 def provision_queue():
     with db() as c:
         # keys_ready: the keys arrived here (and may since have been shown to the founder and forgotten)
-        rows = c.execute("SELECT code, subdomain, state, plan, trial_ends, "
+        rows = c.execute("SELECT code, company, subdomain, state, plan, trial_ends, "
                          "(admin_key IS NOT NULL OR keys_revealed_at IS NOT NULL) AS keys_ready "
                          "FROM pilots WHERE hosted=1").fetchall()
     return {"domain": HOSTED_DOMAIN, "pilots": [dict(r) | {"keys_ready": bool(r["keys_ready"]),
-                                                          "dashboard": dashboard_url(r["subdomain"])} for r in rows]}
+                                                          "dashboard": dashboard_url(r["subdomain"]),
+                                                          "license": _license_for(r)} for r in rows]}
+
+
+@app.post("/v1/admin/pilots/{code}/license", dependencies=[Depends(admin)])
+def pilot_license(code: str, days: int = Query(365, ge=1, le=1100)):
+    """A Team plan license for a pilot's own (self-hosted) gateway: `squidbrake license set LICENSE`."""
+    with db() as c:
+        p = c.execute("SELECT company FROM pilots WHERE code=?", (code,)).fetchone()
+    if not p:
+        raise HTTPException(404)
+    expires = (datetime.now(timezone.utc).date() + timedelta(days=days)).isoformat()
+    token = issue_license(p["company"], expires)
+    if not token:
+        raise HTTPException(400, "set INSIGHTS_LICENSE_SECRET on the server to issue licenses")
+    return {"license": token, "org": p["company"], "expires": expires}
 
 
 class ProvisionedIn(BaseModel):

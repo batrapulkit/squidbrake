@@ -13,3 +13,8 @@ os.environ["SQUIDBRAKE_OFFLINE_DIR"] = tempfile.mkdtemp(prefix="squidbrake-offli
 
 # `squidbrake doctor` tells the team's gateway which agents a computer has: never from the tests.
 os.environ["SQUIDBRAKE_NO_INVENTORY"] = "1"
+
+# The Team plan's license (license.py): the tests check its gates on purpose (test_license.py); everywhere else the
+# Team features are on, whatever today's date is.
+import license  # noqa: E402
+license.GRACE_UNTIL = "9999-12-31"

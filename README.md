@@ -27,7 +27,7 @@ sits between the agents and those actions:
 Every decision goes into a tamper-evident record that someone outside engineering can read.
 
 One policy covers every agent your company runs: Claude Code, Cursor, Codex, Gemini CLI, VS Code Copilot,
-Antigravity, and any MCP tool. Free and open source (Apache 2.0). Runs on your laptop or your own server.
+Antigravity, and any MCP tool. Open source (Apache 2.0) and free for one person; more than one person, phone approvals, Slack/Teams/email and the audit export are part of the Team plan (`squidbrake license`). Runs on your laptop or your own server.
 
 ![Demo: every agent action goes on the record; a refund waits for a person and is approved from a phone; the record shows who asked, who approved and what led to it](https://raw.githubusercontent.com/batrapulkit/squidbrake/main/docs/demo.gif)
 

@@ -65,6 +65,7 @@ def start(p):
     if existing == "false":
         docker("start", name)
     if existing:
+        give_license(name, p)
         api("/v1/admin/provisioned", {"code": p["code"], "state": "running"})
         return
     log("starting", name)
@@ -85,9 +86,20 @@ def start(p):
     else:
         raise RuntimeError("the gateway didn't print its keys: " + docker("logs", "--tail", "20", name, check=False)[-300:])
     docker("exec", name, "python", "server.py", "pilot", "join", p["code"], "--server", PILOT_SERVER, "--yes")
+    give_license(name, p)
     api("/v1/admin/provisioned", {"code": p["code"], "state": "running",
                                   "admin_key": keys["admin"], "agent_key": keys["agent"]})
     log("running", name, p["dashboard"])
+
+
+_licensed: dict[str, str] = {}
+
+
+def give_license(name, p):
+    """A hosted gateway has the Team plan: its license goes into its data folder (once, and again when renewed)."""
+    if p.get("license") and _licensed.get(name) != p["license"]:
+        docker("exec", name, "python", "server.py", "license", "set", p["license"], check=False)
+        _licensed[name] = p["license"]
 
 
 def remove(p):
