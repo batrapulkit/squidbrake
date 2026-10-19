@@ -401,6 +401,12 @@ details.rules summary::after { content:" ▸"; color:var(--faint); } details.rul
 .pl-bar button i { width:8px; height:8px; border-radius:50%; background:var(--c); }
 .pl-bar button[aria-pressed="true"] { background:var(--ink); color:var(--bg); border-color:var(--ink); }
 .pl-hide { display:none !important; }
+.funnel { padding:14px 18px; display:grid; gap:9px; }
+.fn-row { display:grid; grid-template-columns:200px 1fr 54px 48px; gap:12px; align-items:center; font-size:13px; }
+.fn-bar { height:10px; border-radius:5px; background:var(--line-2); overflow:hidden; }
+.fn-bar i { display:block; height:100%; border-radius:5px; background:var(--accent); }
+.fn-row b { text-align:right; font-weight:650; } .fn-pct { color:var(--muted); font-size:12px; } .fn-pct.low { color:var(--bad); }
+@media (max-width:640px) { .fn-row { grid-template-columns:1fr 44px 40px; } .fn-bar { display:none; } }
 .pl-tools { display:grid; grid-template-columns:minmax(0, 3fr) minmax(0, 2fr); gap:16px; margin:16px 0 22px; }
 @media (max-width:900px) { .pl-tools { grid-template-columns:1fr; } }
 .pl-tools .surface { padding:14px 16px; }
@@ -475,6 +481,22 @@ function plCard(x) {
     ${x.log.length ? `<details><summary>History</summary><ul>${x.log.map((l) =>
       `<li>${esc(l.t.slice(0, 10))}, ${esc(l.source)}: ${esc(l.text)}</li>`).join("")}</ul></details>` : ""}
   </div>`;
+}
+
+// Sign-up to paying, last 30 days: each step's count, and the share of the step before that made it
+function funnelPanel(f) {
+  if (!f) return "";
+  const top = Math.max(1, ...f.steps.map((x) => x.n));
+  return `<section id="funnel"><div class="sec-h"><h2>Funnel</h2><span class="sub">Last ${f.days} days: from sign-up to paying.
+      ${money(f.mrr)} MRR now.</span></div>
+    <div class="surface funnel">${f.steps.map((x, i) => {
+      const prev = i ? f.steps[i - 1].n : 0, pct = i && prev ? Math.round((100 * x.n) / prev) : null;
+      return `<div class="fn-row"><span class="fn-step">${esc(x.step)}</span>
+        <span class="fn-bar"><i style="width:${Math.max(2, (100 * x.n) / top)}%"></i></span>
+        <b>${x.n}</b><span class="fn-pct ${pct !== null && pct < 30 ? "low" : ""}">${pct === null ? "" : pct + "%"}</span></div>`;
+    }).join("")}</div>
+    <p class="sub" style="margin-top:8px">A lead: an install used on 5 of the last 14 days with 100+ agent actions in the last 7.
+      It lands in the CRM (Product leads) and on your phone.</p></section>`;
 }
 
 function pipelinePanel(pl) {
@@ -708,17 +730,18 @@ function message(company, link, hosted) {
 
 async function load() {
   if (!key) return login();
-  let d, me, asks, inv, fails, src;
+  let d, me, asks, inv, fails, src, fun;
   try { [d, me, asks, inv, fails, src] = await Promise.all([api("/v1/admin/overview"), api("/v1/admin/me"), api("/v1/admin/team-requests"),
                                                 api("/v1/admin/traction"), api("/v1/admin/install-reports"), api("/v1/admin/sources")]);
-        pl = await api("/v1/admin/contacts").catch(() => null); }
+        pl = await api("/v1/admin/contacts").catch(() => null);
+        fun = await api("/v1/admin/funnel").catch(() => null); }
   catch (e) { if (e.message !== "unauthorized") app.innerHTML = `<main><p class="err">${esc(e.message)}</p></main>`; return; }
   const w = d.week, named = d.pilots.filter((p) => !p.community);   // the community row has its own section
   d_latest = d.latest_version || "";
   opened = new Set([...document.querySelectorAll("details[data-k][open]")].map((x) => x.dataset.k));   // a refresh keeps them open
   app.innerHTML = `
     <div class="top"><div class="in"><div class="brand"><svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg><span>Squid<b>brake</b></span> <small>Pilots</small></div>
-      <nav><a href="#week">This week</a><a href="#alltime" id="alltime-nav">All time</a><a href="#individuals">Individuals</a><a href="#stopped">Stopped</a><a href="#traction">Traction</a><a href="#pilots">Pilots</a><a href="#sources">Sources</a><a href="#requests">Requests</a><a href="#fails">Failed installs</a><a href="#new">New pilot</a></nav>
+      <nav><a href="#week">This week</a><a href="#funnel">Funnel</a><a href="#alltime" id="alltime-nav">All time</a><a href="#individuals">Individuals</a><a href="#stopped">Stopped</a><a href="#traction">Traction</a><a href="#pilots">Pilots</a><a href="#sources">Sources</a><a href="#requests">Requests</a><a href="#fails">Failed installs</a><a href="#new">New pilot</a></nav>
       <span class="spacer"></span>
       <button class="btn" id="crmBtn"></button>
       <button class="btn ghost" id="refresh">Refresh</button><button class="btn ghost" id="pw">${me.has_password ? "Password" : "Set password"}</button>
@@ -727,6 +750,7 @@ async function load() {
     ${me.has_password ? "" : `<div class="notice"><span><b>Set your own password</b> so you don't have to sign in with the server key.</span>
       <button class="btn" id="pw2" style="margin-left:auto">Set password</button></div>`}
     ${overview(d, inv, asks)}
+    ${funnelPanel(fun)}
     ${communityPanel(d)}
     ${stoppedPanel(d.pilots)}
     ${tractionPanel(inv)}

@@ -458,6 +458,10 @@ dialog .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 1
 .tag.would { border-color: var(--serious); color: var(--serious); margin-left: 6px; }
 .stop-banner .btn { background: #fff; color: var(--critical); border-color: #fff; margin-left: auto; font-weight: 600; }
 .lede { color: var(--text-secondary); margin: 0 16px 12px; font-size: 13.5px; max-width: 900px; }
+.saved { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 0 0 14px; padding: 12px 16px;
+  border: 1px solid var(--border); border-left: 4px solid #16803c; border-radius: 0 12px 12px 0; background: var(--surface-1); }
+.saved b { font-size: 15px; } .saved span { color: var(--text-secondary); font-size: 13px; }
+.saved a { margin-left: auto; }
 code { font-family: var(--mono); font-size: .92em; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
 
 /* forms */
@@ -534,6 +538,8 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   <div class="shadow-banner" id="shadowBanner" hidden></div>
 
   <div id="view-activity" class="view">
+  <div class="saved" id="savedCard" hidden><div><b id="savedTitle"></b><br><span>Each one was stopped before it ran.</span></div>
+    <a class="btn" id="savedShare" target="_blank" rel="noopener">Share on LinkedIn</a></div>
   <div class="filters" role="search">
     <div class="seg" id="range" aria-label="Time range">
       <button data-r="1h">1h</button><button data-r="24h">24h</button><button data-r="7d">7d</button><button data-r="30d">30d</button><button data-r="1y">1y</button>
@@ -616,8 +622,9 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
         nothing; <b>approvers</b> also approve held actions and can stop agents; <b>admins</b> manage the team and settings;
         <b>owners</b> also decide who is an admin or owner. Agents can only ask permission and report what they did.
         Roles such as <code>finance</code> let rules require a specific team to approve.</p>
-      <p class="lede">Setting this up for a team? <a href="https://pilots.squidbrake.com/team?from=dashboard" target="_blank"
-        rel="noopener">Tell us about your team</a> and we'll help with rules, approvers and rolling it out, or
+      <p class="lede">Want your teammates to approve from anywhere, on one shared dashboard, their phone or Slack?
+        <a href="https://squidbrake.com/signup?plan=team&amp;from=invite" target="_blank" rel="noopener"><b>Start a 14-day Team
+        trial</b></a>: we host it for your team, no card to start. Or
         <a href="https://calendly.com/pulkitbatra2024/new-meeting-1" target="_blank" rel="noopener">book 15 minutes with the founder</a>.</p>
       <div class="tbl-wrap">
         <table class="events team">
@@ -1685,8 +1692,22 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     }
   }
   // User actions start a new generation and always run.
+  // What Squidbrake stopped in the last 7 days, worth showing (and sharing): only when it stopped something
+  async function loadSaved() {
+    const a = (await api("/v1/reports/week")).actions || {}, n = (a.blocked || 0) + (a.rejected || 0);
+    const card = $("#savedCard");
+    if (!card) return;
+    card.hidden = !n;
+    if (!n) return;
+    $("#savedTitle").textContent = `Squidbrake stopped ${n} risky agent action${n === 1 ? "" : "s"} in the last 7 days`;
+    const text = `My AI coding agents tried ${n} risky action${n === 1 ? "" : "s"} this week (deleting files, force-pushing, `
+      + `reading secrets). Squidbrake stopped ${n === 1 ? "it" : "each one"} before it ran. `
+      + `https://squidbrake.com/go/share`;
+    $("#savedShare").href = `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(text)}`;
+  }
   const reload = () => {
     state.window = null; const g = ++gen;
+    loadSaved().catch(() => {});
     return run(g, () => Promise.all([loadMe().then(() => Promise.all([loadQueue(), loadControls(), loadView()])),
                                      loadStats(g), loadEvents(false, g)]));
   };

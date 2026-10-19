@@ -499,7 +499,7 @@ def test_signup_hosted_waits_for_you_to_approve_it(insights, monkeypatch):
 
 def test_one_website_serves_the_pages_and_the_old_address_sends_people_there(insights, monkeypatch):
     import app as insights_app
-    for path, text in (("/", "Agents propose."), ("/pricing", "Start with Team"), ("/docs.html", "<html"),
+    for path, text in (("/", "Agents propose."), ("/pricing", "Start a 14-day trial"), ("/docs.html", "<html"),
                        ("/security", "<html"), ("/llms.txt", "Squidbrake"), ("/assets/og.png", "")):
         r = insights.get(path)
         assert r.status_code == 200 and text in r.text, path
@@ -512,3 +512,44 @@ def test_one_website_serves_the_pages_and_the_old_address_sends_people_there(ins
     assert r.status_code == 301 and r.headers["location"] == "https://squidbrake.com/signup?from=x"
     assert insights.get("/health", headers=old).status_code == 200                      # installs keep working there
     assert insights.get("/install.sh", headers=old, follow_redirects=False).status_code == 200
+
+
+def test_a_busy_install_becomes_a_lead_once_and_the_funnel_counts_it(insights, monkeypatch):
+    import app as insights_app
+    from datetime import date, timedelta
+    insights_app._requests.clear()
+    told = []
+    monkeypatch.setattr(insights_app, "notify", told.append)
+    admin = {"X-Admin-Key": "admin-test-key"}
+    link = insights.post("/v1/signup", json={"name": "Kai", "email": "kai@lead.dev", "company": "LeadCo"}).json()["link"]
+    code, iid = link.rsplit("/", 1)[1], "ab" * 16
+    insights.post("/v1/pilot/join", json={"code": code, "install_id": iid, "version": "0.13.3", "os": "Linux"})
+    day = lambda n: (date.today() - timedelta(days=n)).isoformat()
+    quiet = {"code": code, "install_id": iid, "usage": {"days": {day(0): {"events": 40}, day(1): {"events": 40}}}}
+    insights.post("/v1/ping", json=quiet)
+    assert not told                                                         # 2 days, 80 actions: not yet
+    busy = {"code": code, "install_id": iid, "usage": {"days": {day(n): {"events": 30} for n in range(6)}}}
+    insights.post("/v1/ping", json=busy)
+    insights.post("/v1/ping", json=busy)                                    # a second ping: no second message
+    assert len(told) == 1 and "Kai" in told[0] and "LeadCo" in told[0]
+    card = next(x for x in insights.get("/v1/admin/contacts", headers=admin).json()["contacts"] if x["name"] == "LeadCo")
+    assert card["lane"] == "Product leads" and card["pilot_code"] == code and card["signal"] == "using"
+    steps = {x["step"]: x["n"] for x in insights.get("/v1/admin/funnel", headers=admin).json()["steps"]}
+    assert steps["Signed up"] >= 1 and steps["Became a lead"] >= 1 and steps["Active this week"] >= 1
+    assert insights.get("/v1/admin/funnel").status_code == 401
+
+
+def test_team_plan_signup_is_a_hosted_trial_waiting_for_approval(insights, monkeypatch):
+    import app as insights_app
+    insights_app._requests.clear()
+    monkeypatch.setattr(insights_app, "notify", lambda text: None)
+    monkeypatch.setattr(insights_app, "CHECKOUT_URL", "https://pay.example/team")
+    r = insights.post("/v1/signup", json={"name": "Ivy", "email": "ivy@trial.dev", "company": "TrialCo",
+                                          "setup": "local", "plan": "team", "source": "invite"}).json()
+    page = insights.get(urlparse(r["link"]).path).text
+    assert '"hosted": true' in page and '"state": "waiting"' in page and '"plan": "team"' in page
+    assert '"checkout": "https://pay.example/team"' in page and '"trial_ends": "20' in page
+    p = next(p for p in insights.get("/v1/admin/overview", headers={"X-Admin-Key": "admin-test-key"}).json()["pilots"]
+             if p.get("email") == "ivy@trial.dev")
+    assert "from invite" in p["note"] and p["plan"] == "team"
+    assert insights.post("/v1/signup", json={"name": "x", "email": "x@t.dev", "company": "x", "plan": "gold"}).status_code == 422

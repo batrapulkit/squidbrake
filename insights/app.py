@@ -35,7 +35,8 @@ HERE = Path(__file__).resolve().parent
 DB = Path(os.getenv("INSIGHTS_DB", HERE / "data" / "insights.db"))
 ADMIN_KEY = os.getenv("INSIGHTS_ADMIN_KEY", "")
 PUBLIC_URL = os.getenv("INSIGHTS_PUBLIC_URL", "").rstrip("/")
-CONTACT = os.getenv("INSIGHTS_CONTACT", "")           # shown on start pages, e.g. "WhatsApp +91..., you@x.com"
+CONTACT = os.getenv("INSIGHTS_CONTACT", "")
+CHECKOUT_URL = os.getenv("INSIGHTS_CHECKOUT_URL", "")  # where a Team plan is paid (e.g. a Stripe payment link)           # shown on start pages, e.g. "WhatsApp +91..., you@x.com"
 CODE_RE = re.compile(r"^[a-z0-9-]{3,40}$")
 
 app = FastAPI(title="Squidbrake Insights", docs_url=None, redoc_url=None)
@@ -396,7 +397,72 @@ async def ping(request: Request):
             c.execute("DELETE FROM catches WHERE install_id=?", (p.install_id,))
             c.executemany("INSERT INTO catches (install_id, t, data) VALUES (?,?,?)",
                           [(p.install_id, x["t"], json.dumps(x)) for x in map(_catch, u["catches"][:60]) if x])
+        lead = lead_check(c, p.install_id)
+    if lead:
+        notify(lead)
     return {"ok": True}
+
+
+# A lead the product found on its own: an install used on LEAD_DAYS of the last 14 days, with LEAD_ACTIONS agent
+# actions in the last 7. It becomes a card in the CRM (lane "Product leads") and a message to you, once per install.
+LEAD_DAYS = int(os.getenv("INSIGHTS_LEAD_DAYS", "5"))
+LEAD_ACTIONS = int(os.getenv("INSIGHTS_LEAD_ACTIONS", "100"))
+
+
+def lead_check(c, install_id: str) -> str | None:
+    if c.execute("SELECT 1 FROM settings WHERE key=?", (f"lead:{install_id}",)).fetchone():
+        return None
+    today = datetime.now(timezone.utc).date()
+    two_weeks, week = (today - timedelta(days=13)).isoformat(), (today - timedelta(days=6)).isoformat()
+    active = actions = 0
+    for day, counts in c.execute("SELECT day, counts FROM days WHERE install_id=? AND day >= ?", (install_id, two_weeks)):
+        n = _int(json.loads(counts).get("events"))
+        active += n > 0
+        actions += n if day >= week else 0
+    if active < LEAD_DAYS or actions < LEAD_ACTIONS:
+        return None
+    i = c.execute("SELECT i.code, i.ref, i.agents, p.company, p.contact, p.email FROM installs i "
+                  "LEFT JOIN pilots p ON p.code = i.code WHERE i.install_id=?", (install_id,)).fetchone()
+    community = i["code"] == COMMUNITY_CODE
+    who = f"An install from {i['ref'] or 'an unknown source'}" if community else (i["contact"] or i["company"])
+    name = f"Active install {install_id[:6]}" if community else (i["company"] or who)
+    said = (f"Used on {active} of the last 14 days, {actions} agent actions in the last 7. "
+            f"Agents: {', '.join(json.loads(i['agents'] or '{}')) or 'not reported'}.")
+    import pipeline
+    pipeline.upsert(c, name, {"name": name, "org": (who if not community else "")[:160], "lane": "Product leads",
+                              "stage": "Active on its own", "signal": "using", "said": said,
+                              "next": "Reach out: ask how the team uses it and offer the Team plan.",
+                              "pilot_code": "" if community else i["code"], "talked": 0}, "product", now())
+    c.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (f"lead:{install_id}", now()))
+    return f"Squidbrake lead: {who} ({name}) is using it on its own: {said} See {PUBLIC_URL}/admin#crm"
+
+
+# ---- the funnel: from sign-up to paying, last N days
+@app.get("/v1/admin/funnel", dependencies=[Depends(admin)])
+def funnel(days: int = 30):
+    days = max(1, min(days, 365))
+    today = datetime.now(timezone.utc).date()
+    since, week = (today - timedelta(days=days - 1)).isoformat(), (today - timedelta(days=6)).isoformat()
+    with db() as c:
+        signups = c.execute("SELECT COUNT(*) FROM pilots WHERE created_at >= ? AND note LIKE 'signup%'", (since,)).fetchone()[0]
+        invited = c.execute("SELECT COUNT(*) FROM pilots WHERE created_at >= ? AND note LIKE '%from invite%'", (since,)).fetchone()[0]
+        joined = {r[0]: r[1] for r in c.execute("SELECT install_id, joined_at FROM installs WHERE joined_at >= ?", (since,))}
+        first_catch = {}
+        for iid, t in c.execute("SELECT install_id, t FROM catches"):
+            if iid in joined and (iid not in first_catch or t < first_catch[iid]):
+                first_catch[iid] = t
+        when = lambda t: datetime.fromisoformat(str(t).replace("Z", "+00:00")).replace(tzinfo=timezone.utc)
+        quick = sum(1 for iid, t in first_catch.items() if when(t) - when(joined[iid][:19]) <= timedelta(days=1))
+        active = {iid for iid, counts in c.execute("SELECT install_id, counts FROM days WHERE day >= ?", (week,))
+                  if _int(json.loads(counts).get("events"))}
+        trials = c.execute("SELECT COUNT(*) FROM pilots WHERE plan='team' AND COALESCE(mrr, 0) = 0").fetchone()[0]
+        paying, mrr = c.execute("SELECT COUNT(*), COALESCE(SUM(mrr), 0) FROM pilots WHERE mrr > 0").fetchone()
+        leads = c.execute("SELECT COUNT(*) FROM settings WHERE key LIKE 'lead:%' AND value >= ?", (since,)).fetchone()[0]
+    return {"days": days, "steps": [
+        {"step": "Signed up", "n": signups}, {"step": "Installed", "n": len(joined)},
+        {"step": "First catch within a day", "n": quick}, {"step": "Active this week", "n": len(active)},
+        {"step": "Became a lead", "n": leads}, {"step": "Invited a teammate", "n": invited},
+        {"step": "On a Team trial", "n": trials}, {"step": "Paying", "n": paying}], "mrr": mrr}
 
 
 DAY_CAP = 100_000      # actions in one day from one install: far above real use, low enough not to swamp the totals
@@ -1014,6 +1080,8 @@ class SignupIn(BaseModel):
     agents: list[str] = Field(default_factory=list, max_length=12)
     website: str = Field(default="", max_length=200)   # a field people don't see: bots fill it in
     setup: str = Field(default="local", pattern="^(local|hosted)$")   # on their computer, or a gateway on our server
+    plan: str = Field(default="", pattern="^(|team)$")                  # team: a 14-day trial of the hosted Team plan
+    source: str = Field(default="", pattern="^[a-z0-9-]{0,30}$")        # e.g. "invite" from the dashboard's Team page
 
 
 @app.post("/v1/signup")
@@ -1048,14 +1116,17 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
         if not s.name.strip() or not s.company.strip():
             raise HTTPException(422, "please add your name and company")
         # hosted: the request waits for you to approve it in the admin (no gateway is started on its own)
-        sub = _subdomain(c, slug) if s.setup == "hosted" and HOSTED_DOMAIN else None
+        setup = "hosted" if s.plan == "team" else s.setup
+        sub = _subdomain(c, slug) if setup == "hosted" and HOSTED_DOMAIN else None
+        trial = (datetime.now(timezone.utc).date() + timedelta(days=14)).isoformat() if s.plan == "team" else None
         c.execute("INSERT INTO pilots (code, company, contact, note, created_at, email, uses_agents, hosted, subdomain, "
-                  "state) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                  "state, plan, trial_ends) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                   (code, s.company.strip(), f"{s.name.strip()} · {email}",
-                   f"signup ({s.setup}) · agents: " + (", ".join(agents) or "-"), now(), email, json.dumps(agents),
-                   int(bool(sub)), sub, "waiting" if sub else None))
+                   f"signup ({s.plan or setup})" + (f" from {s.source}" if s.source else "") + " · agents: "
+                   + (", ".join(agents) or "-"), now(), email, json.dumps(agents),
+                   int(bool(sub)), sub, "waiting" if sub else None, s.plan or None, trial))
     if sub:
-        notify(f"Squidbrake hosted request: {s.name.strip()} ({email}), {s.company.strip()}. "
+        notify(f"Squidbrake {'Team trial' if s.plan else 'hosted'} request: {s.name.strip()} ({email}), {s.company.strip()}. "
                f"Approve it in {PUBLIC_URL}/admin")
     return {"ok": True, "link": f"{public_url(request)}/start/{code}"}
 
@@ -1158,7 +1229,8 @@ def start_page(code: str, request: Request):
     # preview. The page counts a view itself (/seen) once it runs in a browser.
     data = {"company": p["company"], "code": code, "server": public_url(request), "contact": CONTACT,
             "hosted": bool(p["hosted"]), "dashboard": dashboard_url(p["subdomain"]), "state": p["state"],
-            "keys_ready": bool(p["admin_key"]), "keys_shown": bool(p["keys_revealed_at"])}
+            "keys_ready": bool(p["admin_key"]), "keys_shown": bool(p["keys_revealed_at"]),
+            "plan": p["plan"], "trial_ends": p["trial_ends"], "checkout": CHECKOUT_URL if p["plan"] == "team" else ""}
     return HTMLResponse(PAGE("start.html").replace("__DATA__", json.dumps(data).replace("</", "<\\/")))
 
 

@@ -375,11 +375,17 @@ const sb = CONFIG.supabase_url && window.supabase
   ? window.supabase.createClient(CONFIG.supabase_url, CONFIG.supabase_key, { auth: { flowType: "implicit", persistSession: true } })
   : null;
 
-const fail = (msg) => { err.textContent = msg; err.hidden = false; go.disabled = false; go.textContent = "Sign up free"; };
+const fail = (msg) => { err.textContent = msg; err.hidden = false; go.disabled = false;
+  go.textContent = PLAN ? "Start my 14-day Team trial" : "Sign up free"; };
 const state = (html) => { card.innerHTML = `<div class="state">${html}</div>`; };
 
 // signed in: on their computer, or a gateway on our server. Each gets its own setup guide and checklist.
+// ?plan=team (pricing, or the dashboard's "invite your team"): the hosted Team plan, a 14-day trial, no choice to make
+const Q = new URLSearchParams(location.search), PLAN = Q.get("plan") === "team" ? "team" : "",
+      SOURCE = (Q.get("from") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 30);
+if (PLAN) { go.textContent = "Start my 14-day Team trial"; }
 function choose(body, token) {
+  if (PLAN) return finish({ ...body, setup: "hosted", plan: PLAN, source: SOURCE }, token);
   state(`<h2>How do you want to run Squidbrake?</h2><p>Same checks either way. You can switch later.</p>
     <div class="pick">
       <button type="button" data-setup="local"><b>On my computer</b><span>One line installs it. Everything your agents
@@ -388,7 +394,7 @@ function choose(body, token) {
         own address, so your team approves from anywhere. We set it up for you, usually within a day.</span></button>
     </div>`);
   card.querySelectorAll("[data-setup]").forEach((b) => b.addEventListener("click", () =>
-    finish({ ...body, setup: b.dataset.setup }, token)));
+    finish({ ...body, setup: b.dataset.setup, source: SOURCE }, token)));
 }
 
 async function finish(body, token) {
