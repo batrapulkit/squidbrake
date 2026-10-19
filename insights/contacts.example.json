@@ -1,0 +1,33 @@
+{
+  "note": "Example of the Pipeline sync file. The real one lives in a PRIVATE repo (PIPELINE_REPO), never in this public repo.",
+  "contacts": [
+    {
+      "id": "jane-doe",
+      "name": "Jane Doe",
+      "org": "Head of Platform, Example Corp",
+      "lane": "US platform buyers",
+      "stage": "Live call, Oct 20",
+      "signal": "for",
+      "said": "Their agents run Terraform with a human approving every plan. Worried about a destroy hidden in a long plan.",
+      "read": "Real pain, but no commitment yet.",
+      "next": "Send the pilot link and book a check-in for next week.",
+      "pilot_code": "",
+      "loi": 0,
+      "paid_once": 0,
+      "monthly": 0,
+      "conditional": 0,
+      "talked": 1,
+      "needs_outcome": 0,
+      "last_contact": "2026-10-20",
+      "update": "Oct 20 call: agreed to look at a 2-week pilot"
+    },
+    {
+      "name": "John Roe",
+      "org": "CTO, Example Fintech",
+      "lane": "Intros",
+      "stage": "Intro made",
+      "signal": "pending",
+      "talked": 0
+    }
+  ]
+}

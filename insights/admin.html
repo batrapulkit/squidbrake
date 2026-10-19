@@ -356,6 +356,49 @@ details.rules summary::after { content:" ▸"; color:var(--faint); } details.rul
 
 @media (max-width:900px) { .grid2 { grid-template-columns:1fr; } .top nav { display:none; } }
 @media (max-width:720px) { form.new { grid-template-columns:1fr; } main, .top .in { padding-left:16px; padding-right:16px; } }
+
+/* ---------- pipeline: every person you talk to about Squidbrake */
+.pl-lanes { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:18px; align-items:start; }
+.pl-lane h3 { font-size:13px; font-weight:600; margin:0 0 8px; color:var(--ink-2); display:flex; gap:8px; align-items:baseline; }
+.pl-lane h3 span { color:var(--muted); font-weight:450; }
+.pl-card { background:var(--surface); border:1px solid var(--line); border-left:4px solid var(--faint); border-radius:10px;
+           padding:11px 13px; margin-bottom:10px; box-shadow:var(--shadow); }
+.pl-card.g-using { border-left-color:#7c5cd6; } .pl-card.g-for { border-left-color:var(--ok); }
+.pl-card.g-against { border-left-color:var(--bad); } .pl-card.g-pending { border-left-style:dashed; border-left-color:var(--warn); }
+.pl-card .hd { display:flex; gap:8px; align-items:flex-start; }
+.pl-card .nm { font-weight:600; } .pl-card .org { color:var(--muted); font-size:12.5px; }
+.pl-card .hd .btn { margin-left:auto; height:24px; padding:0 8px; font-size:12px; }
+.pl-card .st { display:flex; gap:4px; flex-wrap:wrap; margin:7px 0 4px; }
+.pl-card .st .chip.warn { color:var(--warn); } .pl-card .st .chip.ok { color:var(--ok); }
+.pl-card p { margin:5px 0; font-size:13px; } .pl-card p b { font-weight:600; }
+.pl-card .rd { border-top:1px dashed var(--line); padding-top:6px; margin-top:7px; }
+.pl-card .meta { color:var(--faint); font-size:12px; margin-top:6px; }
+.pl-card details summary { cursor:pointer; color:var(--muted); font-size:12px; margin-top:6px; }
+.pl-card details ul { margin:6px 0 0; padding-left:16px; font-size:12px; color:var(--muted); }
+.pl-tools { display:grid; grid-template-columns:minmax(0, 3fr) minmax(0, 2fr); gap:16px; margin:16px 0 22px; }
+@media (max-width:900px) { .pl-tools { grid-template-columns:1fr; } }
+.pl-tools .surface { padding:14px 16px; }
+.pl-tools h3 { margin:0 0 4px; font-size:14px; }
+.pl-tools textarea { width:100%; min-height:110px; border:1px solid var(--line); border-radius:8px; padding:9px 10px; background:var(--bg); resize:vertical; margin-top:6px; }
+.pl-tools .row { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; align-items:center; }
+.pl-tools select { height:30px; border:1px solid var(--line); border-radius:8px; background:var(--bg); padding:0 8px; max-width:100%; }
+.pl-tools ul { margin:6px 0 0; padding-left:18px; font-size:13px; } .pl-tools li { margin-bottom:5px; }
+.pl-sync { font-size:12.5px; color:var(--muted); } .pl-sync.bad { color:var(--bad); }
+dialog.pl-edit { border:1px solid var(--line); border-radius:14px; padding:0; width:min(660px, calc(100vw - 32px));
+                 background:var(--surface); color:var(--ink); box-shadow:var(--shadow); }
+dialog.pl-edit::backdrop { background:rgba(0,0,0,.4); }
+dialog.pl-edit form { padding:18px 20px; display:grid; grid-template-columns:1fr 1fr; gap:10px 12px; }
+dialog.pl-edit h3 { grid-column:1/-1; margin:0; font-size:16px; }
+dialog.pl-edit .hint { grid-column:1/-1; margin:-4px 0 0; font-size:12.5px; color:var(--muted); }
+dialog.pl-edit label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--muted); }
+dialog.pl-edit label.w { grid-column:1/-1; } dialog.pl-edit label.ck { flex-direction:row; align-items:center; gap:7px; font-size:13px; color:var(--ink-2); }
+dialog.pl-edit input, dialog.pl-edit select, dialog.pl-edit textarea { font-size:13.5px; border:1px solid var(--line); border-radius:8px;
+                 background:var(--bg); padding:7px 9px; color:var(--ink); }
+dialog.pl-edit textarea { min-height:62px; resize:vertical; }
+dialog.pl-edit .nums { grid-column:1/-1; display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px; }
+@media (max-width:560px) { dialog.pl-edit form, dialog.pl-edit .nums { grid-template-columns:1fr 1fr; } }
+dialog.pl-edit .row { grid-column:1/-1; display:flex; gap:8px; justify-content:flex-end; align-items:center; flex-wrap:wrap; }
+dialog.pl-edit .row .err { margin:0 auto 0 0; }
 </style>
 </head>
 <body>
@@ -377,6 +420,152 @@ const ago = (iso) => {
   const s = (Date.now() - new Date(iso).getTime()) / 1000;
   return s < 90 ? "just now" : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 129600 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`;
 };
+// ---------- Pipeline: every person you talk to about Squidbrake (pipeline.py)
+let pl = null, pilotCodes = [];
+const PL_LANES = ["Pilots and testers", "US platform buyers", "India warm network", "Big names and peers", "Team", "Investors and EF"];
+const PL_SIG = { using: "Using or trying", for: "Supports", against: "Against", neutral: "Neutral", pending: "Pending" };
+const money = (n) => "$" + Number(n || 0).toLocaleString("en-US");
+
+function plCard(x) {
+  const p = x.pilot, chips = [
+    x.stage && `<span class="chip">${esc(x.stage)}</span>`,
+    `<span class="chip">${esc(PL_SIG[x.signal] || x.signal)}</span>`,
+    x.loi && `<span class="chip ok">LOI signed</span>`,
+    x.paid_once && `<span class="chip ok">${money(x.paid_once)} paid</span>`,
+    x.monthly && `<span class="chip ok">${money(x.monthly)}/mo</span>`,
+    x.conditional && `<span class="chip">${money(x.conditional)}/mo if it works</span>`,
+    x.needs_outcome && `<span class="chip warn">Outcome missing</span>`].filter(Boolean).join("");
+  return `<div class="pl-card g-${esc(x.signal)}">
+    <div class="hd"><div><div class="nm">${esc(x.name)}</div>${x.org ? `<div class="org">${esc(x.org)}</div>` : ""}</div>
+      <button class="btn" data-pl-edit="${esc(x.id)}">Edit</button></div>
+    <div class="st">${chips}</div>
+    ${x.said ? `<p><b>What happened:</b> ${esc(x.said)}</p>` : ""}
+    ${x.read ? `<p class="rd"><b>Real read:</b> ${esc(x.read)}</p>` : ""}
+    ${x.next ? `<p><b>Next:</b> ${esc(x.next)}</p>` : ""}
+    ${p ? `<p class="meta">Pilot ${esc(p.company)}: ${p.actions} agent actions all time, last seen ${esc(ago(p.last_seen))}</p>` : ""}
+    <div class="meta">${x.last_contact ? `Last contact ${esc(x.last_contact)}. ` : ""}Updated ${esc(ago(x.updated_at))} (${esc(x.source || "")})</div>
+    ${x.log.length ? `<details><summary>History</summary><ul>${x.log.map((l) =>
+      `<li>${esc(l.t.slice(0, 10))}, ${esc(l.source)}: ${esc(l.text)}</li>`).join("")}</ul></details>` : ""}
+  </div>`;
+}
+
+function pipelinePanel(pl) {
+  if (!pl) return `<section id="pipeline"><div class="sec-h"><h2>Pipeline</h2></div>
+    <div class="surface empty">The pipeline didn't load. Refresh, or check the server log.</div></section>`;
+  const t = pl.totals, s = pl.sync, talked = pl.contacts.filter((x) => x.talked), intros = pl.contacts.filter((x) => !x.talked);
+  const lanes = {};
+  talked.forEach((x) => (lanes[x.lane || "Other"] ||= []).push(x));
+  const rank = (l) => { const i = PL_LANES.indexOf(l); return i < 0 ? 99 : i; };
+  const order = Object.keys(lanes).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  const need = pl.contacts.filter((x) => x.needs_outcome);
+  const sync = !s.configured ? `<span class="pl-sync">Sync is off: set PIPELINE_REPO and PIPELINE_TOKEN on the server.</span>`
+    : s.last_error ? `<span class="pl-sync bad">Last sync failed: ${esc(s.last_error)}</span>`
+    : `<span class="pl-sync">${s.last_pull ? `Synced ${esc(ago(s.last_pull))}` : "First sync pending"} from ${esc(s.repo)}</span>`;
+  const stat = (k, v, n, tone = "") => `<div class="stat ${tone}"><div class="k">${k}</div><div class="v">${v}</div>${n ? `<div class="n">${n}</div>` : ""}</div>`;
+  return `<section id="pipeline"><div class="sec-h"><h2>Pipeline</h2><span class="sub">Every person you've talked to about Squidbrake, and what it really means</span>
+      <div class="act">${sync}<button class="btn" id="pl-sync"${s.configured ? "" : " disabled"}>Sync now</button><button class="btn primary" id="pl-add">Add person</button></div></div>
+    <div class="stats">
+      ${stat("Contacts", t.contacts, `${t.talked} talked to, ${t.intros} intros not yet a conversation`, "t-link")}
+      ${stat("Using or trying", t.using, "", "t-accent")}
+      ${stat("Signed LOIs", t.loi, "", t.loi ? "t-ok" : "t-bad")}
+      ${stat("Collected", money(t.paid_once), "one-time", t.paid_once ? "t-ok" : "")}
+      ${stat("Monthly", money(t.monthly), t.conditional ? `plus ${money(t.conditional)}/mo if pilots work` : "committed", t.monthly ? "t-ok" : "t-bad")}
+      ${stat("Outcome missing", t.needs_outcome, t.needs_outcome ? "meetings with no notes yet" : "", t.needs_outcome ? "warn" : "")}
+    </div>
+    <div class="pl-tools">
+      <div class="surface"><h3>Paste a conversation</h3><div class="sub">A call transcript, notes or a DM thread. It's read into a suggested update you check before saving.
+        ${pl.reader ? "The text goes to OpenAI and isn't stored here." : "Needs OPENAI_API_KEY on the server."}</div>
+        <textarea id="pl-text" placeholder="Paste here"></textarea>
+        <div class="row"><select id="pl-who"><option value="">A new person</option>${pl.contacts.slice().sort((a, b) => a.name.localeCompare(b.name))
+          .map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("")}</select>
+          <button class="btn primary" id="pl-read"${pl.reader ? "" : " disabled"}>Read it</button><span class="err" id="pl-err"></span></div></div>
+      <div class="surface"><h3>Needs an outcome</h3>${need.length ? `<ul>${need.map((x) =>
+          `<li><a href="#" data-pl-edit="${esc(x.id)}">${esc(x.name)}</a>${x.last_contact ? `, met ${esc(x.last_contact)}` : ""}</li>`).join("")}</ul>`
+        : `<div class="sub">Nothing waiting. Meetings from your calendar land here until you add what happened.</div>`}
+        ${intros.length ? `<h3 style="margin-top:14px">Intros not yet a conversation</h3><ul>${intros.map((x) =>
+          `<li><a href="#" data-pl-edit="${esc(x.id)}">${esc(x.name)}</a>${x.org ? `, ${esc(x.org)}` : ""}${x.stage ? ` (${esc(x.stage)})` : ""}</li>`).join("")}</ul>` : ""}
+      </div>
+    </div>
+    ${talked.length ? `<div class="pl-lanes">${order.map((l) => `<div class="pl-lane"><h3>${esc(l)} <span>${lanes[l].length}</span></h3>
+      ${lanes[l].map(plCard).join("")}</div>`).join("")}</div>`
+      : `<div class="surface empty">No one yet. Add a person, paste a conversation, or turn on the sync.</div>`}
+  </section>`;
+}
+
+function plEdit(x, suggestion) {
+  const v = { signal: "pending", talked: 1, ...(x || {}), ...(suggestion || {}) };
+  const lanes = [...new Set([...PL_LANES, ...(pl?.contacts || []).map((c) => c.lane).filter(Boolean)])];
+  const fld = (k, label, attrs = "", cls = "") => `<label class="${cls}">${label}<input name="${k}" value="${esc(v[k] ?? "")}" ${attrs}></label>`;
+  const area = (k, label) => `<label class="w">${label}<textarea name="${k}">${esc(v[k] ?? "")}</textarea></label>`;
+  const num = (k, label) => `<label>${label}<input name="${k}" type="number" min="0" step="1" value="${esc(v[k] ?? 0)}"></label>`;
+  const dlg = document.createElement("dialog");
+  dlg.className = "pl-edit";
+  dlg.innerHTML = `<form method="dialog">
+    <h3>${x ? esc(x.name) : "Add a person"}</h3>
+    ${suggestion ? `<p class="hint">Read from the pasted conversation. Check every field: it can be wrong.</p>` : ""}
+    ${x && x.locked?.length ? `<p class="hint">Edited by hand, so the sync won't change: ${esc(x.locked.join(", "))}.</p>` : ""}
+    ${fld("name", "Name", "required maxlength=120")}${fld("org", "Role and company", "maxlength=160")}
+    <label>Group<input name="lane" list="pl-lanes" value="${esc(v.lane || "")}" maxlength="60"><datalist id="pl-lanes">${lanes.map((l) => `<option value="${esc(l)}">`).join("")}</datalist></label>
+    ${fld("stage", "Stage", "maxlength=80 placeholder='Live call, Oct 20'")}
+    <label>Signal<select name="signal">${Object.entries(PL_SIG).map(([k, l]) => `<option value="${k}"${v.signal === k ? " selected" : ""}>${l}</option>`).join("")}</select></label>
+    <label>Last contact<input name="last_contact" type="date" value="${esc(v.last_contact || "")}"></label>
+    ${area("said", "What happened")}${area("read", "Real read")}
+    ${fld("next", "Next step", "maxlength=500", "w")}
+    <label>Pilot<select name="pilot_code"><option value="">None</option>${pilotCodes.map((p) =>
+      `<option value="${esc(p.code)}"${v.pilot_code === p.code ? " selected" : ""}>${esc(p.company)}</option>`).join("")}</select></label>
+    ${fld("update", "What just happened (one line for the history)", "maxlength=600")}
+    <div class="nums">${num("loi", "LOIs signed")}${num("paid_once", "Paid one-time ($)")}${num("monthly", "Monthly ($)")}${num("conditional", "Monthly if it works ($)")}</div>
+    <label class="ck"><input type="checkbox" name="talked"${v.talked ? " checked" : ""}> We've actually talked (untick for an intro)</label>
+    <label class="ck"><input type="checkbox" name="needs_outcome"${v.needs_outcome ? " checked" : ""}> Outcome missing</label>
+    <div class="row"><span class="err"></span>${x ? `<button type="button" class="btn ghost" data-act="del">Delete</button>` : ""}
+      <button type="button" class="btn" data-act="cancel">Cancel</button><button class="btn primary" data-act="save">Save</button></div>
+  </form>`;
+  document.body.appendChild(dlg);
+  const close = () => { dlg.close(); dlg.remove(); };
+  dlg.addEventListener("cancel", () => setTimeout(() => dlg.remove(), 0));
+  dlg.querySelector("[data-act=cancel]").onclick = close;
+  dlg.querySelector("[data-act=del]")?.addEventListener("click", async () => {
+    if (!confirm(`Delete ${x.name} and their history from the pipeline?`)) return;
+    await api(`/v1/admin/contacts/${encodeURIComponent(x.id)}`, { method: "DELETE" }); close(); load();
+  });
+  dlg.querySelector("form").onsubmit = async (e) => {
+    e.preventDefault();
+    const f = new FormData(e.target), body = x ? { id: x.id } : {};
+    for (const k of ["name", "org", "lane", "stage", "signal", "said", "read", "next", "pilot_code", "update", "last_contact"]) body[k] = (f.get(k) || "").trim();
+    for (const k of ["loi", "paid_once", "monthly", "conditional"]) body[k] = Math.max(0, parseInt(f.get(k) || "0", 10) || 0);
+    body.talked = f.get("talked") ? 1 : 0; body.needs_outcome = f.get("needs_outcome") ? 1 : 0;
+    if (!body.last_contact) delete body.last_contact;
+    if (!body.update) delete body.update;
+    try { await api("/v1/admin/contacts", { method: "POST", body: JSON.stringify(body) }); }
+    catch (err) { if (err.message !== "unauthorized") dlg.querySelector(".err").textContent = err.message; return; }
+    close();
+    if (suggestion) { const t = document.getElementById("pl-text"); if (t) t.value = ""; }
+    load();
+  };
+  dlg.showModal();
+}
+
+function bindPipeline() {
+  const byId = (id) => pl?.contacts.find((c) => c.id === id);
+  document.querySelectorAll("[data-pl-edit]").forEach((b) => b.onclick = (e) => { e.preventDefault(); plEdit(byId(b.dataset.plEdit)); });
+  document.getElementById("pl-add")?.addEventListener("click", () => plEdit(null));
+  document.getElementById("pl-sync")?.addEventListener("click", async (e) => {
+    e.target.textContent = "Syncing...";
+    try { await api("/v1/admin/contacts/pull", { method: "POST" }); } catch (err) { if (err.message !== "unauthorized") alert(err.message); }
+    load();
+  });
+  document.getElementById("pl-read")?.addEventListener("click", async (e) => {
+    const text = document.getElementById("pl-text").value.trim(), who = document.getElementById("pl-who").value, err = document.getElementById("pl-err");
+    if (text.length < 20) return (err.textContent = "Paste a bit more first.");
+    err.textContent = ""; e.target.textContent = "Reading...";
+    try {
+      const r = await api("/v1/admin/contacts/read", { method: "POST", body: JSON.stringify({ text, contact_id: who || null }) });
+      plEdit(who ? byId(who) : null, { ...r.suggestion, update: "From a pasted conversation" });
+    } catch (x) { if (x.message !== "unauthorized") err.textContent = x.message; }
+    e.target.textContent = "Read it";
+  });
+}
+
 let d_latest = "";
 let range = (() => { try { return localStorage.getItem("sb-range") || "all"; } catch { return "all"; } })();
 function setRange(r) { range = r; try { localStorage.setItem("sb-range", r); } catch {} load(); }
@@ -478,14 +667,15 @@ async function load() {
   if (!key) return login();
   let d, me, asks, inv, fails, src;
   try { [d, me, asks, inv, fails, src] = await Promise.all([api("/v1/admin/overview"), api("/v1/admin/me"), api("/v1/admin/team-requests"),
-                                                api("/v1/admin/traction"), api("/v1/admin/install-reports"), api("/v1/admin/sources")]); }
+                                                api("/v1/admin/traction"), api("/v1/admin/install-reports"), api("/v1/admin/sources")]);
+        pl = await api("/v1/admin/contacts").catch(() => null); }
   catch (e) { if (e.message !== "unauthorized") app.innerHTML = `<main><p class="err">${esc(e.message)}</p></main>`; return; }
   const w = d.week, named = d.pilots.filter((p) => !p.community);   // the community row has its own section
   d_latest = d.latest_version || "";
   opened = new Set([...document.querySelectorAll("details[data-k][open]")].map((x) => x.dataset.k));   // a refresh keeps them open
   app.innerHTML = `
     <div class="top"><div class="in"><div class="brand"><svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg><span>Squid<b>brake</b></span> <small>Pilots</small></div>
-      <nav><a href="#week">This week</a><a href="#alltime" id="alltime-nav">All time</a><a href="#individuals">Individuals</a><a href="#stopped">Stopped</a><a href="#traction">Traction</a><a href="#pilots">Pilots</a><a href="#sources">Sources</a><a href="#requests">Requests</a><a href="#fails">Failed installs</a><a href="#new">New pilot</a></nav>
+      <nav><a href="#week">This week</a><a href="#pipeline">Pipeline</a><a href="#alltime" id="alltime-nav">All time</a><a href="#individuals">Individuals</a><a href="#stopped">Stopped</a><a href="#traction">Traction</a><a href="#pilots">Pilots</a><a href="#sources">Sources</a><a href="#requests">Requests</a><a href="#fails">Failed installs</a><a href="#new">New pilot</a></nav>
       <span class="spacer"></span>
       <button class="btn ghost" id="refresh">Refresh</button><button class="btn ghost" id="pw">${me.has_password ? "Password" : "Set password"}</button>
       <button class="btn ghost" id="logout">Sign out</button></div></div>
@@ -493,6 +683,7 @@ async function load() {
     ${me.has_password ? "" : `<div class="notice"><span><b>Set your own password</b> so you don't have to sign in with the server key.</span>
       <button class="btn" id="pw2" style="margin-left:auto">Set password</button></div>`}
     ${overview(d, inv, asks)}
+    ${pipelinePanel(pl)}
     ${communityPanel(d)}
     ${stoppedPanel(d.pilots)}
     ${tractionPanel(inv)}
@@ -518,6 +709,8 @@ async function load() {
       command arguments, file names, code, prompts or tool inputs here.</p>
     </main>`;
   document.getElementById("refresh").onclick = load;
+  pilotCodes = named.map((p) => ({ code: p.code, company: p.company }));
+  bindPipeline();
   document.getElementById("logout").onclick = async () => {
     await fetch("/v1/admin/logout", { method: "POST", headers: { "X-Admin-Key": key } }).catch(() => {});
     store.set(""); key = ""; login();
@@ -1123,7 +1316,8 @@ async function copy(text, btn) {
 }
 
 load();
-setInterval(() => { if (key && !document.getElementById("res")?.style.display.includes("block")) load(); }, 60000);
+setInterval(() => { if (key && !document.getElementById("res")?.style.display.includes("block") && !document.querySelector("dialog[open]")
+                         && !document.getElementById("pl-text")?.value) load(); }, 60000);
 </script>
 </body>
 </html>

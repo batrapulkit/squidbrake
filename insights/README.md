@@ -47,3 +47,20 @@ docker run -d -p 8090:8090 -v insights-data:/data \
 ```
 
 Put it behind HTTPS (pilot installs only send to `https://` servers).
+
+## Pipeline (admin → Pipeline)
+
+Every person you talk to about Squidbrake, in one place: what they said, an honest read, the next step, LOIs and money,
+and their pilot's usage when they have one. See [`pipeline.py`](pipeline.py).
+
+- **Sync:** a daily Claude task writes `contacts.json` (format: [`contacts.example.json`](contacts.example.json)) to a
+  **private** repo; this service pulls it every 15 minutes and on "Sync now". Keep that file out of this public repo.
+- **By hand:** "Add person" or "Edit" on any card. A field you edit by hand is kept: the sync won't overwrite it.
+- **Paste a conversation:** a transcript or DM thread is read by OpenAI into a suggested update you check before saving.
+  The pasted text isn't stored.
+
+```bash
+-e PIPELINE_REPO=you/your-private-pipeline-repo \
+-e PIPELINE_TOKEN=github_pat_...      # fine-grained, that repo only, Contents: read-only
+-e OPENAI_API_KEY=sk-...              # optional, for "Paste a conversation"
+```

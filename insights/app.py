@@ -1192,6 +1192,11 @@ def install_sh():
     return PlainTextResponse(PAGE("install.sh"), media_type="text/plain; charset=utf-8")
 
 
+# every person you talk to about Squidbrake: synced from a private repo, edited here, or read from a pasted conversation
+import pipeline  # noqa: E402
+pipeline.setup(app, db, admin, now)
+
+
 @app.get("/health")
 def health():
     return {"ok": True}
