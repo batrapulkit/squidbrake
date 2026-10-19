@@ -333,6 +333,8 @@ section[id]{scroll-margin-top:60px}
 .oss-facts li{padding-top:14px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
 .oss-facts b{font-weight:500;letter-spacing:-0.02em}
 .oss-facts span{color:var(--muted);font-size:.88rem}
+.traction{margin:0 0 64px}
+.traction b{font-size:clamp(1.6rem,3vw,2.2rem);line-height:1.1;color:var(--ink)}
 @media (max-width:900px){ .oss-facts{grid-template-columns:repeat(2,minmax(0,1fr))} }
 @media (max-width:560px){ .oss-facts{grid-template-columns:1fr;gap:16px} }
 .team dt{font-weight:500;font-size:1.08rem;letter-spacing:-0.02em;line-height:1.25}
@@ -745,9 +747,17 @@ section .fine code,.faq code{font:400 .92em var(--mono)}
 
 <div class="wrap">
   <section id="proof" class="trust">
+    <p class="kicker">Traction, measured on 19 October 2026</p>
+    <ul class="oss-facts traction" aria-label="Traction">
+      <li><b>688</b><span>agent actions checked in design-partner pilots since 7 October</span></li>
+      <li><b>15</b><span>risky actions stopped before they ran, each decided by a person</span></li>
+      <li><b>11 ms</b><span>added per action at median on a live pilot gateway (65 ms at p95)</span></li>
+      <li><b>1 signed LOI</b><span>from a managed service provider that resells to its clients</span></li>
+      <li><b>5,000+</b><span>PyPI downloads since 1 October</span></li>
+    </ul>
     <div class="trust-row">
       <div>
-        <p class="pilot">In pilot with a consumer services company running agents in production.</p>
+        <p class="pilot">Four design-partner pilots with engineering teams in the US, Canada and India.</p>
         <p class="kicker">Backed by</p>
         <ul class="backers">
           <li><a class="ef-row" href="https://www.joinef.com" target="_blank" rel="noopener"><img src="assets/ef-mark.png" alt="" width="34" height="34">Entrepreneur First</a></li>
@@ -755,17 +765,18 @@ section .fine code,.faq code{font:400 .92em var(--mono)}
       </div>
       <div>
         <p class="kicker">The team</p>
-        <p class="founders">Pulkit Batra and Nikhil Bishnoi, cofounders</p>
+        <p class="founders">Pulkit Batra and Karishma Sinha, cofounders</p>
         <dl class="team">
-          <div><dt>Fourth company</dt><dd>The first was cybersecurity for SMBs, started at 19.</dd></div>
+          <div><dt>Pulkit: fourth company</dt><dd>The first was cybersecurity for SMBs, started at 19.</dd></div>
           <div><dt>6+ years in cybersecurity</dt><dd>Across the systems agents now touch.</dd></div>
+          <div><dt>Karishma: ex-Qualcomm</dt><dd>Ran her own startup with paying customers. Leads sales.</dd></div>
         </dl>
       </div>
     </div>
     <ul class="oss-facts" aria-label="Open source">
       <li><b>Apache-2.0</b><span>Every line that decides is open source</span></li>
-      <li><b>15 contributors</b><span>From the community, reviewed before merge</span></li>
-      <li><b>35 releases</b><span>Since 29 September 2026. <a href="changelog">Changelog</a></span></li>
+      <li><b>24 contributors</b><span>From the community, reviewed before merge</span></li>
+      <li><b>57 releases</b><span>Since 29 September 2026. <a href="changelog">Changelog</a></span></li>
       <li><b>Tested on every change</b><span>Linux, macOS and Windows, three Python versions, plus the incident replays</span></li>
       <li><b>Published by CI</b><span>No upload token anywhere, with provenance. <a href="security">Security</a></span></li>
     </ul>
