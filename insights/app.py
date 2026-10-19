@@ -980,10 +980,6 @@ class SignupIn(BaseModel):
     setup: str = Field(default="local", pattern="^(local|hosted)$")   # on their computer, or a gateway on our server
 
 
-FREE_MAIL = {"gmail.com", "googlemail.com", "yahoo.com", "hotmail.com", "outlook.com", "live.com", "icloud.com",
-             "aol.com", "proton.me", "protonmail.com", "gmx.com", "yandex.com", "mail.com", "rediffmail.com"}
-
-
 @app.post("/v1/signup")
 def signup(s: SignupIn, request: Request, authorization: str = Header(default="")):
     """The public sign-up: a pilot code whose start page has the local install line. The install joins with it, so
@@ -1003,8 +999,6 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
         email = user["email"].strip().lower()           # the verified address, not what the page says
     if not EMAIL_RE.match(email):
         raise HTTPException(422, "that email address doesn't look right")
-    if email.rsplit("@", 1)[1] in FREE_MAIL:
-        raise HTTPException(422, "please use your work email")
     agents = [a.strip().lower()[:30] for a in s.agents if a.strip()]
     slug = re.sub(r"[^a-z0-9]+", "-", s.company.lower()).strip("-")[:20].strip("-") or "team"
     code = f"{slug}-{secrets.token_hex(6)}"

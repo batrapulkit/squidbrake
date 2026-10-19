@@ -428,7 +428,7 @@ def test_signup_needs_a_work_email_and_gives_the_local_setup_page(insights):
     insights_app._requests.clear()
     sign = lambda email, **kw: insights.post("/v1/signup", json={"name": "Asha", "email": email, "company": "Acme",
                                                                  "agents": ["claude-code", "cursor"], **kw})
-    assert sign("asha@gmail.com").status_code == 422                       # work email only
+    assert "/start/" in sign("asha@gmail.com").json()["link"]                # any email, Gmail too
     assert sign("not-an-email").status_code == 422
     assert "link" not in sign("bot@acme.com", website="spam").json()      # a bot: thanked, nothing kept
     r = sign("asha@acme.com").json()
@@ -457,7 +457,7 @@ def test_with_supabase_only_a_verified_sign_in_signs_up_and_signing_in_again_giv
     assert post().status_code == 401                                         # not signed in
     assert post("forged").status_code == 401
     assert post("unconfirmed").status_code == 401
-    assert post("gmail").status_code == 422
+    assert "/start/" in post("gmail").json()["link"]                         # Gmail is fine
     first = post("good").json()["link"]
     insights_app._requests.clear()                                          # 5 an hour from one address
     assert post("good", {}).json()["link"] == first                          # back again: same page, no form needed

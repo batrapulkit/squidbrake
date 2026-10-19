@@ -180,13 +180,13 @@ footer a { color:var(--muted); }
 
     <section class="card" id="card">
       <div class="k">Squidbrake Console</div>
-      <h2>Get your setup line</h2>
-      <p class="sub">Tell us a little about you. We'll email you a sign-in link, then give you the one line that sets
-        Squidbrake up on your computer.</p>
+      <h2>Sign up free</h2>
+      <p class="sub">Tell us a little about you. We'll email you a sign-in link, then you pick where it runs: on your
+        computer, or on our server with a dashboard for your team.</p>
       <form id="f" novalidate>
         <label>Your name<input type="text" name="name" required maxlength="80" autocomplete="name"></label>
         <label>Company<input type="text" name="company" required maxlength="80" autocomplete="organization"></label>
-        <label class="full">Work email<input type="email" name="email" required maxlength="200" autocomplete="email"></label>
+        <label class="full">Email<input type="email" name="email" required maxlength="200" autocomplete="email"></label>
         <fieldset class="full"><legend>Agents you use</legend>
           <div class="chips">
             <label><input type="checkbox" name="agents" value="claude-code"><span>claude-code</span></label>
@@ -368,8 +368,6 @@ let brakeFlash = () => {};
 })();
 
 // ---------------------------------------------------------------- sign-up
-const FREE_MAIL = ["gmail.com", "googlemail.com", "yahoo.com", "hotmail.com", "outlook.com", "live.com", "icloud.com",
-                   "aol.com", "proton.me", "protonmail.com", "gmx.com", "yandex.com", "mail.com", "rediffmail.com"];
 const card = document.getElementById("card"), f = document.getElementById("f"), err = document.getElementById("err"),
       go = document.getElementById("go");
 const esc = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -417,7 +415,6 @@ f.addEventListener("submit", async (e) => {
                  company: (d.get("company") || "").trim(), agents: d.getAll("agents"), website: d.get("website") || "" };
   if (!body.name || !body.company) return fail("Please add your name and company.");
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(body.email)) return fail("That email address doesn't look right.");
-  if (FREE_MAIL.includes(body.email.split("@")[1])) return fail("Please use your work email.");
   go.disabled = true; go.textContent = "One moment…";
   try {
     if (!sb) return choose(body);
