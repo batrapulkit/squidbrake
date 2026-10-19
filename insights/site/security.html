@@ -80,7 +80,7 @@ h2.plain{display:block;margin:44px 0 6px}
 <div class="wrap">
   <header>
     <a class="brand" href="./" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>squidbrake</a>
-    <nav aria-label="Site"><a href="./#how">How it works</a><a href="docs">Docs</a><a href="security">Security</a><a href="pricing">Pricing</a><a href="changelog">Changelog</a><a href="https://github.com/batrapulkit/squidbrake" target="_blank" rel="noopener">GitHub</a><a href="/signup"><b>Sign up free</b></a></nav>
+    <nav aria-label="Site"><a href="./#how">How it works</a><a href="docs">Docs</a><a href="security">Security</a><a href="pricing">Pricing</a><a href="changelog">Changelog</a><a href="/signup"><b>Sign up free</b></a></nav>
   </header>
 
   <main>
@@ -137,16 +137,16 @@ h2.plain{display:block;margin:44px 0 6px}
 
     <h2 class="plain">The software itself</h2>
     <dl class="facts">
-      <div><dt>Open source</dt><dd>Apache-2.0. Every line that decides is on <a href="https://github.com/batrapulkit/squidbrake" target="_blank" rel="noopener">GitHub</a>.</dd></div>
+      <div><dt>Open source</dt><dd>Apache-2.0. Every line that decides is on .</dd></div>
       <div><dt>Published by CI, not from a laptop</dt><dd>PyPI releases are built and published by GitHub Actions with PyPI trusted publishing, so no upload token exists anywhere, and each release carries a provenance attestation. The Docker image is built by GitHub Actions too.</dd></div>
-      <div><dt>Tested on every change</dt><dd>Hundreds of tests run on Linux, macOS and Windows, on three Python versions, for every change. So do the replays of public incidents and a <a href="https://github.com/batrapulkit/squidbrake/tree/main/bench/chains" target="_blank" rel="noopener">benchmark</a> against normal permissions.</dd></div>
+      <div><dt>Tested on every change</dt><dd>Hundreds of tests run on Linux, macOS and Windows, on three Python versions, for every change. So do the replays of public incidents and a benchmark against normal permissions.</dd></div>
     </dl>
 
     <h2 class="plain">What it can't stop</h2>
     <p>Squidbrake guards what goes through it. Know where that ends:</p>
     <ul>
       <li><b>Paths you didn't connect.</b> An agent with its own unguarded shell, credentials or network access can act outside it. Connect every tool path; lockdown makes the agents' managed settings require it.</li>
-      <li><b>Harm hidden inside a tool.</b> A compromised MCP server can add a side effect after a person approves the visible call, like a hidden BCC. No gateway in front of the tool can see that; it's in our <a href="https://github.com/batrapulkit/squidbrake/tree/main/incidents" target="_blank" rel="noopener">incident replays</a> as not stopped.</li>
+      <li><b>Harm hidden inside a tool.</b> A compromised MCP server can add a side effect after a person approves the visible call, like a hidden BCC. No gateway in front of the tool can see that; it's in our incident replays as not stopped.</li>
       <li><b>A person who says yes.</b> A hold makes sure someone sees the action and the reason. It can't make them read it.</li>
       <li><b>Hosted apps that only sign in through a browser.</b> Slack, HubSpot and other OAuth-only MCP servers can't be connected by URL yet.</li>
       <li><b>An agent built to attack you.</b> It's designed for the common case: a cooperative agent that makes a mistake or follows instructions it read somewhere. For an agent you don't trust at all, run it in a sandbox too.</li>
@@ -167,11 +167,11 @@ h2.plain{display:block;margin:44px 0 6px}
     </table>
 
     <h2 class="plain">Reporting a vulnerability</h2>
-    <p>Please don't open a public issue. Report it privately on GitHub: <a href="https://github.com/batrapulkit/squidbrake/security/advisories/new" target="_blank" rel="noopener">Security → Report a vulnerability</a>, or email <a href="mailto:hello@squidbrake.com">hello@squidbrake.com</a>. You'll hear back within a few days. Especially interesting: a way to run something a rule blocks or holds, approving without an approver key, secrets stored unredacted, or rewriting the audit trail without the check noticing.</p>
+    <p>Please don't open a public issue. Email it privately to <a href="mailto:hello@squidbrake.com?subject=Security%20report">hello@squidbrake.com</a>. You'll hear back within a few days. Especially interesting: a way to run something a rule blocks or holds, approving without an approver key, secrets stored unredacted, or rewriting the audit trail without the check noticing.</p>
 
   </main>
 
-  <footer><span>© 2026 Squidbrake, Inc. Apache-2.0.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="./">Home</a> · <a href="docs">Docs</a> · <a href="security">Security</a> · <a href="pricing">Pricing</a> · <a href="changelog">Changelog</a> · <a href="https://github.com/batrapulkit/squidbrake" target="_blank" rel="noopener">GitHub</a> · <a href="mailto:hello@squidbrake.com">hello@squidbrake.com</a></span></footer>
+  <footer><span>© 2026 Squidbrake, Inc. Apache-2.0.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="./">Home</a> · <a href="docs">Docs</a> · <a href="security">Security</a> · <a href="pricing">Pricing</a> · <a href="changelog">Changelog</a> ·  · <a href="mailto:hello@squidbrake.com">hello@squidbrake.com</a></span></footer>
 </div>
 </body>
 </html>
