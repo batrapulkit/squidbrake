@@ -385,7 +385,7 @@ function choose(body, token) {
       <button type="button" data-setup="local"><b>On my computer</b><span>One line installs it. Everything your agents
         do stays on your machine. Best for one person.</span></button>
       <button type="button" data-setup="hosted"><b>On our server (hosted)</b><span>We run your gateway and dashboard at your
-        own address, so your team approves from anywhere. Your agents connect to it.</span></button>
+        own address, so your team approves from anywhere. We set it up for you, usually within a day.</span></button>
     </div>`);
   card.querySelectorAll("[data-setup]").forEach((b) => b.addEventListener("click", () =>
     finish({ ...body, setup: b.dataset.setup }, token)));
@@ -400,11 +400,6 @@ async function finish(body, token) {
   if (r.ok) { state(`<div class="big">✓</div><h2>Thanks!</h2><p>We'll be in touch.</p>`); return; }
   state(`<div class="big">!</div><h2>That didn't work</h2><p>${esc(typeof j.detail === "string" ? j.detail : "Please try again.")}</p>
          <p><a href="/signup">Start again</a></p>`);
-  if (r.status === 409 && body.setup === "hosted") {     // hosted is full: the same thing on their computer
-    card.querySelector(".state").insertAdjacentHTML("beforeend",
-      `<p><button type="button" class="go" id="local">Set it up on my computer instead</button></p>`);
-    document.getElementById("local").addEventListener("click", () => finish({ ...body, setup: "local" }, token));
-  }
 }
 
 f.addEventListener("submit", async (e) => {

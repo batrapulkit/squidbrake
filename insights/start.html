@@ -244,6 +244,10 @@ function hostedPage() {
       keys.innerHTML = `<p>Your keys were already shown on this page. Your dashboard: <a href="${esc(D.dashboard)}/dashboard" target="_blank" rel="noopener">${esc(D.dashboard)}</a>
         (sign in with your <b>admin</b> key). Lost them? Reply to the message this link came in and we'll issue new ones.</p>
         <p class="note">For step 2, put your <b>agent</b> key in place of <code>${keyless}</code>.</p>`;
+    } else if (s.state === "waiting") {
+      keys.innerHTML = `<p>✓ Got it. We're setting up your dashboard at <b>${esc(D.dashboard)}</b> by hand and will email
+        you when it's ready (usually within a day). This page updates by itself, so you can also just come back to it.</p>`;
+      setTimeout(poll, 30000);
     } else if (!s.keys_ready) {
       keys.innerHTML = `<p>⏳ Setting up your dashboard at <b>${esc(D.dashboard)}</b>. This page updates by itself (under a minute).</p>`;
       setTimeout(poll, 4000);
@@ -275,7 +279,7 @@ function hostedPage() {
     current = cmds(k.agent_key); show(box.dataset.os);
     document.getElementById("keyNote").textContent = "Your agent key is filled in. Paste the whole line.";
   };
-  render({ keys_ready: D.keys_ready, keys_shown: D.keys_shown });
+  render({ state: D.state, keys_ready: D.keys_ready, keys_shown: D.keys_shown });
 }
 
 // the setup checklist: ticks are kept in this browser only (a convenience; nothing is sent)

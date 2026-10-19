@@ -116,7 +116,28 @@ seed_community()
 
 HOSTED_DOMAIN = os.getenv("HOSTED_DOMAIN", "")        # e.g. app.squidbrake.com (with a *.app wildcard DNS record)
 HOSTED_MAX = int(os.getenv("HOSTED_MAX", "6"))         # each hosted gateway uses ~50-100 MB of memory
-LIVE = "hosted=1 AND state != 'deleting'"               # takes a hosted slot
+LIVE = "hosted=1 AND state NOT IN ('deleting', 'waiting')"     # takes a hosted slot (waiting: not approved yet)
+
+# Where you hear about a hosted request or a demo request: an ntfy.sh topic URL (push to your phone), or a Slack or
+# Discord webhook. Unset: they only show on the admin page.
+NOTIFY_URL = os.getenv("INSIGHTS_NOTIFY_URL", "")
+
+
+def notify(text: str) -> None:
+    if not NOTIFY_URL:
+        return
+
+    def send():
+        try:
+            if "ntfy" in NOTIFY_URL:
+                req = urllib.request.Request(NOTIFY_URL, data=text.encode(), method="POST")
+            else:
+                req = urllib.request.Request(NOTIFY_URL, data=json.dumps({"text": text, "content": text}).encode(),
+                                             headers={"Content-Type": "application/json"}, method="POST")
+            urllib.request.urlopen(req, timeout=10).close()
+        except Exception:                                   # noqa: BLE001  (the request is on the admin page anyway)
+            pass
+    threading.Thread(target=send, daemon=True).start()
 
 
 def _subdomain(c, slug: str) -> str:
@@ -449,6 +470,18 @@ def delete_pilot(code: str):
     return {"deleted": code}
 
 
+@app.post("/v1/admin/pilots/{code}/approve", dependencies=[Depends(admin)])
+def approve_hosted(code: str):
+    """A hosted request from sign-up waits for you: approving it lets provision.py start the gateway."""
+    with _lock, db() as c:
+        if not c.execute("SELECT 1 FROM pilots WHERE code=? AND hosted=1 AND state='waiting'", (code,)).fetchone():
+            raise HTTPException(404, "no hosted request waiting with that code")
+        if c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0] >= HOSTED_MAX:
+            raise HTTPException(409, f"all {HOSTED_MAX} hosted slots are in use: delete one, or raise HOSTED_MAX")
+        c.execute("UPDATE pilots SET state='requested' WHERE code=?", (code,))
+    return {"ok": True}
+
+
 # ---- hosted gateways: provision.py (on the server, with Docker) asks what to do and reports back
 
 @app.get("/v1/admin/provision", dependencies=[Depends(admin)])
@@ -658,7 +691,8 @@ def overview(request: Request):
             # took their keys -> their agent's actions arrive
             ever = sum(i["total_events"] or 0 for i in mine)
             if p["state"] != "running":
-                stage = {"requested": "setting up", "failed": "setup failed", "deleting": "deleting"}.get(p["state"], stage)
+                stage = {"requested": "setting up", "failed": "setup failed", "deleting": "deleting",
+                         "waiting": "waiting for approval"}.get(p["state"], stage)
             elif not p["keys_revealed_at"]:
                 stage = "opened link" if p["page_views"] else "link sent"
             elif not ever:
@@ -951,6 +985,8 @@ def team_request(t: TeamRequestIn, request: Request):
                   "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
                   (now(), t.name.strip(), t.email.strip(), t.company.strip(), t.team_size.strip(), t.agents.strip(),
                    t.note.strip(), t.source if t.source in SOURCES else ""))
+    notify(f"Squidbrake demo request: {t.name.strip()} ({t.email.strip()}), {t.company.strip() or 'no company'}. "
+           f"See {PUBLIC_URL}/admin")
     return {"ok": True}
 
 
@@ -1010,13 +1046,16 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
             raise HTTPException(409, "this email already signed up: use the link you got, or write to us")
         if not s.name.strip() or not s.company.strip():
             raise HTTPException(422, "please add your name and company")
-        sub = _hosted_slot(c, slug, "our hosted servers are full right now: pick \"On my computer\" (same features), "
-                                    "or write to us and we'll make room") if s.setup == "hosted" else None
+        # hosted: the request waits for you to approve it in the admin (no gateway is started on its own)
+        sub = _subdomain(c, slug) if s.setup == "hosted" and HOSTED_DOMAIN else None
         c.execute("INSERT INTO pilots (code, company, contact, note, created_at, email, uses_agents, hosted, subdomain, "
                   "state) VALUES (?,?,?,?,?,?,?,?,?,?)",
                   (code, s.company.strip(), f"{s.name.strip()} · {email}",
                    f"signup ({s.setup}) · agents: " + (", ".join(agents) or "-"), now(), email, json.dumps(agents),
-                   int(bool(sub)), sub, "requested" if sub else None))
+                   int(bool(sub)), sub, "waiting" if sub else None))
+    if sub:
+        notify(f"Squidbrake hosted request: {s.name.strip()} ({email}), {s.company.strip()}. "
+               f"Approve it in {PUBLIC_URL}/admin")
     return {"ok": True, "link": f"{public_url(request)}/start/{code}"}
 
 

@@ -593,6 +593,7 @@ const STAGE = { "active": ["Active", "s-active"], "installed": ["Installed, no a
   "quiet": ["Gone quiet", "s-quiet"], "opened link": ["Opened the link", "s-opened"], "link sent": ["Link sent", "s-sent"],
   "left": ["Left the pilot", "s-left"], "setting up": ["Setting up", "s-installed"], "keys taken": ["Took keys, not connected yet", "s-opened"],
   "setup failed": ["Setup failed", "s-quiet"], "deleting": ["Deleting", "s-left"],
+  "waiting for approval": ["Asked for hosted: approve it", "s-opened"],
   "installed · agent not connected": ["Installed · agent not connected", "s-quiet"],
   "agent connected": ["Agent connected, no actions yet", "s-installed"] };
 
@@ -718,6 +719,10 @@ async function load() {
   document.getElementById("pw").onclick = () => passwordDialog(!me.has_password);
   document.getElementById("pw2")?.addEventListener("click", () => passwordDialog(true));
   document.getElementById("nf").onsubmit = create;
+  document.querySelectorAll("[data-approve]").forEach((b) => b.onclick = async () => {
+    try { await api(`/v1/admin/pilots/${encodeURIComponent(b.dataset.approve)}/approve`, { method: "POST" }); load(); }
+    catch (e) { if (e.message !== "unauthorized") alert(e.message); }
+  });
   document.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => {
     if (!confirm(b.dataset.warn)) return;
     await api(`/v1/admin/pilots/${encodeURIComponent(b.dataset.del)}`, { method: "DELETE" }); load();
@@ -1143,7 +1148,7 @@ function row(p) {
       ${p.latency_ms && p.latency_ms.p50 != null ? `<div class="mini">gateway p50 ${p.latency_ms.p50} ms · p95 ${p.latency_ms.p95} ms</div>` : ""}
       ${p.trend !== null && p.trend !== undefined ? `<div class="mini"><span class="${p.trend >= 0 ? "up" : "down"}">${p.trend > 0 ? "+" : ""}${p.trend}%</span> vs last week</div>` : ""}</td>
     <td>${agents}</td><td>${hits}</td>
-    <td><div class="acts">${followUp(p) ? `<button class="btn" data-copy="${esc(followUp(p))}" title="A message for where they are now">Follow-up</button>` : ""}
+    <td><div class="acts">${p.state === "waiting" ? `<button class="btn primary" data-approve="${esc(p.code)}" title="Starts their hosted gateway">Approve hosted</button>` : ""}${followUp(p) ? `<button class="btn" data-copy="${esc(followUp(p))}" title="A message for where they are now">Follow-up</button>` : ""}
       <button class="btn" data-copy="${esc(p.link)}">Copy link</button>
       <button class="btn" data-mrr="${p.mrr || ""}" data-code="${esc(p.code)}" data-name="${esc(p.company)}" title="Monthly revenue from this pilot">${p.mrr ? "$" + Number(p.mrr).toLocaleString() + "/mo" : "Set revenue"}</button>
       <button class="icon-btn" title="Delete pilot" data-del="${esc(p.code)}" data-warn="${esc(deleteWarning(p))}">Delete</button></div></td></tr>
