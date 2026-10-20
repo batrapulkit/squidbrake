@@ -83,7 +83,7 @@ class Conn:
         self.c.execute(translate(script, False))
         # every table here: row level security on, with no policies, so only this server's own login reaches them
         self.c.execute("""DO $$ DECLARE t text; BEGIN
-            FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = current_schema() LOOP
+            FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND NOT rowsecurity LOOP
               EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
               IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
                 EXECUTE format('REVOKE ALL ON %I FROM anon, authenticated', t);

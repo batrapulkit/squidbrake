@@ -1111,7 +1111,8 @@ class BookingIn(BaseModel):
 
 
 def calendly_get(uri: str) -> dict:
-    req = urllib.request.Request(uri, headers={"Authorization": f"Bearer {CALENDLY_TOKEN}"})
+    # Calendly's firewall refuses Python's default User-Agent (error 1010)
+    req = urllib.request.Request(uri, headers={"Authorization": f"Bearer {CALENDLY_TOKEN}", "User-Agent": "squidbrake.com"})
     with urllib.request.urlopen(req, timeout=8) as r:
         return json.loads(r.read()).get("resource") or {}
 
