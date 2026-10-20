@@ -1510,8 +1510,7 @@ window.SQUIDBRAKE_WAITLIST={
   let renderer;
   try{ if(!window.THREE) throw 0; renderer=new THREE.WebGLRenderer({canvas,antialias:true}); }
   catch(e){ document.documentElement.classList.add('no-webgl'); tags.forEach((t,i)=>{ t.el.style.left=SLOT_FALLBACK[i][0]+'%'; t.el.style.top=SLOT_FALLBACK[i][1]+'%'; }); return; }
-  let dpr=Math.min(window.devicePixelRatio||1,1.5);   // 2x screens drew 4x the pixels; 1.5x looks the same here
-  renderer.setPixelRatio(dpr);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
   renderer.outputEncoding=THREE.sRGBEncoding;
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure=1.08;
@@ -1878,25 +1877,9 @@ window.SQUIDBRAKE_WAITLIST={
   let visible=true; new IntersectionObserver(es=>{visible=es[0].isIntersecting;}).observe(stage);
 
   const clock=new THREE.Clock(); let lastTick=0, prevT=0; const calmTint=new THREE.Color(0x4f6b5a), alarmTint=new THREE.Color(0xc0402a);
-  // Speed: 30 fps while nobody scrolls or moves the mouse, and if frames still come slowly on this computer, a lower
-  // resolution, then a cheaper glass (transmission draws the whole scene a second time every frame)
-  let lastInput=performance.now(), n=0, lastFrame=0, slowFrames=0, measured=0, quality=0;
-  ['scroll','pointermove','pointerdown','touchmove','wheel'].forEach(e=>addEventListener(e,()=>{lastInput=performance.now();},{passive:true}));
-  function degrade(){
-    quality++;
-    if(quality===1){ dpr=1; renderer.setPixelRatio(dpr); resize(); }
-    else if(quality===2){ glass.transmission=0; glass.transparent=true; glass.opacity=0.32; glass.needsUpdate=true; }
-  }
   function frame(){
     requestAnimationFrame(frame);
     if(!visible) return;
-    const now=performance.now(), active=now-lastInput<1500;
-    if(!active && (++n)%2) return;
-    if(active && lastFrame && quality<2){
-      measured++; if(now-lastFrame>28) slowFrames++;
-      if(measured>=45){ if(slowFrames>measured*0.5) degrade(); measured=0; slowFrames=0; }
-    }
-    lastFrame=active?now:0;
     const t=reduce?2:clock.getElapsedTime(); const dt=reduce?0.016:Math.min(0.05,t-prevT); prevT=t;
     uniforms.uTime.value=t*1.4;
 
@@ -1963,7 +1946,7 @@ window.SQUIDBRAKE_WAITLIST={
     // rings
     rings.forEach(r=>{ if(r.userData.t<0) return; r.userData.t+=0.016; const k=r.userData.t/1.1; if(k>=1){ r.userData.t=-1; r.material.opacity=0; return; } const sc=1+k*0.75; r.scale.set(sc,sc,sc); r.material.opacity=(1-k)*(1-k)*0.85; });
 
-    if(exit<0.995) renderer.render(scene,camera);    // scrolled past the hero: nothing to draw
+    renderer.render(scene,camera);
     updateOverlay();
   }
   const vA=new THREE.Vector3(), vB=new THREE.Vector3();
