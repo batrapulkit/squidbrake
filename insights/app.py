@@ -1094,6 +1094,56 @@ def team_request(t: TeamRequestIn, request: Request):
     return {"ok": True}
 
 
+# A call booked on Calendly from the website (site/assets/booking.js): kept with the demo requests and sent to you.
+# With INSIGHTS_CALENDLY_TOKEN (Calendly > Integrations > API & Webhooks > personal access token) the booking is
+# looked up at Calendly, so its name, email and time are Calendly's, not the page's; without it, what the page had.
+CALENDLY_TOKEN = os.getenv("INSIGHTS_CALENDLY_TOKEN", "")
+CALENDLY_API = "https://api.calendly.com/"
+
+
+class BookingIn(BaseModel):
+    event: str = Field(default="", max_length=300)
+    invitee: str = Field(default="", max_length=300)
+    page: str = Field(default="", max_length=60)
+    name: str = Field(default="", max_length=80)
+    email: str = Field(default="", max_length=200)
+    company: str = Field(default="", max_length=120)
+
+
+def calendly_get(uri: str) -> dict:
+    req = urllib.request.Request(uri, headers={"Authorization": f"Bearer {CALENDLY_TOKEN}"})
+    with urllib.request.urlopen(req, timeout=8) as r:
+        return json.loads(r.read()).get("resource") or {}
+
+
+@app.post("/v1/booking")
+def booking(b: BookingIn, request: Request):
+    if not b.invitee.startswith(CALENDLY_API) or (b.event and not b.event.startswith(CALENDLY_API)):
+        raise HTTPException(422, "not a Calendly booking")
+    if not _rate(_requests, request, 5):
+        raise HTTPException(429, "too many requests from here: try again in an hour")
+    name, email, company, when = b.name.strip(), b.email.strip().lower(), b.company.strip(), ""
+    if CALENDLY_TOKEN:
+        try:
+            inv = calendly_get(b.invitee)
+            name, email = inv.get("name") or name, (inv.get("email") or email).lower()
+            when = (calendly_get(b.event).get("start_time") or "")[:16].replace("T", " ") if b.event else ""
+        except Exception:                                   # noqa: BLE001  (an unknown booking: not saved)
+            raise HTTPException(422, "Calendly doesn't know this booking") from None
+    with _lock, db() as c:
+        if c.execute("SELECT 1 FROM settings WHERE key=?", (f"booking:{b.invitee}",)).fetchone():
+            return {"ok": True}                              # the same booking, sent twice
+        c.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (f"booking:{b.invitee}", now()))
+        c.execute("INSERT INTO team_requests (created_at, name, email, company, team_size, agents, note, source) "
+                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                  (now(), name or "Booked a call", email, company, "", "",
+                   (f"Call booked for {when} UTC" if when else "Call booked") + f" on Calendly from {b.page or 'the site'}. "
+                   + ("" if CALENDLY_TOKEN else "Name and email as typed on the page; details in Calendly."), "calendly"))
+    notify(f"Squidbrake call booked: {name or 'someone'}{f' ({email})' if email else ''}"
+           f"{f', {company}' if company else ''}{f', at {when} UTC' if when else ''}. See {PUBLIC_URL}/admin")
+    return {"ok": True}
+
+
 # Sign-in by email link (Supabase Auth), so a sign-up's email is really theirs and they can sign in again for their
 # link. Both empty: the form signs people up straight away, on the email they typed.
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")

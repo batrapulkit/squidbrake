@@ -588,3 +588,32 @@ def test_stripe_payments_reach_the_pilot_they_were_for(insights, monkeypatch):
     assert pilot()["mrr"] == 0 and "cancelled" in told[-1]
     assert insights_app.checkout_link("https://buy.stripe.com/x", code, "a@b.c") == \
         f"https://buy.stripe.com/x?client_reference_id={code}&prefilled_email=a%40b.c"
+
+
+def test_a_call_booked_on_calendly_is_saved_and_sent_once(insights, monkeypatch):
+    import app as insights_app
+    insights_app._requests.clear()
+    told = []
+    monkeypatch.setattr(insights_app, "notify", told.append)
+    admin = {"X-Admin-Key": "admin-test-key"}
+    import time
+    inv = f"https://api.calendly.com/scheduled_events/E1/invitees/I-{time.time_ns()}"
+    assert insights.post("/v1/booking", json={"invitee": "https://evil.example/x"}).status_code == 422
+    body = {"event": "https://api.calendly.com/scheduled_events/E1", "invitee": inv, "page": "/",
+            "name": "Ola", "email": "ola@typed.dev", "company": "OlaCo"}
+    assert insights.post("/v1/booking", json=body).status_code == 200                 # no token: what the page had
+    assert insights.post("/v1/booking", json=body).status_code == 200                 # sent twice: one row
+    rows = [r for r in insights.get("/v1/admin/team-requests", headers=admin).json() if r["source"] == "calendly"]
+    assert len([r for r in rows if r["email"] == "ola@typed.dev"]) == 1 and len(told) == 1 and "Ola" in told[0]
+    # with a token, Calendly's own name, email and time
+    monkeypatch.setattr(insights_app, "CALENDLY_TOKEN", "t")
+    monkeypatch.setattr(insights_app, "calendly_get", lambda uri: {"name": "Real Name", "email": "Real@Calendly.dev"}
+                        if "invitees" in uri else {"start_time": "2026-10-22T09:30:00.000000Z"})
+    insights_app._requests.clear()
+    insights.post("/v1/booking", json=body | {"invitee": inv + "-2"})
+    assert "Real Name (real@calendly.dev)" in told[-1] and "2026-10-22 09:30 UTC" in told[-1]
+
+    def unknown(uri):
+        raise RuntimeError("404")
+    monkeypatch.setattr(insights_app, "calendly_get", unknown)
+    assert insights.post("/v1/booking", json=body | {"invitee": inv + "-3"}).status_code == 422   # made up
