@@ -117,7 +117,9 @@ with db() as _c:
                         ("admin_key", "TEXT"), ("agent_key", "TEXT"), ("keys_revealed_at", "TEXT"), ("error", "TEXT"),
                         ("mrr", "INTEGER NOT NULL DEFAULT 0"), ("paying_since", "TEXT"),
                         # self-serve signups (/signup): who, and which agents they said they use
-                        ("email", "TEXT"), ("uses_agents", "TEXT"), ("plan", "TEXT"), ("trial_ends", "TEXT")):
+                        ("email", "TEXT"), ("uses_agents", "TEXT"), ("plan", "TEXT"), ("trial_ends", "TEXT"),
+                        # Stripe (/v1/stripe/webhook): who pays, and one-time payments such as a paid pilot
+                        ("stripe_customer", "TEXT"), ("paid_once", "INTEGER NOT NULL DEFAULT 0")):
         if _col not in _have:
             _c.execute(f"ALTER TABLE pilots ADD COLUMN {_col} {_type}")
 
@@ -1266,7 +1268,8 @@ def start_page(code: str, request: Request):
     data = {"company": p["company"], "code": code, "server": public_url(request), "contact": CONTACT,
             "hosted": bool(p["hosted"]), "dashboard": dashboard_url(p["subdomain"]), "state": p["state"],
             "keys_ready": bool(p["admin_key"]), "keys_shown": bool(p["keys_revealed_at"]),
-            "plan": p["plan"], "trial_ends": p["trial_ends"], "checkout": CHECKOUT_URL if p["plan"] == "team" else ""}
+            "plan": p["plan"], "trial_ends": p["trial_ends"],
+            "checkout": checkout_link(CHECKOUT_URL, code, p["email"]) if p["plan"] == "team" else ""}
     return HTMLResponse(PAGE("start.html").replace("__DATA__", json.dumps(data).replace("</", "<\\/")))
 
 
@@ -1353,6 +1356,75 @@ def install_sh():
 # every person you talk to about Squidbrake: synced from a private repo, edited here, or read from a pasted conversation
 import pipeline  # noqa: E402
 pipeline.setup(app, db, admin, now)
+
+
+# --------------------------------------------------------------------------- Stripe
+# A payment on a Stripe Payment Link reaches the pilot it was for: the link carries the pilot's code
+# (client_reference_id), else the email they paid with is matched. A subscription sets the pilot's MRR (so its hosted
+# gateway's license runs a year), a one-time payment (the paid pilot) is added to what they paid, and a cancelled
+# subscription sets MRR back to 0. Each sends you a message.
+#   Stripe > Developers > Webhooks: https://squidbrake.com/v1/stripe/webhook, events checkout.session.completed and
+#   customer.subscription.deleted; its signing secret goes in INSIGHTS_STRIPE_WEBHOOK_SECRET.
+STRIPE_SECRET = os.getenv("INSIGHTS_STRIPE_WEBHOOK_SECRET", "")
+
+
+def checkout_link(url: str, code: str, email: str | None = None) -> str:
+    """A Payment Link that says which pilot is paying (and fills in their email)."""
+    if not url:
+        return ""
+    from urllib.parse import quote
+    return f"{url}{'&' if '?' in url else '?'}client_reference_id={quote(code)}" + \
+        (f"&prefilled_email={quote(email)}" if email else "")
+
+
+def stripe_signed(payload: bytes, header: str, secret: str, now_s: float | None = None) -> bool:
+    """Stripe's signature: v1 = HMAC-SHA256(secret, "<t>.<payload>"), within 5 minutes."""
+    parts = dict(p.split("=", 1) for p in header.split(",") if "=" in p)
+    sigs = [p.split("=", 1)[1] for p in header.split(",") if p.startswith("v1=")]
+    try:
+        t = int(parts.get("t", ""))
+    except ValueError:
+        return False
+    if abs((now_s or time.time()) - t) > 300:
+        return False
+    want = hmac.new(secret.encode(), f"{t}.".encode() + payload, hashlib.sha256).hexdigest()
+    return any(hmac.compare_digest(want, s) for s in sigs)
+
+
+@app.post("/v1/stripe/webhook")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    if not STRIPE_SECRET or not stripe_signed(payload, request.headers.get("stripe-signature", ""), STRIPE_SECRET):
+        raise HTTPException(400, "bad signature")
+    ev = json.loads(payload)
+    obj = (ev.get("data") or {}).get("object") or {}
+    told = None
+    with _lock, db() as c:
+        if ev.get("type") == "checkout.session.completed":
+            code = obj.get("client_reference_id") or ""
+            email = ((obj.get("customer_details") or {}).get("email") or "").strip().lower()
+            p = c.execute("SELECT code, company FROM pilots WHERE code=?", (code,)).fetchone() if code else None
+            p = p or (c.execute("SELECT code, company FROM pilots WHERE lower(email)=?", (email,)).fetchone()
+                      if email else None)
+            amount = _int(obj.get("amount_total")) // 100
+            who = p["company"] if p else (email or "someone")
+            if p and obj.get("mode") == "subscription":
+                c.execute("UPDATE pilots SET mrr=?, paying_since=COALESCE(paying_since, ?), stripe_customer=? WHERE code=?",
+                          (amount, now(), obj.get("customer"), p["code"]))
+            elif p:
+                c.execute("UPDATE pilots SET paid_once=COALESCE(paid_once, 0)+?, stripe_customer=COALESCE(?, stripe_customer) "
+                          "WHERE code=?", (amount, obj.get("customer"), p["code"]))
+            told = (f"Squidbrake payment: {who} paid ${amount:,}"
+                    f"{'/month' if obj.get('mode') == 'subscription' else ' (one-time)'}"
+                    f"{'' if p else ' (no pilot matched: set it in the admin)'}.")
+        elif ev.get("type") == "customer.subscription.deleted":
+            p = c.execute("SELECT code, company FROM pilots WHERE stripe_customer=?", (obj.get("customer"),)).fetchone()
+            if p:
+                c.execute("UPDATE pilots SET mrr=0 WHERE code=?", (p["code"],))
+                told = f"Squidbrake: {p['company']} cancelled their subscription."
+    if told:
+        notify(told)
+    return {"ok": True}
 
 
 @app.get("/health")

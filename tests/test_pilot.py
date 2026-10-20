@@ -548,8 +548,43 @@ def test_team_plan_signup_is_a_hosted_trial_waiting_for_approval(insights, monke
                                           "setup": "local", "plan": "team", "source": "invite"}).json()
     page = insights.get(urlparse(r["link"]).path).text
     assert '"hosted": true' in page and '"state": "waiting"' in page and '"plan": "team"' in page
-    assert '"checkout": "https://pay.example/team"' in page and '"trial_ends": "20' in page
+    assert '"checkout": "https://pay.example/team?client_reference_id=' in page and '"trial_ends": "20' in page
     p = next(p for p in insights.get("/v1/admin/overview", headers={"X-Admin-Key": "admin-test-key"}).json()["pilots"]
              if p.get("email") == "ivy@trial.dev")
     assert "from invite" in p["note"] and p["plan"] == "team"
     assert insights.post("/v1/signup", json={"name": "x", "email": "x@t.dev", "company": "x", "plan": "gold"}).status_code == 422
+
+
+def test_stripe_payments_reach_the_pilot_they_were_for(insights, monkeypatch):
+    import hashlib
+    import hmac as _hmac
+    import time as _time
+    import app as insights_app
+    insights_app._requests.clear()
+    told = []
+    monkeypatch.setattr(insights_app, "notify", told.append)
+    monkeypatch.setattr(insights_app, "STRIPE_SECRET", "whsec_test")
+    admin = {"X-Admin-Key": "admin-test-key"}
+    code = insights.post("/v1/signup", json={"name": "Pia", "email": "pia@paying.dev", "company": "PayCo"}).json()["link"].rsplit("/", 1)[1]
+    pilot = lambda: next(p for p in insights.get("/v1/admin/overview", headers=admin).json()["pilots"] if p["code"] == code)
+
+    def send(event, secret="whsec_test", t=None):
+        body = json.dumps(event).encode()
+        t = int(t or _time.time())
+        sig = _hmac.new(secret.encode(), f"{t}.".encode() + body, hashlib.sha256).hexdigest()
+        return insights.post("/v1/stripe/webhook", content=body, headers={"Stripe-Signature": f"t={t},v1={sig}"})
+
+    paid_pilot = {"type": "checkout.session.completed", "data": {"object": {
+        "mode": "payment", "amount_total": 99900, "client_reference_id": code, "customer": "cus_1"}}}
+    assert send(paid_pilot, secret="wrong").status_code == 400                       # not from Stripe
+    assert send(paid_pilot, t=_time.time() - 3600).status_code == 400                # replayed later
+    assert send(paid_pilot).status_code == 200
+    assert pilot()["paid_once"] == 999 and pilot()["mrr"] == 0 and "PayCo paid $999 (one-time)" in told[-1]
+    team = {"type": "checkout.session.completed", "data": {"object": {                 # matched by email, no code
+        "mode": "subscription", "amount_total": 49900, "customer": "cus_1", "customer_details": {"email": "PIA@paying.dev"}}}}
+    send(team)
+    assert pilot()["mrr"] == 499 and pilot()["paying_since"] and "/month" in told[-1]
+    send({"type": "customer.subscription.deleted", "data": {"object": {"customer": "cus_1"}}})
+    assert pilot()["mrr"] == 0 and "cancelled" in told[-1]
+    assert insights_app.checkout_link("https://buy.stripe.com/x", code, "a@b.c") == \
+        f"https://buy.stripe.com/x?client_reference_id={code}&prefilled_email=a%40b.c"

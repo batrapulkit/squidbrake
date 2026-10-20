@@ -705,7 +705,7 @@ const PILOT_PAY_URL = "https://buy.stripe.com/eVq9AT1Lqfs0eIQ0f73Ru0e";
 const payMessage = (p) => `Hi ${p.contact ? p.contact.split(/[ ,]/)[0] : p.company + " team"}! Here's the link for the `
   + `4-week paid pilot: $999, with the hosted Team plan, a setup call and rules written with you. It's credited to your `
   + `first month if you continue:
-${PILOT_PAY_URL}`;
+${PILOT_PAY_URL}?client_reference_id=${encodeURIComponent(p.code)}`;
 
 function followUp(p) {
   const hi = `Hi ${p.contact ? p.contact.split(/[ ,]/)[0] : p.company + " team"}! `;
