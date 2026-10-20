@@ -762,12 +762,34 @@ def downloads(line: str) -> list[str]:
     return _downloaded(read(line).commands)
 
 
+def _redirected(words: list[str]) -> list[str]:
+    """Where a command's output goes into a file: `> f`, `>> f`, `>f`, `2> f`, and `tee f`."""
+    out = []
+    for i, x in enumerate(words):
+        if m := re.fullmatch(r"[0-9&]?>>?(.*)", x):
+            target = m.group(1) or (words[i + 1] if i + 1 < len(words) else "")
+            out.append(_unquote(target))
+    if words and _program(words[0]) in ("tee", "tee-object"):
+        out += [_unquote(x) for x in words[1:] if not x.startswith("-")]
+    return [x for x in out if x and x.lower() not in _HARMLESS_TARGETS and not x.startswith("&")]
+
+
+def writes(line: str) -> list[str]:
+    """Files a command line writes with a shell: redirected output (`cat > x.py <<EOF`, `echo ... >> f`) and tee."""
+    return list(dict.fromkeys(f for c in read(line).commands for f in _redirected(c.words)))
+
+
+FETCHERS = {"curl", "wget", "invoke-webrequest", "iwr", "invoke-restmethod", "irm"}
+
+
 def _downloaded(cmds: list[Command]) -> list[str]:
     out = []
     for c in cmds:
         w, low = c.words, [x.lower() for x in c.words]
         url = next((_unquote(x) for x in w[1:] if re.match(r"^['\"]?https?://", x)), "")
         name = url.split("?")[0].rstrip("/").rsplit("/", 1)[-1] if url else ""
+        if c.program in FETCHERS and url:
+            out += _redirected(w)                       # `curl URL > x.sh`, `wget -qO- URL >> x.sh`
         if c.program == "curl":
             for i, x in enumerate(w):
                 if (x == "--output" or re.match(r"^-[A-Za-z]*o$", x)) and i + 1 < len(w):     # -o, -so, -sSLo
@@ -778,7 +800,8 @@ def _downloaded(cmds: list[Command]) -> list[str]:
                 out.append(name)
         elif c.program == "wget" and url:
             target = next((w[i + 1] for i, x in enumerate(w[:-1]) if x in ("-O", "--output-document")), None)
-            out.append(_unquote(target) if target else name)
+            if not re.search(r"-\w*O-", " ".join(w)):         # -O- / -qO-: to stdout (a redirect, above)
+                out.append(_unquote(target) if target else name)
         elif c.program in ("invoke-webrequest", "iwr"):
             out += [_unquote(w[i + 1]) for i, x in enumerate(low[:-1]) if x == "-outfile"]
     return [x for x in out if x and x != "-"]
@@ -859,9 +882,15 @@ def _script_of(words: list[str]) -> str | None:
     base = re.sub(r"[0-9.]+$", "", prog)
     if words[0].startswith(("./", ".\\", "/", "~")) or _looks_like_path(prog) and prog != "":
         return words[0] if _looks_like_path(prog) or words[0].startswith(("./", ".\\")) else None
+    if prog in ("uv", "poetry", "pipenv", "pdm", "hatch", "rye") and words[1:2] == ["run"]:
+        inner = [w for w in words[2:] if not w.startswith("-")]
+        return _script_of(inner) or (inner[0] if inner and re.search(r"\.(py|pyw)$", inner[0]) else None)
     if base not in SCRIPT_RUNNERS and prog not in SCRIPT_RUNNERS:
         return None
     rest = words[1:]
+    if base in ("pwsh", "powershell"):                  # its flags take values (-ExecutionPolicy Bypass): only -File
+        named = next((rest[i + 1] for i, w in enumerate(rest[:-1]) if w.lower() in ("-file", "-f")), None)
+        return named or next((w for w in rest if w.lower().endswith(".ps1")), None)
     if prog == "deno" and rest[:1] == ["run"]:
         rest = rest[1:]
     i = 0

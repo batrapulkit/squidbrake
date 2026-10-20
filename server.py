@@ -1713,14 +1713,20 @@ def written_then_run(conn, ev: "EventIn", client: str) -> list[dict]:
             inp = json.loads(r.input) if r.input else {}
         except ValueError:
             continue
-        if r.name not in WRITES_A_FILE + EDITS_A_FILE:      # a shell command: what it downloaded
-            got = commands.downloads(commands.command_of(inp) or "")
-            hit = next((sp for sp in scripts for d in got if norm(os.path.join(cwd, d) if cwd else d) ==
-                        norm(os.path.join(cwd, sp) if cwd and not os.path.isabs(sp) else sp)), None)
-            if hit:
+        if r.name not in WRITES_A_FILE + EDITS_A_FILE:      # a shell command: what it downloaded or wrote
+            line_was = commands.command_of(inp) or ""
+            same = lambda d, sp: norm(os.path.join(cwd, d) if cwd else d) == \
+                norm(os.path.join(cwd, sp) if cwd and not os.path.isabs(sp) else sp)
+            got = commands.downloads(line_was)
+            if hit := next((sp for sp in scripts for d in got if same(d, sp)), None):
                 return [{"check": "downloaded_then_run_command", "effect": "review",
                          "message": f"This runs, sources or makes runnable {hit}, a file downloaded in this "
-                                    f"conversation ({(commands.command_of(inp) or '')[:100]}). Read it first."}]
+                                    f"conversation ({line_was[:100]}). Read it first."}]
+            if cc["written_then_run"] != "off" and \
+                    (hit := next((sp for sp in scripts for d in commands.writes(line_was) if same(d, sp)), None)):
+                return [{"check": "written_then_run_command", "effect": cc["written_then_run"],
+                         "message": f"This command runs {hit}, a script the agent wrote with a shell command in this "
+                                    f"conversation ({line_was[:100]}). Read it before it runs."}]
             continue
         path = str(inp.get("file_path") or inp.get("path") or "") if isinstance(inp, dict) else ""
         hit = wanted.get(norm(path)) or next((sp for sp in scripts if not cwd and path and

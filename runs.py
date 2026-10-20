@@ -4,7 +4,8 @@ commands too: `make clean` is only as safe as the `clean` target's recipe.
 
   make [TARGET...]              the recipe lines of each target and the targets it depends on (Makefile, -f, -C)
   npm run X / npm test / ...    the package.json script, with its pre/post scripts (npm, pnpm, yarn, bun)
-  bash x.sh / sh x.sh / ./x.sh  the script's lines
+  a script, however it's run     its lines: bash x.sh, ./x.sh, /abs/x.sh, source x.sh, . x.sh, exec ./x.sh,
+                                sudo bash x.sh, pwsh -File x.ps1 (shell and PowerShell scripts; any name or extension)
 
 Used by the hooks (claude_hook.py, agent_hook.py), which send the result as metadata["runs"]:
   [{"via": "Makefile target `clean`", "lines": ["rm -rf build/ ~/"]}]
@@ -12,8 +13,10 @@ The gateway reads each line like the command itself (server.py command_signals).
 stricter: what's found here is checked in addition to the command, never instead of it.
 
 Only reads files, never runs anything. Bounded: MAX_LINES lines and MAX_FILE_BYTES per file; anything it can't read
-is left out. Not covered: scripts in other languages (python x.py), recipes built at run time ($(shell ...), eval),
-make variables beyond simple `NAME = value` definitions.
+is left out. Not read: scripts in other languages (python x.py, node x.js): if the agent wrote or changed one in this
+conversation, running it waits for a person instead (server.written_then_run); one that was already there runs like
+any other program. Also not read: recipes built at run time ($(shell ...), eval), make variables beyond simple
+`NAME = value` definitions.
 
 `include` files are followed (a few levels deep, cycles skipped) and conditionals are read on BOTH sides, so a
 recipe hidden in an included file or in either branch of an `ifeq` is still checked.
@@ -247,8 +250,11 @@ def _node(words: list[str], cwd: Path) -> list[dict]:
 
 # --------------------------------------------------------------------------- shell scripts
 
+OTHER_LANGUAGES = re.compile(r"(?i)\.(py|pyw|js|mjs|cjs|ts|tsx|jsx|rb|pl|php|lua|r)$")   # not read as shell lines
+
+
 def _script(path_word: str, cwd: Path) -> list[dict]:
-    p = Path(path_word.strip("'\""))
+    p = Path(os.path.expanduser(path_word.strip("'\"")))
     p = p if p.is_absolute() else cwd / p
     text = _read(p)
     if text is None:
@@ -275,12 +281,12 @@ def expand(line: str, cwd: str | None = None) -> list[dict]:
                 out += _make(words, base)
             elif prog in NODE_PM:
                 out += _node(words, base)
-            elif prog in SHELLS and len(words) > 1 and not words[1].startswith("-") and words[1].endswith(".sh"):
-                out += _script(words[1], base)
-            elif words and (words[0].startswith("./") or words[0].startswith(".\\")) and words[0].endswith(".sh"):
-                out += _script(words[0], base)
         except Exception:
             continue
+    sourced = [c.words[1] for c in reading.commands if c.program in ("source", ".") and len(c.words) > 1]
+    for path_word in dict.fromkeys(reading.scripts + sourced):
+        if not OTHER_LANGUAGES.search(path_word):
+            out += _script(path_word, base)
     total, kept = 0, []
     for item in out:                                                # bounded, in order
         lines = [l[:1000] for l in item["lines"] if l][: MAX_LINES - total]

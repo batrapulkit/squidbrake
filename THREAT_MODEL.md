@@ -99,8 +99,12 @@ reach.
 These are known and not fixed. Some can't be fixed at this layer.
 
 1. **Code that isn't read before it runs.**
-   - A Python, Node or other program that was already on disk runs without being read.
-   - If the agent wrote it in the same conversation, it's held.
+   - Shell and PowerShell scripts are read line by line before they run, however they're run: `bash x.sh`, `./x.sh`,
+     a full path, `source x.sh`, `. x.sh`, `exec ./x.sh`, `sudo bash x.sh`, `pwsh -File x.ps1`.
+   - A Python, Node or other-language script isn't read. One that was already on disk before the conversation runs
+     like any other program: this is the limit.
+   - If the agent wrote it in the same conversation, with its edit tools or a shell command (`cat > x.py <<EOF`,
+     `echo ... > x.js`, `tee`), it's held before it runs (`python x.py`, `node x.js`, `uv run x.py`).
    - If the agent changed it, it's flagged but runs (`edited_then_run: warn`), because fixing a script and running it
      is everyday work. Set `edited_then_run: review` to hold those too. **(test)** `test_threat_model.py`
    - Inline code (`python -c`) is held as hidden.
@@ -108,7 +112,7 @@ These are known and not fixed. Some can't be fixed at this layer.
      (they can't be read before it's downloaded). They're recorded (`unknown: warn`), not held: holding every
      install would hold everyday work. Use `npm install --ignore-scripts` where you can.
    - A file downloaded and then run, sourced or made runnable in the same conversation is held
-     (`curl -o x.sh URL` then `sh x.sh`). The same file run in a later conversation isn't connected to its
+     (`curl -o x.sh URL` or `curl URL > x.sh`, then `sh x.sh`). The same file run in a later conversation isn't connected to its
      download.
 2. **What runs inside an approved or allowed program.** One allowed `terraform apply` or deploy script can do
    anything its credentials allow. Squidbrake sees the command, not what the program does afterwards.
