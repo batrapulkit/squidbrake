@@ -1368,7 +1368,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 SITE = HERE / "site"
 SITE_PAGES = {"": "index.html", "docs": "docs.html", "security": "security.html", "pricing": "pricing.html",
-              "changelog": "changelog.html", "index.md": "index.md", "llms.txt": "llms.txt"}
+              "changelog": "changelog.html", "about": "about.html", "index.md": "index.md", "llms.txt": "llms.txt"}
 SITE_PAGES |= {v: v for v in SITE_PAGES.values()}
 OLD_HOSTS = {h.strip().lower() for h in os.getenv("INSIGHTS_REDIRECT_HOSTS", "").split(",") if h.strip()}
 STAY = ("/v1/", "/install.", "/go/", "/health", "/assets/")       # installs and posted links call these by address

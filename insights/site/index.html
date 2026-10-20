@@ -336,7 +336,12 @@ section[id]{scroll-margin-top:60px}
 .traction{margin:0 0 64px}
 .traction b{font-size:clamp(1.6rem,3vw,2.2rem);line-height:1.1;color:var(--ink)}
 .programs{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:8px 24px;font-weight:500}
-.used-at{margin:-24px 0 64px;text-align:center}
+.proof-line{list-style:none;margin:0 0 56px;padding:0;display:flex;flex-wrap:wrap;justify-content:center;gap:12px 44px;color:var(--muted)}
+.proof-line b{display:block;font-size:clamp(1.7rem,3.4vw,2.4rem);font-weight:500;letter-spacing:-.03em;color:var(--ink);line-height:1.1}
+.proof-line li{text-align:center}
+.backed{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:10px 28px;color:var(--muted);font-size:.95rem}
+.backed .ef-row{display:inline-flex;align-items:center;gap:8px;color:var(--ink)}
+.used-at{margin:0 0 48px;text-align:center}
 .used-at ul{list-style:none;margin:14px 0 0;padding:0;display:flex;flex-wrap:wrap;justify-content:center;gap:14px 40px}
 .used-at li{font-size:clamp(1.1rem,2vw,1.45rem);font-weight:600;letter-spacing:-.02em;color:var(--muted)}
 @media (max-width:900px){ .oss-facts{grid-template-columns:repeat(2,minmax(0,1fr))} }
@@ -670,7 +675,7 @@ section .fine code,.faq code{font:400 .92em var(--mono)}
       <a href="#how">How it works</a>
       <a href="docs.html">Docs</a>
       <a href="security">Security</a>
-      <a href="pricing">Pricing</a>
+      <a href="pricing">Pricing</a><a href="about">Team</a>
       
       <a href="#demo" data-demo>Book a demo</a>
       <a class="btn" href="/signup">Sign up free</a>
@@ -703,7 +708,7 @@ section .fine code,.faq code{font:400 .92em var(--mono)}
         <a href="#how">How it works</a>
         <a href="docs.html">Docs</a>
         <a href="security">Security</a>
-        <a href="pricing">Pricing</a>
+        <a href="pricing">Pricing</a><a href="about">Team</a>
         
         <a href="#demo" data-demo>Book a demo</a>
       <a class="btn" href="/signup">Sign up free</a>
@@ -751,46 +756,23 @@ section .fine code,.faq code{font:400 .92em var(--mono)}
 
 <div class="wrap">
   <section id="proof" class="trust">
-    <p class="kicker">Traction, measured on 19 October 2026</p>
-    <ul class="oss-facts traction" aria-label="Traction">
-      <li><b>688</b><span>agent actions checked in design-partner pilots since 7 October</span></li>
-      <li><b>15</b><span>risky actions stopped before they ran, each decided by a person</span></li>
-      <li><b>11 ms</b><span>added per action at median on a live pilot gateway (65 ms at p95)</span></li>
-      <li><b>1 signed LOI</b><span>from a managed service provider that resells to its clients</span></li>
-      <li><b>5,000+</b><span>PyPI downloads since 1 October</span></li>
+    <ul class="proof-line" aria-label="Traction">
+      <li><b>688</b> agent actions checked in pilots</li>
+      <li><b>15</b> risky actions stopped</li>
+      <li><b>1</b> signed LOI</li>
+      <li><b>5,000+</b> downloads</li>
     </ul>
     <div class="used-at">
-      <p class="kicker">5,000+ PyPI downloads, including by engineers at</p>
+      <p class="kicker">Used by engineers at</p>
       <ul aria-label="Companies whose engineers installed Squidbrake">
         <li>HCLTech</li><li>Urban Company</li><li>World Wide Technology</li><li>Airbyte</li><li>Juniper Networks</li><li>Pax8</li><li>Capslock</li>
       </ul>
     </div>
-    <div class="trust-row">
-      <div>
-        <p class="pilot">Four design-partner pilots with engineering teams in the US, Canada and India.</p>
-        <p class="kicker">Backed by</p>
-        <ul class="backers">
-          <li><a class="ef-row" href="https://www.joinef.com" target="_blank" rel="noopener"><img src="assets/ef-mark.png" alt="" width="34" height="34">Entrepreneur First</a></li>
-        </ul>
-        <p class="kicker" style="margin-top:28px">In the startup programs of</p>
-        <ul class="programs"><li>Microsoft for Startups</li><li>OpenAI for Startups</li><li>Anthropic Startup Program</li></ul>
-      </div>
-      <div>
-        <p class="kicker">The team</p>
-        <p class="founders">Pulkit Batra and Karishma Sinha, cofounders</p>
-        <dl class="team">
-          <div><dt>Pulkit: fourth company</dt><dd>The first was cybersecurity for SMBs, started at 19.</dd></div>
-          <div><dt>6+ years in cybersecurity</dt><dd>Across the systems agents now touch.</dd></div>
-          <div><dt>Karishma: ex-Qualcomm</dt><dd>Ran her own startup with paying customers. Leads sales.</dd></div>
-        </dl>
-      </div>
+    <div class="backed">
+      <a class="ef-row" href="https://www.joinef.com" target="_blank" rel="noopener"><img src="assets/ef-mark.png" alt="" width="28" height="28">Backed by Entrepreneur First</a>
+      <span>In Microsoft, OpenAI and Anthropic startup programs</span>
+      <a href="about">Meet the team →</a>
     </div>
-    <ul class="oss-facts" aria-label="How it is built">
-      <li><b>24 contributors</b><span>From the community, reviewed before merge</span></li>
-      <li><b>57 releases</b><span>Since 29 September 2026. <a href="changelog">Changelog</a></span></li>
-      <li><b>Tested on every change</b><span>Linux, macOS and Windows, three Python versions, plus the incident replays</span></li>
-      <li><b>Published by CI</b><span>No upload token anywhere, with provenance. <a href="security">Security</a></span></li>
-    </ul>
   </section>
 
   <section id="problem" class="section-rule">
@@ -1083,7 +1065,7 @@ plan/ ~/). Don't try to work around it.</span></pre>
         <a href="#how">How it works</a>
         <a href="docs.html">Docs</a>
         <a href="security">Security</a>
-        <a href="pricing">Pricing</a>
+        <a href="pricing">Pricing</a><a href="about">Team</a>
         <a href="changelog">Changelog</a>
         
         <a href="mailto:hello@squidbrake.com">hello@squidbrake.com</a>
