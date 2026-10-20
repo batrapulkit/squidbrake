@@ -1510,7 +1510,8 @@ window.SQUIDBRAKE_WAITLIST={
   let renderer;
   try{ if(!window.THREE) throw 0; renderer=new THREE.WebGLRenderer({canvas,antialias:true}); }
   catch(e){ document.documentElement.classList.add('no-webgl'); tags.forEach((t,i)=>{ t.el.style.left=SLOT_FALLBACK[i][0]+'%'; t.el.style.top=SLOT_FALLBACK[i][1]+'%'; }); return; }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  const PHONE=matchMedia('(pointer:coarse) and (max-width:820px)').matches;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,PHONE?1.5:2));
   renderer.outputEncoding=THREE.sRGBEncoding;
   renderer.toneMapping=THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure=1.08;
@@ -1603,6 +1604,7 @@ window.SQUIDBRAKE_WAITLIST={
     clearcoat:1, clearcoatRoughness:0.05, iridescence:0.2, iridescenceIOR:1.25, iridescenceThicknessRange:[160,520],
     specularIntensity:1, envMapIntensity:1.2
   });
+  if(PHONE){ glass.transmission=0; glass.transparent=true; glass.opacity=0.42; glass.envMapIntensity=1.6; }
   glass.onBeforeCompile=(sh)=>{
     sh.uniforms.uTime=uniforms.uTime;
     sh.vertexShader='uniform float uTime;\n'+GLSL+'\n'+sh.vertexShader;
@@ -1877,6 +1879,7 @@ window.SQUIDBRAKE_WAITLIST={
   let visible=true; new IntersectionObserver(es=>{visible=es[0].isIntersecting;}).observe(stage);
 
   const clock=new THREE.Clock(); let lastTick=0, prevT=0; const calmTint=new THREE.Color(0x4f6b5a), alarmTint=new THREE.Color(0xc0402a);
+  let lastExitS='', lastInsideS='', lastExploded=null;
   function frame(){
     requestAnimationFrame(frame);
     if(!visible) return;
@@ -1887,11 +1890,10 @@ window.SQUIDBRAKE_WAITLIST={
     const rect=scrolly.getBoundingClientRect(), span=Math.max(1,rect.height-innerHeight);
     prog=Math.min(1,Math.max(0,-rect.top/span));
     ex=sm(0.16,0.42,prog)*(1-sm(0.8,0.97,prog));
-    const exit=sm(0.04,0.2,prog);
-    stage.style.setProperty('--exit',exit.toFixed(3));
-    stage.classList.toggle('exited',exit>0.5);
-    stage.classList.toggle('exploded',ex>0.04);
-    insideEl.style.setProperty('--inside',(sm(0.3,0.44,prog)*(1-sm(0.78,0.9,prog))).toFixed(3));
+    const exit=sm(0.04,0.2,prog), exitS=exit.toFixed(3), insideS=(sm(0.3,0.44,prog)*(1-sm(0.78,0.9,prog))).toFixed(3);
+    if(exitS!==lastExitS){ stage.style.setProperty('--exit',exitS); stage.classList.toggle('exited',exit>0.5); lastExitS=exitS; }
+    if((ex>0.04)!==lastExploded){ stage.classList.toggle('exploded',ex>0.04); lastExploded=ex>0.04; }
+    if(insideS!==lastInsideS){ insideEl.style.setProperty('--inside',insideS); lastInsideS=insideS; }
 
     // opening shot
     const intro=reduce?1:Math.min(1,t/2.3), iE=easeOut(intro), iUnit=easeOut(sm(0.35,0.85,intro));
