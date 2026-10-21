@@ -145,6 +145,7 @@ def _paths_used(name: str, input, cwd: str) -> list[tuple[str, bool]]:
             args = [w for w in words[1:] if not w.startswith("-") or "/" in w]
             if prog in ("cd", "pushd", "set-location", "sl", "chdir") and args:
                 cwd = _resolve(args[0], cwd, env)[0]
+                out.append((cwd, False))     # what runs in there next (python -c "open('data/keys.json')") is there too
                 continue
             recursive = prog in RECURSIVE or any(f in words for f in ("-r", "-R", "-a", "--recursive", "-Recurse"))
             out += [(r, recursive) for a in args for r in _resolve(a, cwd, env)]

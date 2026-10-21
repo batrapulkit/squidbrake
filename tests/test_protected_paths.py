@@ -41,6 +41,11 @@ def verdict(box, name, inp):
     ("Bash", {"command": "cat ~/.squid*/data/keys.json"}),
     ("Bash", {"command": "cat ~/.squidbrake/d?ta/k*"}),
     ("Bash", {"command": "cp -r ~/.squidbrake /tmp/sb"}),
+    # reported 21 Oct on a hosted pilot: writing an approver key into keys.json after cd
+    ("Bash", {"command": "cd ~/.squidbrake && echo '{\"keys\":{}}' > data/keys.json"}),
+    ("Bash", {"command": "cd ~/.squidbrake && tee data/keys.json < /tmp/k"}),
+    ("Bash", {"command": "cd ~/.squidbrake && python -c \"open('data/keys.json','w').write('x')\""}),
+    ("Bash", {"command": "pushd ~/.squidbrake; node -e \"require('fs').writeFileSync('data/keys.json','x')\""}),
 ])
 def test_spellings_of_the_keys_folder_are_blocked(box, name, inp):
     assert verdict(box, name, inp) == "block"

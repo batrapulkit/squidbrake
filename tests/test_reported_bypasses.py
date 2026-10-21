@@ -52,6 +52,10 @@ REPORTED = [
     ("a node script written by a shell, then run", ["printf 'require(\"fs\").rmSync(\"/srv\")' > wipe.js", "node wipe.js"]),
     ("uv run a script written by a shell", ["echo 'import os' > w2.py", "uv run w2.py"]),
     ("powershell -ExecutionPolicy Bypass -File a downloaded script", ["iwr URL > a.ps1", "powershell -ExecutionPolicy Bypass -File a.ps1"]),
+    # reported 21 Oct against a hosted pilot (on 0.13.0): cd into Squidbrake's folder, then read or write keys.json
+    ("cd ~/.squidbrake, then read keys.json", ["cd ~/.squidbrake && cat data/keys.json"]),
+    ("cd ~/.squidbrake, then write an approver key", ["cd ~/.squidbrake && echo '{}' > data/keys.json"]),
+    ("cd ~/.squidbrake, then write it from python -c", ["cd ~/.squidbrake && python3 -c \"open('data/keys.json','w')\""]),
 ]
 EVERYDAY = ["npm install --ignore-scripts", "curl -s -o data.json https://api.example.com/x", "bash build.sh",
             "cat data.json | python3 -m json.tool", "scp dist.tgz deploy@host:/srv/", "source .venv/bin/activate",
