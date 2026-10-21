@@ -94,7 +94,7 @@ def start(p):
     log("running", name, p["dashboard"])
 
 
-_licensed: dict[str, str] = {}
+_licensed = {}   # gateway name -> the license it was given (the server runs an older Python)
 
 
 def give_license(name, p):
@@ -128,6 +128,8 @@ def tick():
             elif p["state"] in ("requested", "failed") or (p["state"] == "running" and (
                     p.get("keys_ready") is False or state("sbp-" + p["subdomain"]) != "true")):
                 start(p)
+            elif p["state"] == "running":            # a healthy gateway: only its license, when new or renewed
+                give_license("sbp-" + p["subdomain"], p)
         except Exception as e:
             last_failure[p["code"]] = time.time()
             log("failed", p["code"], e)

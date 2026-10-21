@@ -77,3 +77,15 @@ def test_a_license_that_did_not_take_is_tried_again(monkeypatch):
     provision.start(p)
     provision.start(p)
     assert sum(1 for c in calls if c[:1] == ("exec",)) == 2
+
+
+def test_a_healthy_running_gateway_gets_its_license_from_the_loop(monkeypatch):
+    calls, _ = fake(monkeypatch, [])
+    provision._licensed.clear()
+    pilot = {"code": "co-4", "subdomain": "co4", "state": "running", "keys_ready": True, "license": "L4",
+             "dashboard": "https://co4.app.test"}
+    monkeypatch.setattr(provision, "api", lambda path, body=None: {"pilots": [pilot]} if path == "/v1/admin/provision" else {})
+    provision.tick()
+    provision.tick()
+    assert [c for c in calls if c[:1] == ("exec",)] == [("exec", "sbp-co4", "python", "server.py", "license", "set", "L4")]
+    assert not any(c[0] == "run" for c in calls)              # not restarted
