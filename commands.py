@@ -7,9 +7,12 @@ so this splits the line into its commands (quote-aware), steps into `bash -c` / 
 and sorts each command into one of:
 
   catastrophic  wipes a disk, the whole filesystem or a home folder: rm -rf /, rm -rf ~, mkfs, dd onto a disk
-  irreversible  destroys or publishes something that can't simply be undone: rm -r, git push --force,
-                git reset --hard, terraform destroy, kubectl delete, cloud deletes, DROP TABLE, docker volume rm
+  irreversible  destroys or publishes something that can't simply be undone: every delete (rm, git rm, docker rm,
+                DELETE FROM, even rm -rf node_modules), git push --force, git reset --hard, terraform destroy,
+                kubectl delete, cloud deletes, DROP TABLE
   hidden        runs code that can't be read here: eval, curl | sh, base64 -d | bash, powershell -EncodedCommand
+  rename        renames or moves something: mv, git mv, Rename-Item, git branch -m, aws s3 mv, ALTER TABLE ... RENAME
+  secret        shows a secret to the agent: cat id_rsa / key.pem / ~/.kube/config, gh auth token, a keychain password
   read_only     only looks: ls, cat, grep, git status / log / diff
   other         anything else
 
@@ -21,7 +24,7 @@ import re
 import shlex
 from dataclasses import dataclass, field
 
-SEVERITY = ("read_only", "other", "hidden", "irreversible", "catastrophic")  # least to most serious
+SEVERITY = ("read_only", "other", "rename", "secret", "hidden", "irreversible", "catastrophic")  # least to most serious
 
 
 @dataclass
@@ -31,6 +34,7 @@ class Command:
     kind: str = "other"          # see SEVERITY
     why: str = ""                # plain-English reason, shown to the approver
     raw: str = ""
+    rebuildable: bool = False    # a delete of build output, caches or temp files only (the terminal guard lets it run)
 
 
 @dataclass
@@ -192,10 +196,20 @@ GIT_READ_ONLY = {"status", "log", "diff", "show", "blame", "rev-parse", "ls-file
 PS_REMOVE = {"remove-item", "ri", "rm", "del", "erase", "rmdir", "rd"}
 CLOUD = {"aws", "gcloud", "gsutil", "az", "doctl", "flyctl", "fly", "heroku", "vercel", "netlify", "railway",
          "supabase", "firebase", "wrangler", "oci", "linode-cli", "hcloud"}
+# Global options that take a value, given before the verbs (an unknown one just adds a word to the verbs read)
+CLOUD_VALUE_OPTIONS = {"--profile", "--region", "--project", "--output", "-o", "--endpoint-url", "--subscription",
+                       "--account", "--configuration", "--zone", "--app", "-a", "--remote", "-r", "--org", "--team",
+                       "--context", "--config", "--format", "--query", "--color", "--verbosity", "--resource-group",
+                       "-g", "--impersonate-service-account", "--billing-project", "--env", "-e", "--cwd", "--scope"}
 DESTRUCTIVE_WORDS = re.compile(r"^(delete|destroy|terminate|remove|rm|rb|purge|deregister|drop|wipe|erase|"
-                               r"uninstall|disable-backup|delete-.*|.*-delete|remove-.*|terminate-.*)$", re.I)
-SQL_DESTRUCTIVE = re.compile(r"\b(drop\s+(table|database|schema|index)|truncate\b|delete\s+from\s+\w+\s*(;|$)|"
+                               r"uninstall|disable-backup|delete-.*|.*-delete|remove-.*|terminate-.*|"
+                               r".*:(destroy|delete|remove|reset|wipe|purge|rm))$", re.I)   # heroku pg:reset, apps:destroy
+SQL_DESTRUCTIVE = re.compile(r"\b(drop\s+(table|database|schema|index|view|column)|truncate\b|delete\s+from\b|"
+                             r"update\s+[\w.\"`]+\s+set\b(?:(?!\bwhere\b)[^;])*(;|$)|"   # UPDATE with no WHERE: every row
                              r"dropdatabase\s*\(|\.drop\s*\(|flushall|flushdb)", re.I)
+SQL_RENAME = re.compile(r"\b(alter\s+(table|database|schema|view|index)\s+[\w.\"`]+\s+rename\b|rename\s+(table|database)\b|"
+                        r"\.renameCollection\s*\(|\brename\b\s+\S+\s+\S+\s*$)", re.I)
+REDIS_DELETE = {"del", "unlink", "hdel", "srem", "zrem", "lrem", "xdel", "getdel"}
 HTTP_CLIS = {"curl", "wget", "http", "https", "xh", "httpie", "invoke-webrequest", "iwr", "invoke-restmethod", "irm"}
 API_DELETE = re.compile(r"\bmutation\b[^{]*\{\s*\w*(delete|destroy|remove|drop|purge|wipe)\w*\s*\(|"
                         r"\"(action|op|operation)\"\s*:\s*\"(delete|destroy|remove|drop)\w*\"", re.I)
@@ -208,6 +222,55 @@ SECRET_PATH = re.compile(r"(^|[\\/~.])(\.env(\.[\w-]+)?|\.ssh|id_rsa|id_ed25519|
                          r"\.npmrc|\.pypirc|\.git-credentials|credentials|secrets?|\.vault-token|token|shadow|"
                          r"keychain|\.gnupg|wallet)([\\/.\s]|$)", re.I)
 SECRET_EXT = re.compile(r"\.(pem|p12|pfx|key|keystore|jks|kdbx|ppk)$", re.I)
+# Not a secret, though the name says so: a template (.env.example), or code and docs about secrets (secrets.py, token.ts)
+NOT_SECRET = re.compile(r"(example|sample|template|dist)$|\.(py|js|mjs|cjs|ts|tsx|jsx|go|rb|rs|java|kt|cs|php|swift|"
+                        r"c|h|cc|cpp|md|mdx|txt|rst|html|css|scss|sh|ps1|sql|ya?ml\.j2)$", re.I)
+# Programs that print what's in a file (ls, stat or find only say it's there)
+CONTENT_READERS = {"cat", "type", "head", "tail", "less", "more", "grep", "egrep", "fgrep", "rg", "ag", "ack", "nl",
+                   "od", "hexdump", "xxd", "zcat", "tac", "cut", "sort", "jq", "yq", "diff", "cmp", "column", "paste",
+                   "get-content", "gc", "select-string", "sls"}
+PATTERN_FIRST = {"grep", "egrep", "fgrep", "rg", "ag", "ack", "select-string", "sls"}
+
+
+def _secret_files(prog: str, words: list[str]) -> list[str]:
+    """Files holding secrets that this read-only command would print."""
+    if prog not in CONTENT_READERS:
+        return []
+    args = _positional(words)
+    if prog in PATTERN_FIRST and not any(w in ("-e", "-f", "--regexp", "--file", "-pattern") for w in words[1:]):
+        args = args[1:]                                      # grep PATTERN FILE...: the pattern isn't a file
+    return [w for w in args if (SECRET_PATH.search(w) or SECRET_EXT.search(w)) and not NOT_SECRET.search(w.rstrip("/"))]
+
+
+def _prints_secret(prog: str, lower: list[str]) -> str | None:
+    """CLIs that print a password or a token: the agent (and whoever reads its transcript) then has it."""
+    sub = [w for w in lower[1:] if not w.startswith("-")]
+    if prog == "security" and (sub[:1] == ["dump-keychain"] or (
+            sub[:1] in (["find-generic-password"], ["find-internet-password"]) and any(re.match(r"^-[a-z]*[wg]", w) for w in lower))):
+        return f"prints a password from the keychain ({' '.join(lower[:2])})"
+    if prog == "gh" and sub[:2] == ["auth", "token"] or (prog == "gh" and sub[:2] == ["auth", "status"]
+                                                        and ("-t" in lower or "--show-token" in lower)):
+        return "prints your GitHub token (gh auth token)"
+    if prog == "gcloud" and "auth" in sub[:2] and any(w in ("print-access-token", "print-identity-token") for w in sub):
+        return "prints a Google Cloud access token"
+    if prog == "az" and sub[:2] == ["account", "get-access-token"]:
+        return "prints an Azure access token"
+    if prog == "aws" and sub[:2] == ["configure", "get"] and any(re.search(r"secret|token", w) for w in sub[2:]):
+        return f"prints an AWS secret ({' '.join(lower[:4])})"
+    if prog == "aws" and sub[:2] == ["configure", "export-credentials"]:
+        return "prints your AWS credentials (aws configure export-credentials)"
+    if prog == "heroku" and sub[:1] == ["auth:token"]:
+        return "prints your Heroku token (heroku auth:token)"
+    if prog == "op" and (sub[:1] == ["read"] or ("--reveal" in lower and sub[:1] == ["item"])):
+        return f"prints a secret from 1Password ({' '.join(lower[:2])})"
+    if prog in ("bw", "lpass", "pass", "gopass") and sub[:1] in (["get"], ["show"]):
+        return f"prints a password from a password manager ({' '.join(lower[:2])})"
+    if prog == "vault" and (sub[:2] == ["kv", "get"] or sub[:1] == ["read"]):
+        return f"prints a secret from Vault ({' '.join(lower[:3])})"
+    if prog in ("kubectl", "oc") and sub[:1] == ["get"] and sub[1:2] and re.match(r"^secrets?(/|$)", sub[1]) \
+            and any(w in ("-o", "--output") or w.startswith(("-o", "--output=")) for w in lower[2:]):
+        return "prints Kubernetes secrets (kubectl get secret -o ...)"
+    return None
 
 _ROOTS = re.compile(r"^(/+\*?|/\.\*?|~/?\*?|\$\{?home\}?/?\*?|\$env:userprofile\\?\*?|%userprofile%\\?|"
                     r"[a-z]:[\\/]?\*?|[a-z]:[\\/]\.\*?|\\\\?\*?)$", re.I)
@@ -427,6 +490,9 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
     if (why := _turns_off_squidbrake(prog, lower)):
         cmd.kind, cmd.why = "irreversible", why
         return [cmd], []
+    if (why := _prints_secret(prog, lower)):
+        cmd.kind, cmd.why = "secret", why
+        return [cmd], []
 
     # ---- catastrophic
     if prog == "diskutil":
@@ -548,13 +614,22 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         cmd.kind, cmd.why = "irreversible", f"uninstalls a Helm release ({' '.join(words[:3])})"
         return [cmd], []
     if prog in CLOUD:
-        verbs = []
-        for w in lower[1:]:
-            if w.startswith("-") or len(verbs) == 4:
-                break
-            verbs.append(w)
+        verbs, i = [], 1
+        while i < len(lower) and len(verbs) < 4:
+            w = lower[i]
+            if w.startswith("-") and verbs:
+                break                            # aws s3 rm s3://x --recursive: the verbs end at the first option
+            if w.startswith("-"):                # options before the verbs: aws --profile prod s3 rm, gsutil -m rm
+                i += 2 if w in CLOUD_VALUE_OPTIONS and i + 1 < len(lower) else 1
+                continue
+            verbs.append(w); i += 1
         if any(DESTRUCTIVE_WORDS.match(v) for v in verbs) or (prog == "aws" and verbs[:2] == ["s3", "rm"]):
             cmd.kind, cmd.why = "irreversible", f"deletes cloud resources ({' '.join(words[:4])})"
+        elif verbs[1:2] == ["mv"] and verbs[:1] in (["s3"], ["storage"]) or (prog == "gsutil" and verbs[:1] == ["mv"]):
+            cmd.kind, cmd.why = "rename", f"moves cloud files, deleting them where they were ({' '.join(words[:4])})"
+        elif any(v in ("sync", "rsync") for v in verbs[:3]) and any(
+                w == "--delete" or w.startswith("--delete-") or (prog == "gsutil" and w == "-d") for w in lower):
+            cmd.kind, cmd.why = "irreversible", f"deletes whatever the destination has that the source doesn't ({' '.join(words[:4])})"
         elif off := BACKUPS_OFF.search(" ".join(lower[1:])):
             cmd.kind, cmd.why = "irreversible", f"switches off backups or deletion protection ({off.group(0)})"
         return [cmd], []
@@ -564,6 +639,9 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
                 or (sub[:1] == ["compose"] and "down" in lower and ("-v" in lower or "--volumes" in lower)) \
                 or (sub[:1] == ["rm"] and ("-v" in lower or "--volumes" in lower)):
             cmd.kind, cmd.why = "irreversible", f"deletes containers' data ({' '.join(words[:4])})"
+        elif sub[:1] in (["rm"], ["rmi"]) or (sub[1:2] in (["rm"], ["prune"], ["remove"]) and sub[:1] in (
+                ["container"], ["image"], ["network"], ["builder"], ["buildx"], ["context"], ["secret"], ["config"])):
+            cmd.kind, cmd.why = "irreversible", f"deletes containers, images or networks ({' '.join(words[:4])})"
         elif sub[:1] == ["push"] or sub == ["image", "push"]:
             cmd.kind, cmd.why = "irreversible", \
                 f"pushes an image to a registry, overwriting the tag for everyone who pulls it ({' '.join(words[:3])})"
@@ -583,6 +661,10 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         text = " ".join(words[1:])
         if SQL_DESTRUCTIVE.search(text):
             cmd.kind, cmd.why = "irreversible", f"runs destructive SQL ({SQL_DESTRUCTIVE.search(text).group(0)})"
+        elif prog == "redis-cli" and (hit := next((w for w in lower[1:] if w in REDIS_DELETE), None)):
+            cmd.kind, cmd.why = "irreversible", f"deletes Redis data ({hit.upper()})"
+        elif SQL_RENAME.search(text):
+            cmd.kind, cmd.why = "rename", f"renames a table or database ({SQL_RENAME.search(text).group(0).strip()})"
         elif PRODUCTION.search(text) and (SQL_WRITES.search(text) or "<" in words[1:] or any(
                 w in ("-f", "--file", "-i", "source") or w.startswith("--file=") for w in lower[1:])):
             cmd.kind, cmd.why = "irreversible", "changes a production database (an SQL file or a write)"
@@ -595,6 +677,8 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         why = ""
         if gh_lower[:2] == ["secret", "delete"]:
             why = "deletes a GitHub secret"
+        elif len(gh_lower) > 1 and gh_lower[1] in ("delete", "remove", "rm") and gh_lower[0] != "api":
+            why = f"deletes on GitHub (gh {' '.join(gh_words[:2])})"
         elif gh_lower[:1] == ["api"] and _gh_option(gh_words[1:], "--method", "-X") == "delete":
             why = "sends a GitHub API request that deletes data"
         elif gh_lower[:2] == ["pr", "merge"] and _gh_option(gh_words[2:], "--admin", boolean=True) in ("true", "1", "t"):
@@ -603,6 +687,9 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
             why = "makes a GitHub repository public"
         if why:
             cmd.kind, cmd.why = "irreversible", why
+            return [cmd], []
+        if gh_lower[:2] == ["repo", "rename"]:
+            cmd.kind, cmd.why = "rename", "renames a GitHub repository (links and clones that use the old name break)"
             return [cmd], []
 
     # ---- publishing and machine state
@@ -636,19 +723,42 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
     if prog == "crontab" and "-r" in lower:
         cmd.kind, cmd.why = "irreversible", "deletes every scheduled job (crontab -r)"
         return [cmd], []
-    if prog == "truncate" or prog in ("clear-content", "clc") or (prog == "mv" and any(w in ("/dev/null", "nul") for w in lower[1:])):
+    if prog == "truncate" or prog in ("clear-content", "clc") or (prog == "mv" and any(w in ("/dev/null", "nul") for w in lower[1:])) \
+            or (prog == "cp" and lower[1:2] == ["/dev/null"] and len(_positional(words)) == 2):
         cmd.kind, cmd.why = "irreversible", f"empties or discards files ({' '.join(words[:3])})"
+        return [cmd], []
+    # `> f` or `: > f` with nothing written: the file is emptied (appending with >> isn't)
+    if (prog in (":", "true") or re.fullmatch(r"[0-9]?>.*", words[0])) \
+            and any(re.fullmatch(r"[0-9]?>([^>&].*)?", w) for w in words) \
+            and (targets := [t for t in _redirected(words) if t.lower() not in _HARMLESS_TARGETS]):
+        cmd.kind, cmd.why = "irreversible", f"empties {targets[0]} (> with nothing written)"
+        return [cmd], []
+    if prog == "kill" and len(words) >= 3 and words[-1] == "-1":            # kill -9 -1 (`kill -1 PID` is SIGHUP)
+        cmd.kind, cmd.why = "irreversible", "kills every process you own (kill -1)"
         return [cmd], []
     # PowerShell reaching .NET: [System.IO.File]::Delete("x"), [IO.Directory]::Delete("x", $true), (Get-Item x).Delete()
     if re.search(r"\]::delete\s*\(|\)\.delete\(\s*\)", " ".join(lower)):
         cmd.kind, cmd.why = "irreversible", f"deletes files ({' '.join(words)})"
         return [cmd], []
 
+    # ---- other deletes: any PowerShell Remove-* cmdlet (Remove-ADUser, Remove-AzResourceGroup, ...)
+    if prog.startswith("remove-") and not any(w in ("-whatif", "-?") for w in lower[1:]):
+        cmd.kind, cmd.why = "irreversible", f"deletes something ({' '.join(words[:3])})"
+        return [cmd], []
+
+    # ---- renames and moves: the old name stops working, so a person says yes
+    if prog in ("mv", "move", "move-item", "mi", "rename-item", "ren", "rename", "rni") and len(_positional(words)) >= 2 \
+            or prog in ("rename-item", "rni") and len(words) > 1:
+        cmd.kind, cmd.why = "rename", f"renames or moves files ({' '.join(words)[:100]})"
+        return [cmd], []
+
     # ---- only looks
     if prog in READ_ONLY:
         bad = UNSAFE_OPTIONS.get(prog, ())
-        if any(SECRET_PATH.search(w) or SECRET_EXT.search(w) for w in words[1:] if not w.startswith("-")):
-            cmd.why = f"reads a file that may hold secrets ({' '.join(words[:4])})"   # "other": a person decides
+        if (found := _secret_files(prog, words)):
+            cmd.kind, cmd.why = "secret", f"shows the agent a file that may hold secrets ({found[0]})"
+        elif any(SECRET_PATH.search(w) or SECRET_EXT.search(w) for w in words[1:] if not w.startswith("-")):
+            cmd.why = f"looks at a file that may hold secrets ({' '.join(words[:4])})"   # ls ~/.ssh: "other"
         elif not any(w == b or w.startswith(b + "=") for w in words[1:] for b in bad):
             cmd.kind = "read_only"
     return [cmd], []
@@ -665,12 +775,17 @@ REGENERABLE = {"node_modules", "dist", "build", "out", ".next", ".nuxt", ".svelt
                ".coverage", "htmlcov", "target", ".gradle"}
 
 
+TEMP_DIR = re.compile(r"^(/tmp|/private/tmp|/var/tmp|/private/var/folders/[^/]+/[^/]+/T|/var/folders/[^/]+/[^/]+/T|"
+                      r"\$\{?TMPDIR\}?)/[^/]+", re.I)
 THROWAWAY = re.compile(r"(\.(log|tmp|temp|pyc|pyo|bak|swp|swo|orig|rej)|^\.DS_Store)$", re.I)
 
 
 def _regenerable(target: str) -> bool:
-    """A build output or cache folder inside the project (relative path, no wildcards, no climbing out)."""
+    """A build output or cache folder inside the project (relative path, no wildcards, no climbing out), or a file in
+    the temp folder."""
     t = target.strip("'\"").replace("\\", "/").rstrip("/")
+    if TEMP_DIR.match(t) and not any(c in t for c in "*?[{") and ".." not in t.split("/"):
+        return True                              # something inside the temp folder, never the folder itself
     if not t or t.startswith(("/", "~", "$", "%")) or re.match(r"^[a-z]:", t, re.I) or any(c in t for c in "*?[{"):
         return False
     parts = [p for p in t.split("/") if p not in ("", ".")]
@@ -694,7 +809,8 @@ def _deletion(cmd: Command, words: list[str], prog: str) -> Command:
             else f"the system folder {where}"
         cmd.kind, cmd.why = "catastrophic", f"deletes {label} ({' '.join(words)})"
     elif targets and all(_regenerable(t) for t in targets):
-        cmd.kind = "other"                       # rm -rf node_modules dist: everyday work, rebuilt by the next build
+        # rm -rf node_modules dist: rebuilt by the next build, but still a delete, so a person says yes
+        cmd.kind, cmd.why, cmd.rebuildable = "irreversible", f"deletes build output, caches or temp files ({' '.join(words)})", True
     elif recursive:
         cmd.kind, cmd.why = "irreversible", f"deletes folders and everything in them ({' '.join(words)})"
     else:
@@ -723,6 +839,13 @@ def _git(cmd: Command, words: list[str]) -> Command:
         cmd.kind, cmd.why = "irreversible", f"force-deletes a branch ({' '.join(words)})"
     elif sub == "rm" and ("f" in letters or "--force" in args) and "--cached" not in args:
         cmd.kind, cmd.why = "irreversible", f"deletes files with their uncommitted changes ({' '.join(words)})"
+    elif sub == "rm" and "--cached" not in args and "--dry-run" not in args and "n" not in letters:
+        cmd.kind, cmd.why = "irreversible", f"deletes files ({' '.join(words)})"
+    elif (sub == "branch" and ("d" in letters or "--delete" in args)) or (sub == "tag" and ("d" in letters or "--delete" in args)) \
+            or (sub in ("worktree", "remote") and args[:1] in (["remove"], ["rm"], ["prune"])):
+        cmd.kind, cmd.why = "irreversible", f"deletes a {sub} ({' '.join(words)})"
+    elif sub == "mv" or (sub == "branch" and letters & {"m", "M"}) or (sub == "remote" and args[:1] == ["rename"]):
+        cmd.kind, cmd.why = "rename", f"renames or moves ({' '.join(words)})"
     elif (sub == "checkout" and ("." in args or "--" in args[:-1])) or (    # `git checkout -- file`, `git restore file`
             sub == "restore" and any(not a.startswith("-") for a in args)
             and not (("--staged" in args or "S" in letters) and not ("--worktree" in args or "W" in letters))):

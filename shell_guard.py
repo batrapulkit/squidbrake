@@ -46,6 +46,9 @@ def check(line: str) -> tuple[str, str]:
                     commands.SEVERITY.index(inner_reading.kind) > commands.SEVERITY.index(kind):
                 kind = inner_reading.kind    # it can only make the decision stricter, never looser
                 why = f"runs {via}, which {inner_reading.summary() or inner.strip()[:80]}"
+    if kind == "irreversible" and why == (reading.summary() or line.strip()[:80]) and \
+            all(c.rebuildable for c in reading.commands if c.kind == "irreversible"):
+        return RUN, ""                       # your own rm -rf node_modules: agents ask a person for it, you don't
     if kind == "catastrophic":
         return BLOCK, f"Squidbrake: blocked: {why}"
     if kind == "irreversible":

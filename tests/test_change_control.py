@@ -173,8 +173,8 @@ def test_proxy_keeps_the_record_before_changing_it(c, rules):
         return httpx.Response(200, json={"id": 7, "plan": "pro"})
 
     server.app.state.http = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    r = c.delete("/proxy/crm/customers/7", headers=H)            # matches nothing held... so no copy
-    assert r.status_code == 200 and calls == ["DELETE"]
+    r = c.patch("/proxy/crm/customers/7", headers=H, json={})     # matches nothing held... so no copy
+    assert r.status_code == 200 and calls == ["PATCH"]
     rules.write_text(RULES.replace("rules:\n", "rules:\n  - id: crm-deletes\n    action: allow\n    snapshot: required\n"
                                                "    match: { name: 'DELETE crm/*' }\n", 1))
     os.utime(rules, (time.time(), time.time() + 40))

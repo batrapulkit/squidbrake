@@ -6,7 +6,8 @@ so no edit to the rules can loosen it.
                        link secret and database; minting a key with `squidbrake add-key`; calling the approval API
                        from its own tools; reading the browser storage where the dashboard keeps a person's key
   tamper    (held)     the ways an agent could loosen Squidbrake: editing the installed package, installing another
-                       version of it, a lasting GATEWAY_* / SQUIDBRAKE_* variable, a second gateway with auth off
+                       version of it, a lasting GATEWAY_* / SQUIDBRAKE_* variable, a second gateway with auth off,
+                       observe mode (`--mode observe`), taking the terminal guard out
 
 What this can't see is in THREAT_MODEL.md.
 """
@@ -45,6 +46,9 @@ REINSTALL_RE = re.compile(r"(?i)\b(pip3?|uv|pipx)\b[^|;&\n]*\b(install|add|injec
 LASTING_ENV_RE = re.compile(
     r"(?i)(\bsetx\b|SetEnvironmentVariable|launchctl\s+setenv|systemctl\s+(--user\s+)?set-environment)"
     r"[^|;&\n]*\b(GATEWAY|SQUIDBRAKE)_\w+")
+# Squidbrake's own commands that loosen it: observe mode for everyone (nothing held), or the terminal guard taken out
+LOOSEN_RE = re.compile(r"(?i)\bsquidbrake(\.exe)?[\"']?\s+(connect|setup|start)\b[^|;&\n]*--mode[= ]+[\"']?(observe|shadow)\b|"
+                       r"\bsquidbrake(\.exe)?[\"']?\s+shell-guard\s+(remove|uninstall)\b")
 AUTH_OFF_RE = re.compile(r"(?i)\bGATEWAY_AUTH\s*=\s*[\"']?(off|disabled|false|0|no)\b")
 
 
@@ -191,7 +195,7 @@ def check(kind: str | None, name: str, input, metadata: dict | None, data_dir: P
         return say("approval", "block", "This reads a browser's profile (cookies, saved keys and sign-ins, including "
                                         "the dashboard's). An agent has no business there.")
     if m := (PACKAGE_RE.search(joined) or REINSTALL_RE.search(joined) or LASTING_ENV_RE.search(joined)
-             or AUTH_OFF_RE.search(joined)):
+             or AUTH_OFF_RE.search(joined) or LOOSEN_RE.search(joined)):
         return say("tamper", "review", f"This changes Squidbrake itself ({m.group(0).strip()[:80]}): the installed "
                                        "program, a setting that loosens it, or a gateway with sign-in off.")
     return None

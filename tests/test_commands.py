@@ -43,7 +43,7 @@ def test_catastrophic(line):
 
 
 @pytest.mark.parametrize("line", [
-    "rm -r src", "rm -rf ../node_modules", "rm -rf /tmp/build", "rm -rf node_modules src", "rm notes.txt", "find . -name '*.pyc' -delete", "find . -exec rm -f {} ;",
+    "rm -r src", "rm -rf ../node_modules", "rm -rf /srv/app/build", "rm -rf /tmp", "rm -rf /tmp/*", "rm -rf node_modules src", "rm notes.txt", "find . -name '*.pyc' -delete", "find . -exec rm -f {} ;",
     "find / | xargs rm -rf",               # targets come from stdin, so it can't tell where: still held
     "git push --force origin main", "git push -f", "git push origin +main", "git push origin :old-branch",
     "git reset --hard HEAD~3", "git clean -fdx", "git branch -D feature", "git checkout -- .", "git stash drop",
@@ -162,7 +162,6 @@ def test_no_false_alarm(line):
 
 
 @pytest.mark.parametrize("line", [
-    "rm tmp/output.log", "rm app.log", "rm -f debug.tmp .DS_Store", "rm temp/x.json",   # throwaway files
     "gh gist create notes.md", "gh repo create x --private",
     "aws rds modify-db-instance --db-instance-identifier db --backup-retention-period 7",
     "terraform plan", "terraform validate",
@@ -208,10 +207,15 @@ def test_windows_inspection_is_not_destructive(line):
 
 
 @pytest.mark.parametrize("line", ["rm -rf node_modules", "rm -r build", "rm -rf ./dist .next/", "rm -rf web/node_modules",
-                                 "Remove-Item -Recurse -Force node_modules", "rmdir /s /q build"])
-def test_deleting_build_output_is_everyday_work(line):
-    """Build output and caches come back with the next build: deleting them isn't held (approval fatigue)."""
-    assert kind(line) == "other", commands.read(line).summary()
+                                 "Remove-Item -Recurse -Force node_modules", "rmdir /s /q build", "rm tmp/output.log",
+                                 "rm app.log", "rm -f debug.tmp .DS_Store", "rm temp/x.json", "rm -f /tmp/x.out"])
+def test_deleting_build_output_still_asks_an_agent_but_not_you(line):
+    """Every delete an agent makes waits for a person, even build output that comes back with the next build. In your
+    own terminal (the terminal guard) those run without a word."""
+    import shell_guard
+    r = commands.read(line)
+    assert r.kind == "irreversible" and all(c.rebuildable for c in r.commands if c.kind == "irreversible"), r.summary()
+    assert shell_guard.check(line)[0] == shell_guard.RUN
 
 def test_command_of():
     assert commands.command_of({"command": "ls -la"}) == "ls -la"

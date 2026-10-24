@@ -510,6 +510,7 @@ def test_sequence_rules(c, monkeypatch, tmp_path):
     rules.write_text("""
 default: allow
 history_checks: { repeat_of_rejected: off, impersonation: off, payment_request_in_message: off, duplicate_change: off }
+command_checks: { irreversible: off }   # the sequences on their own: *delete_snapshot* would otherwise wait as a delete
 sequences:
   - id: backup-then-delete
     action: deny

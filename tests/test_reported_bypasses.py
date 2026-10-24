@@ -66,7 +66,7 @@ EVERYDAY = ["npm install --ignore-scripts", "curl -s -o data.json https://api.ex
             "cat data.json | python3 -m json.tool", "scp dist.tgz deploy@host:/srv/", "source .venv/bin/activate",
             "curl -d '{\"q\":1}' https://api.example.com/search", "chmod +x build.sh",
             "source ./setup.sh", "curl -s https://api.example.com/x > data.json", "python -m pytest -q", "uv run pytest",
-            "git rm old.py", "git rm --cached build.log", "git checkout -b feature/x", "git restore --staged server.py"]
+            "git rm --cached build.log", "git checkout -b feature/x", "git restore --staged server.py"]
 
 
 @pytest.fixture()

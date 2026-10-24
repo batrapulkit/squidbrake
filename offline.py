@@ -260,6 +260,6 @@ def _risky(pol: dict, action: str | None, which: str, name: str, input: Any) -> 
             kind = commands.read(line).kind if line else "other"
         except Exception:
             kind = "hidden"                     # can't read it: treat it as risky
-        if kind in ("catastrophic", "irreversible", "hidden"):
+        if kind in ("catastrophic", "irreversible", "hidden", "secret", "rename"):
             return False, f"this command is {kind} and Squidbrake is unreachable, so it was blocked"
     return True, f"{which} allows it and it isn't risky (when_unreachable: block_risky), so it ran unrecorded"

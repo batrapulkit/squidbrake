@@ -210,7 +210,7 @@ a { color: var(--accent); }
   // ---- the story: history warnings + what the agent did just before
   const TITLES = { effect: "What it changes", impersonation: "Possible scam", payment_request_in_message: "Payment requested in a message",
                    repeat_of_rejected: "Already rejected before", duplicate_change: "Done before",
-                   catastrophic_command: "Destructive command", irreversible_command: "Can't be undone", hidden_command: "Hidden code", sequence: "Pattern", untrusted_destination: "Address from outside content", after_untrusted: "After reading outside content",
+                   catastrophic_command: "Destructive command", irreversible_command: "Can't be undone", hidden_command: "Hidden code", secret_command: "Shows a secret", rename_command: "Renames or moves", sequence: "Pattern", untrusted_destination: "Address from outside content", after_untrusted: "After reading outside content",
                    after_untrusted_setup_edit: "Tainted setup change: after reading outside content" };
   function signalsEl(signals) {
     if (!signals || !signals.length) return null;

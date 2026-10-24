@@ -234,7 +234,7 @@ def test_cursor_mcp_tools_edits_and_deletes(run):
                                "cwd": "/w", "conversation_id": "c9"}
     assert allowed("cursor", run("cursor", tool("Write", {"file_path": "/w/src/app.py", "contents": "x"})))
     assert not allowed("cursor", run("cursor", tool("Write", {"file_path": "/w/.cursor/mcp.json", "contents": "{}"})))
-    assert allowed("cursor", run("cursor", tool("Delete", {"path": "/w/tmp/debug.log"})))     # a throwaway file
+    assert not allowed("cursor", run("cursor", tool("Delete", {"path": "/w/tmp/debug.log"})))  # every delete waits
     assert not allowed("cursor", run("cursor", tool("Delete", {"path": "/w/prod.db"})))       # anything else waits
 
 

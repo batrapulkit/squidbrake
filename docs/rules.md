@@ -34,8 +34,10 @@ Shell tools (Claude Code's `Bash` and `PowerShell`, or any tool matching `comman
 | Kind | Examples | Default |
 |---|---|---|
 | catastrophic | `rm -rf /`, `rm -rf ~`, `rmdir /s /q d:\`, `mkfs`, `dd of=/dev/sda`, `chmod -R 777 /` | block |
-| irreversible | `rm -r`, `git push --force`, `git reset --hard`, `terraform destroy`, `kubectl delete`, `aws ... delete-*`, `DROP TABLE` | review |
+| irreversible | every delete (`rm`, even `rm -rf node_modules`; `git rm`, `git branch -d`, `docker rm`, `DELETE FROM`, `redis-cli DEL`, `Remove-*`), `git push --force`, `git reset --hard`, `terraform destroy`, `kubectl delete`, `aws ... delete-*`, `DROP TABLE` | review |
 | hidden | `eval`, `curl ... \| sh`, `bash <(curl ...)`, `source <(...)`, `cat setup.sh \| bash`, `base64 -d \| bash`, `powershell -EncodedCommand`, `python -c` | review |
+| rename | `mv`, `git mv`, `Rename-Item`, `git branch -m`, `gh repo rename`, `aws s3 mv`, `ALTER TABLE ... RENAME`: the old name stops working | review |
+| secret | `cat key.pem`, `cat ~/.kube/config`, `grep KEY .env.local`, `gh auth token`, `gcloud auth print-access-token`, `security find-generic-password -w`, `kubectl get secret -o yaml`: shows a secret to the agent, and so to its transcript and model provider. Templates (`.env.example`) and code about secrets (`secrets.py`) aren't | review |
 | secrets out | `curl -d "$(env)"`, `curl -F k=@~/.ssh/id_rsa`, `scp ~/.aws/credentials`, `nc ... < .env`: a send whose data is environment variables, SSH or cloud keys, `.env` or key files | review (irreversible) |
 | downloaded_then_run | a file downloaded in this conversation, then run, sourced or made runnable (`curl -o x.sh URL`, then `sh x.sh`) | review |
 | written_then_run | a script the agent wrote in this conversation, then runs (`python cleanup.py`) | review |

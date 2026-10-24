@@ -110,9 +110,12 @@ history_checks:
 command_checks:
   tools: ["Bash", "PowerShell", "*shell*", "*run_command*", "*execute_command*", "*terminal*", "*exec_command*"]
   catastrophic: block     # rm -rf /, rm -rf ~, wiping a drive (rmdir /s d:\), mkfs, dd onto a disk, chmod -R 777 /
-  irreversible: review    # rm -r, git push --force, git reset --hard, terraform destroy, kubectl delete, cloud deletes, DROP TABLE
+  irreversible: review    # every delete (rm, even rm -rf node_modules; git rm, docker rm, DELETE FROM), git push --force, git reset --hard, terraform destroy, kubectl delete, cloud deletes, DROP TABLE
   hidden: review          # code that can't be read first: eval, curl ... | sh, base64 -d | bash, powershell -EncodedCommand,
                           # programs written inline (python -c, node -e, perl -e), a program named only when it runs
+  rename: review          # renames or moves: mv, git mv, Rename-Item, git branch -m, aws s3 mv, ALTER TABLE ... RENAME
+  secret: review          # shows a secret to the agent (and its transcript): cat key.pem, cat ~/.kube/config,
+                          # gh auth token, a keychain password, kubectl get secret -o yaml
   written_then_run: review  # a script the agent created in this conversation, then runs (python x.py): read it first
   edited_then_run: warn     # a script the agent changed in this conversation, then runs: flagged for you to see;
                             # review holds it (safer: an edit can hide anything, but fixing a script and running it
@@ -195,7 +198,7 @@ rules:
     reason: Destructive shell command
     match:
       name: ["shell*", "bash*", "powershell*", "exec*", "run_command*"]
-      input_regex: 'rm\s+-(rf|fr)\s+(/|~|\*)|mkfs|dd\s+if=|:\(\)\s*\{|shutdown|reboot|Remove-Item\s.*-Recurse.*\s(C:\\\\|~|\$HOME)'
+      input_regex: 'rm\s+-(rf|fr)\s+(/\*?|~/?\*?|\*)(?=[\s"'';&|)]|$)|mkfs|dd\s+if=|:\(\)\s*\{|shutdown|reboot|Remove-Item\s.*-Recurse.*\s(C:\\\\|~|\$HOME)'
 
   - id: block-sql-drop
     action: deny
@@ -209,7 +212,7 @@ rules:
     reason: Reading secret files is not allowed
     match:
       name: ["read*", "file*", "cat*"]
-      input_regex: '\.env\b|id_rsa|\.pem\b|credentials'
+      input_regex: '\.env\b(?![\w.-]*(example|sample|template))|id_rsa|\.pem\b|\.p12\b|\.pfx\b|credentials|\.kube[\\/]+config\b|\.docker[\\/]+config\.json'
 
   # ---- an agent changing its own setup: its settings, hooks and MCP servers, Squidbrake's own files,
   # secrets, and files that run code at login or on every commit. Squidbrake would be easy to switch off without this.
@@ -220,7 +223,7 @@ rules:
       name: ["Edit", "Write", "MultiEdit", "NotebookEdit", "bash*", "powershell*", "shell*", "run_command*"]
       # an agent's own notes (Antigravity's brain/, Claude Code's plans/, todos/ and memory/) are markdown it writes on
       # every task, not its setup: those .md files aren't held. Settings, hooks, CLAUDE.md, commands/ and agents/ still are.
-      input_regex: '(?i)\.(claude|cursor|codex|gemini|copilot|kiro|codeium|windsurf|squidbrake)[\\/](?![\\/]*(?:antigravity[\\/]+brain|plans|todos|projects[\\/]+[^"\\/]+[\\/]+memory)[\\/]+(?:(?!\.\.)[^"])*\.md")|mcp(_config)?\.json|claude_desktop_config\.json|\.vscode[\\/]+(mcp|tasks|settings)\.json|Code( - Insiders)?[\\/]+User[\\/]+settings\.json|\.env\b(?!\.?(example|sample|template))|\.ssh[\\/]|\.aws[\\/]|\.(npmrc|pypirc|netrc)\b|\.(bashrc|zshrc|bash_profile|zprofile|profile)\b|PowerShell_profile\.ps1|\.git[\\/]+hooks[\\/]|managed-settings\.json|(/etc/|ProgramData[\\/]+|Program Files[\\/]+|Application Support/)(ClaudeCode|claude-code|codex|gemini-cli|cursor|squidbrake|OpenAI)\b'
+      input_regex: '(?i)\.(claude|cursor|codex|gemini|copilot|kiro|codeium|windsurf|squidbrake)[\\/](?![\\/]*(?:antigravity[\\/]+brain|plans|todos|projects[\\/]+[^"\\/]+[\\/]+memory)[\\/]+(?:(?!\.\.)[^"])*\.md")|mcp(_config)?\.json|claude_desktop_config\.json|\.vscode[\\/]+(mcp|tasks|settings)\.json|Code( - Insiders)?[\\/]+User[\\/]+settings\.json|\.env\b(?![\w.-]*(example|sample|template))|\.ssh[\\/]|\.aws[\\/]|\.(npmrc|pypirc|netrc)\b|\.(bashrc|zshrc|bash_profile|zprofile|profile)\b|PowerShell_profile\.ps1|\.git[\\/]+hooks[\\/]|managed-settings\.json|(/etc/|ProgramData[\\/]+|Program Files[\\/]+|Application Support/)(ClaudeCode|claude-code|codex|gemini-cli|cursor|squidbrake|OpenAI)\b'
 
   # ---- looking is fine: reading, listing, searching run without asking (and are still recorded)
   - id: allow-reads
@@ -278,6 +281,15 @@ rules:
     match:
       name: ["bash*", "shell*", "powershell*", "run_command*"]
       input_regex: 'git\s+push((\s+-\S+)*(\s+[^\s"&;|-]\S*)?\s*("|&&|;|\|)|[^"&;|]*\s(\S+:)?(main|master|trunk|develop|release\S*|prod|production|HEAD)\b|[^"&;|]*\s--(all|tags|mirror)\b)'
+
+  # Deploying from a terminal: the hosting CLIs' production deploys. Previews (`vercel`, `netlify deploy` without
+  # --prod, `firebase hosting:channel:deploy`) run on their own.
+  - id: approve-prod-deploys-from-shell
+    action: review
+    reason: Deploys to production from the terminal
+    match:
+      name: ["bash*", "shell*", "powershell*", "run_command*"]
+      input_regex: '\bvercel\b[^"&;|]*\s--prod\b|\bnetlify\s+deploy\b[^"&;|]*\s--prod\b|\bfirebase\s+deploy\b|\bfly(ctl)?\s+deploy\b|\brailway\s+up\b|\bwrangler\s+(deploy|publish)\b(?![^"&;|]*\s--env[= ]+(dev|development|staging|preview)\b)|\beb\s+deploy\b|\b(serverless|sls)\s+deploy\b[^"&;|]*--stage[= ]+prod'
 
   - id: approve-prod-deploys
     action: review

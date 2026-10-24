@@ -14,7 +14,7 @@ from typing import Any
 
 import commands
 
-KIND = {"catastrophic": 80, "irreversible": 45, "hidden": 35}
+KIND = {"catastrophic": 80, "irreversible": 45, "hidden": 35, "secret": 30, "rename": 20}
 # chain signals from the gateway (server.py): what came before this step
 SIGNAL = {"untrusted_destination": 40, "after_untrusted": 25, "after_untrusted_setup_edit": 30, "sequence": 30,
           "repeat_of_rejected": 25,

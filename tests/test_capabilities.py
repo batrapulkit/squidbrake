@@ -17,6 +17,7 @@ from test_server import BOSS, H, c, server  # noqa: E402,F401
 
 RULES = """
 default: allow
+command_checks: { irreversible: off }   # chains on their own: db.wipe would otherwise wait as a delete
 sequences:
   - id: wipe-after-backups-off
     action: review

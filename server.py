@@ -907,13 +907,15 @@ DATA_EFFECT_KEYS = ("customer_names", "personal_data")
 DATA_DEFAULTS = {"customer_names": "review", "personal_data": "review", "where": outbound.DEFAULT_WHERE}
 
 # Command checks (rules.yaml `command_checks:`) read what a shell command actually does (see commands.py).
-COMMAND_EFFECT_KEYS = ("catastrophic", "irreversible", "hidden")
+COMMAND_EFFECT_KEYS = ("catastrophic", "irreversible", "hidden", "secret", "rename")
 COMMAND_DEFAULTS = {
     "tools": ["Bash", "PowerShell", "*shell*", "*run_command*", "*execute_command*", "*terminal*", "*exec_command*"],
     "catastrophic": "block",   # wipes a disk, the filesystem or a home folder: rm -rf /, rm -rf ~, mkfs, dd onto a disk
-    "irreversible": "review",  # rm -r, git push --force, git reset --hard, terraform destroy, kubectl delete, DROP TABLE
+    "irreversible": "review",  # every delete (rm, git rm, docker rm, DELETE FROM), git push --force, git reset --hard, terraform destroy, kubectl delete, DROP TABLE
     "hidden": "review",        # code that can't be read first: eval, curl | sh, base64 -d | bash, -EncodedCommand,
                                # inline programs (python -c, node -e, ...), a program named only when it runs
+    "rename": "review",        # renames or moves: mv, git mv, Rename-Item, git branch -m, aws s3 mv
+    "secret": "review",        # shows a secret to the agent: cat key.pem / ~/.kube/config, gh auth token, keychain
     "written_then_run": "review",  # runs a script the agent itself created in this conversation (read it first)
     "edited_then_run": "warn",     # runs a script the agent changed in this conversation: flagged; review holds it
     "unknown": "warn",         # a program that isn't a common developer tool: recorded (shadow); "review" holds it
@@ -1684,12 +1686,30 @@ def run_rule_signals(ev: "EventIn", client: str) -> list[dict]:
     return out
 
 
+DELETE_WORDS = {"delete", "del", "remove", "rm", "destroy", "purge", "wipe", "erase", "trash", "unlink", "drop", "truncate"}
+RENAME_WORDS = {"rename", "move", "mv"}
+
+
+def tool_name_signals(name: str) -> list[dict]:
+    """A tool that isn't a shell, named for deleting or renaming (Cursor's Delete, crm.delete_customer, mcp__x__rename_file,
+    remove_from_list): held like the same thing done in a shell, even when the name also says list, get or search.
+    A signal only makes a decision stricter, so a rule that blocks it still blocks it; a rule that allows that tool by
+    name (not allow-reads) lets it run (see the caller)."""
+    cc = policy.commands
+    words = {w.lower() for w in re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?![a-z])|\d+", name or "")}
+    for kind, found, does in (("irreversible", words & DELETE_WORDS, "deletes or removes something"),
+                              ("rename", words & RENAME_WORDS, "renames or moves something")):
+        if found and cc[kind] != "off":
+            return [{"check": f"{kind}_command", "effect": cc[kind], "message": f"This tool {does} ({name})."}]
+    return []
+
+
 def command_signals(name: str, input: Any, metadata: dict | None = None) -> tuple[list[dict], bool]:
     """What a shell tool's command actually does (commands.py), including what it runs underneath when the hook
     read that (a Makefile target, a package.json script). -> (signals, only_reads)."""
     cc = policy.commands
     if not any(fnmatch.fnmatchcase(name.lower(), t.lower()) for t in cc["tools"]):
-        return [], False
+        return tool_name_signals(name), False
     line = commands.command_of(input)
     if not line:
         return [], False
@@ -2144,6 +2164,9 @@ def record_event(ev: EventIn, client: str, client_ip: str | None) -> Decision:
             decision, rule_id = "deny", f"justification:{rule_id}"
         if decision != "deny":
             command_found, only_reads = command_signals(ev.name, ev.input, ev.metadata)
+            if decision == "allow" and rule_id not in (None, "allow-reads") and \
+                    not any(fnmatch.fnmatchcase(ev.name.lower(), t.lower()) for t in policy.commands["tools"]):
+                command_found = []         # the team's own rule allows this tool by name: a delete it chose to let run
             with engine.connect() as conn:
                 # Most telling first: a sequence names the step that caused it; history checks are specific to
                 # the business (who asked for this payment); taint and command checks are more general.
