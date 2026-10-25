@@ -307,6 +307,13 @@ class PingIn(BaseModel):
     usage: dict
 
 
+async def _ping_body(request: Request) -> bytes:
+    raw = await request.body()
+    if len(raw) > 64_000:
+        raise HTTPException(413, "too large")
+    return raw
+
+
 # A pilot code is the only secret on a start page (and, for a hosted pilot, the way to its keys once), so guessing
 # codes is slowed down: an address that asks for 30 codes that don't exist in 10 minutes waits.
 _misses: dict[str, list[float]] = {}
@@ -390,10 +397,7 @@ def _int(v) -> int:
 
 
 @app.post("/v1/ping")
-async def ping(request: Request):
-    raw = await request.body()
-    if len(raw) > 64_000:
-        raise HTTPException(413, "too large")
+def ping(request: Request, raw: bytes = Depends(_ping_body)):
     p = PingIn.model_validate_json(raw)
     u = p.usage
     # the 14 days the dashboard shows (and tomorrow, for a clock ahead), each count capped: a gateway sends 7 days
@@ -993,7 +997,8 @@ def traction():
             "WHERE COALESCE(state, '') != 'deleting' AND code != ?", (COMMUNITY_CODE,))]   # pip users aren't a pilot
         installs = [dict(r) for r in c.execute("SELECT install_id, code, left_at, agents, connected, total_events "
                                                "FROM installs")]
-        days = c.execute("SELECT install_id, day, counts FROM days").fetchall()
+        since = (today - timedelta(days=63)).isoformat()
+        days = c.execute("SELECT install_id, day, counts FROM days WHERE day >= ?", (since,)).fetchall()
         raw_caught = c.execute("SELECT install_id, data FROM catches").fetchall()
         asks = [r[0] for r in c.execute("SELECT created_at FROM team_requests")]
     code_of = {i["install_id"]: i["code"] for i in installs}

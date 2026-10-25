@@ -113,6 +113,14 @@ def test_join_ping_leave(insights, tmp_path, monkeypatch):
     assert insights.post("/v1/ping", json=again).status_code == 403
 
 
+def test_ping_keeps_body_limit_and_runs_as_sync_endpoint(insights):
+    import inspect
+    import app as insights_app
+
+    assert not inspect.iscoroutinefunction(insights_app.ping)
+    assert insights.post("/v1/ping", content=b"x" * 64_001).status_code == 413
+
+
 def test_hosted_pilot_lifecycle(insights):
     admin = {"X-Admin-Key": "admin-test-key"}
     r = insights.post("/v1/admin/pilots", headers=admin, json={"company": "Hosted Co", "hosted": True}).json()
@@ -341,6 +349,7 @@ def test_traction_metrics(insights, tmp_path, monkeypatch):
     path_of = lambda url: "/" + url.split("://", 1)[1].split("/", 1)[1]
     monkeypatch.setattr(pilot.httpx, "post", lambda url, json, timeout: insights.post(path_of(url), json=json))
     assert pilot.join(tmp_path, code, "http://localhost", True, "1.0") == 0
+    pid = pilot.load(tmp_path)["install_id"]
     from datetime import datetime, timedelta, timezone
     d = lambda n: (datetime.now(timezone.utc) - timedelta(days=n)).strftime("%Y-%m-%d")
     assert pilot.send(tmp_path, {"version": "1.0", "agents": {"cursor": 3, "codex": 1}, "rules_hit": {}, "total_events": 9,
@@ -358,6 +367,14 @@ def test_traction_metrics(insights, tmp_path, monkeypatch):
     assert v["stopped_this_week"] >= 1 and v["saved_this_week"].get("files", 0) >= 12
     assert v["oss"]["stars"] == 42 and v["oss"]["forks"] == 7 and v["oss"]["contributors"] == 12
     assert v["oss"]["downloads_last_week"] == 1355
+    before_old_day = v
+    old = (datetime.now(timezone.utc) - timedelta(days=64)).strftime("%Y-%m-%d")
+    with insights_app.db() as c:
+        c.execute(
+            "INSERT OR REPLACE INTO days (install_id, day, counts) VALUES (?,?,?)",
+            (pid, old, json.dumps({"events": 999_999, "held": 999_999})),
+        )
+    assert insights.get("/v1/admin/traction", headers=admin).json() == before_old_day
     insights.post(f"/v1/admin/pilots/{code}/revenue", headers=admin, json={"mrr": 0})
     assert not any(p["company"] == "Investable" for p in insights.get("/v1/admin/traction", headers=admin).json()["paying"])
 
