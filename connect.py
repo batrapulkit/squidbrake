@@ -12,7 +12,7 @@ Connect an AI agent to Squidbrake in one command.
                                            + database tools (MCP)
   python connect.py claude-code --remove   undo it
   python connect.py mcp --name antigravity Antigravity, Claude Desktop, Cursor, ...: prints the MCP config to paste
-                                           (--install writes it into Antigravity's config for you)
+                                           (--install writes it into Antigravity's or Cursor's config for you)
 
 Guard every MCP server your agents already use (Cursor, Windsurf, VS Code, Gemini CLI, Antigravity, Claude Desktop):
   python connect.py guard --agent all          (--remove puts the originals back)
@@ -25,7 +25,7 @@ Options:
   --url URL      gateway address (default http://localhost:8080)
   --key KEY      use an existing agent key (default: create a new key named after the agent;
                  only works on the machine where the gateway runs)
-  --project DIR  Claude Code: install for one project folder instead of for all your projects
+  --project DIR  Claude Code / Cursor: install for one project folder instead of for all your projects
   --yes          don't ask before changing Claude Code settings
 """
 from __future__ import annotations
@@ -206,7 +206,7 @@ WHERE = {
 
 def mcp(args) -> None:
     name = args.name
-    key = args.key or existing_mcp_key(name, args.url) or new_key(name, args.url)
+    key = args.key or existing_mcp_key(name, args.url, getattr(args, "project", None)) or new_key(name, args.url)
     deliver(name, MCP_NAME, mcp_entry(args.url, key, name), args,
             f"The agent then has list_tables / describe_table / query / execute tools; watch at {args.url}/dashboard")
 
@@ -215,6 +215,12 @@ def mcp(args) -> None:
 
 def antigravity_config() -> Path:          # looked up each time, so tests (and a changed HOME) see the right one
     return Path.home() / ".gemini" / "antigravity" / "mcp_config.json"
+
+
+def cursor_config(project: str | None = None) -> Path:
+    return (Path(project).resolve() / ".cursor" / "mcp.json") if project else Path.home() / ".cursor" / "mcp.json"
+
+
 PROXY = BASE_DIR / "gateway_proxy.py"
 SANDBOX = BASE_DIR / "demo_apps_mcp.py"
 
@@ -225,22 +231,23 @@ def agent_configs() -> dict[str, Path]:
     desktop = (appdata / "Claude" if sys.platform == "win32" else
                Path.home() / "Library" / "Application Support" / "Claude" if sys.platform == "darwin" else
                Path.home() / ".config" / "Claude")
-    return {"antigravity": antigravity_config(), "cursor": Path.home() / ".cursor" / "mcp.json",
+    return {"antigravity": antigravity_config(), "cursor": cursor_config(),
             "claude-desktop": desktop / "claude_desktop_config.json"}
 
 
-def existing_mcp_key(agent: str, url: str) -> str | None:
+def existing_mcp_key(agent: str, url: str, project: str | None = None) -> str | None:
     """Reuse the key this agent already has (from its MCP config) instead of making a new one."""
-    path = agent_configs().get(agent)
-    if path and path.exists():
-        try:
-            servers = json.loads(path.read_text(encoding="utf-8") or "{}").get("mcpServers", {})
-        except ValueError:
-            return None
-        for s in servers.values():
-            env = s.get("env", {})
-            if env.get("GATEWAY_URL") == url and env.get("GATEWAY_API_KEY"):
-                return env["GATEWAY_API_KEY"]
+    paths = [cursor_config(project), cursor_config()] if agent == "cursor" and project else [agent_configs().get(agent)]
+    for path in paths:
+        if path and path.exists():
+            try:
+                servers = json.loads(path.read_text(encoding="utf-8") or "{}").get("mcpServers", {})
+            except ValueError:
+                continue
+            for s in servers.values():
+                env = s.get("env", {})
+                if env.get("GATEWAY_URL") == url and env.get("GATEWAY_API_KEY"):
+                    return env["GATEWAY_API_KEY"]
     return None
 
 
@@ -269,9 +276,11 @@ def deliver(agent: str, server_name: str, entry: dict, args, done: str) -> None:
         if subprocess.run(cmd, cwd=args.project or None).returncode == 0:
             print(f"Added MCP server '{server_name}' to Claude Code. Restart Claude Code. {done}")
         return
-    if agent == "antigravity" and getattr(args, "install", False):
-        install_json(antigravity_config(), server_name, entry)
-        print(f"Added '{server_name}' to {antigravity_config()} (backup kept). Restart Antigravity. {done}")
+    if agent in ("antigravity", "cursor") and getattr(args, "install", False):
+        path = cursor_config(getattr(args, "project", None)) if agent == "cursor" else antigravity_config()
+        install_json(path, server_name, entry)
+        label = "Cursor" if agent == "cursor" else "Antigravity"
+        print(f"Added '{server_name}' to {path} (backup kept). Restart {label}. {done}")
         return
     print("\n" + WHERE.get(agent, "Add this to your agent's MCP configuration") + ", then restart the agent:\n")
     print(json.dumps({"mcpServers": {server_name: entry}}, indent=2))
@@ -290,7 +299,7 @@ def wrap(args) -> None:
     if not key and args.agent == "claude-code":
         path = settings_path(args.project)
         key = previous_key(json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}, args.url)
-    key = key or existing_mcp_key(args.agent, args.url) or new_key(args.agent, args.url)
+    key = key or existing_mcp_key(args.agent, args.url, getattr(args, "project", None)) or new_key(args.agent, args.url)
     env = {"GATEWAY_URL": args.url, "GATEWAY_API_KEY": key, "GATEWAY_SOURCE": args.agent}
     for kv in args.env or []:  # the app's own credentials, e.g. STRIPE_SECRET_KEY=sk_live_...
         k, _, v = kv.partition("=")
@@ -1279,16 +1288,16 @@ def main(argv: list[str] | None = None) -> None:
             s.add_argument("--hook-only", action="store_true", help="just the hook, without the demo database tools")
         elif name == "mcp":
             s.add_argument("--name", default="mcp-agent", help="antigravity, claude-desktop, cursor, or any label")
-            s.add_argument("--install", action="store_true", help="antigravity: write it into its config")
-            s.add_argument("--project")
+            s.add_argument("--install", action="store_true", help="antigravity, cursor: write it into its config")
+            s.add_argument("--project", help="cursor: only for this project folder (.cursor/mcp.json)")
         else:
             s.add_argument("--agent", required=True, help="claude-code, antigravity, claude-desktop, cursor, or any label")
             s.add_argument("--app", help="short name for the app, e.g. stripe, github, gmail")
             s.add_argument("--app-url", help="the app's remote MCP server URL (instead of a command)")
             s.add_argument("--sandbox", action="store_true", help="use the built-in Acme sandbox company")
             s.add_argument("--env", action="append", help="KEY=VALUE for the app's own credentials (repeatable)")
-            s.add_argument("--project", help="claude-code: only for this project folder")
-            s.add_argument("--install", action="store_true", help="antigravity: write it into its config")
+            s.add_argument("--project", help="claude-code, cursor: only for this project folder")
+            s.add_argument("--install", action="store_true", help="antigravity, cursor: write it into its config")
             s.add_argument("command", nargs=argparse.REMAINDER, help="-- then the app's MCP server command")
     args = p.parse_args(argv)
     args.url = args.url.rstrip("/") if args.url else None

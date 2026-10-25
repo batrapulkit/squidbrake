@@ -173,3 +173,37 @@ def test_status_checks_the_dashboard_the_hooks_use(tmp_path, monkeypatch, capsys
     assert ("https://co.app.example.test/v1/me", "gw_hooked_key") in seen
     assert "co.app.example.test: running" in out and "REJECTED" in out and "start it: squidbrake" not in out
     assert code == 1 and "gw_hooked_key" not in out
+
+
+def test_cursor_mcp_install_global_and_project(tmp_path, monkeypatch, capsys):
+    home = _home(tmp_path, monkeypatch)
+    cursor = home / ".cursor" / "mcp.json"
+    cursor.parent.mkdir(parents=True)
+    existing = {"mcpServers": {"github": {"command": "npx", "args": ["-y", "server-github"]}}}
+    cursor.write_text(json.dumps(existing), encoding="utf-8")
+
+    connect.main(["mcp", "--name", "cursor", "--install", "--url", URL, "--key", KEY])
+    data = json.loads(cursor.read_text(encoding="utf-8"))
+    assert data["mcpServers"]["github"] == existing["mcpServers"]["github"]
+    assert data["mcpServers"][connect.MCP_NAME]["env"] == {
+        "GATEWAY_URL": URL, "GATEWAY_API_KEY": KEY, "GATEWAY_SOURCE": "cursor"
+    }
+    backups = list(cursor.parent.glob("mcp.json.bak-*"))
+    assert len(backups) == 1 and json.loads(backups[0].read_text(encoding="utf-8")) == existing
+    assert "Restart Cursor" in capsys.readouterr().out
+
+    project = tmp_path / "my-project"
+    connect.main(["mcp", "--name", "cursor", "--install", "--project", str(project), "--url", URL, "--key", "gw_proj_key"])
+    proj_mcp = project / ".cursor" / "mcp.json"
+    assert proj_mcp.exists()
+    assert not list(proj_mcp.parent.glob("mcp.json.bak-*"))
+    proj_data = json.loads(proj_mcp.read_text(encoding="utf-8"))
+    assert proj_data["mcpServers"][connect.MCP_NAME]["env"]["GATEWAY_API_KEY"] == "gw_proj_key"
+
+    # Re-running with --project reuses the key already in .cursor/mcp.json without calling new_key
+    monkeypatch.setattr(connect, "new_key", lambda *a, **k: (_ for _ in ()).throw(AssertionError("should reuse key")))
+    connect.main(["wrap", "--agent", "cursor", "--install", "--project", str(project), "--url", URL, "--sandbox"])
+    proj_data = json.loads(proj_mcp.read_text(encoding="utf-8"))
+    assert proj_data["mcpServers"]["gw-acme"]["env"]["GATEWAY_API_KEY"] == "gw_proj_key"
+    assert len(list(proj_mcp.parent.glob("mcp.json.bak-*"))) == 1
+
