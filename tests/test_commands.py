@@ -92,6 +92,12 @@ def test_catastrophic(line):
     "supabase db reset",
     "pg_restore --clean -d prod dump.sql",
 
+    # Destructive database commands that don't say DROP TABLE
+    "psql -c 'DELETE FROM users WHERE 1=1'",
+    "mysql -e 'ALTER TABLE users DROP COLUMN email'",
+    "mongosh --eval 'db.users.deleteMany({})'",
+    "psql -c 'UPDATE users SET admin=true'",
+
     # Close relatives the maintainer asked for
     "rails db:reset",
     "rake db:drop",
@@ -167,6 +173,8 @@ def test_no_false_alarm(line):
     "terraform plan", "terraform validate",
     "psql -d app_dev -f seed.sql", 'psql "$PROD_DATABASE_URL" -c "select count(*) from users"',
     'psql -d products -f seed.sql',                                                     # "products" isn't prod
+    "psql -c 'UPDATE users SET admin=true WHERE id = 5'",                               # a real WHERE is an ordinary change
+    "psql -c 'SELECT * FROM users'",
 
     # Safe migration commands: must not be flagged
     "prisma migrate dev",

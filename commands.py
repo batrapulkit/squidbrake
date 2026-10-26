@@ -214,7 +214,7 @@ DESTRUCTIVE_WORDS = re.compile(r"^(delete|destroy|terminate|remove|rm|rb|purge|d
                                r".*:(destroy|delete|remove|reset|wipe|purge|rm))$", re.I)   # heroku pg:reset, apps:destroy
 SQL_DESTRUCTIVE = re.compile(r"\b(drop\s+(table|database|schema|index|view|column)|truncate\b|delete\s+from\b|"
                              r"update\s+[\w.\"`]+\s+set\b(?:(?!\bwhere\b)[^;])*(;|$)|"   # UPDATE with no WHERE: every row
-                             r"dropdatabase\s*\(|\.drop\s*\(|flushall|flushdb)", re.I)
+                             r"dropdatabase\s*\(|deletemany\s*\(\s*\{\s*\}\s*\)|\.drop\s*\(|flushall|flushdb)", re.I)
 SQL_RENAME = re.compile(r"\b(alter\s+(table|database|schema|view|index)\s+[\w.\"`]+\s+rename\b|rename\s+(table|database)\b|"
                         r"\.renameCollection\s*\(|\brename\b\s+\S+\s+\S+\s*$)", re.I)
 REDIS_DELETE = {"del", "unlink", "hdel", "srem", "zrem", "lrem", "xdel", "getdel"}
