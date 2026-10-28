@@ -110,7 +110,11 @@ These are known and not fixed. Some can't be fixed at this layer.
      `echo ... > x.js`, `tee`), it's held before it runs (`python x.py`, `node x.js`, `uv run x.py`).
    - If the agent changed it, it's flagged but runs (`edited_then_run: warn`), because fixing a script and running it
      is everyday work. Set `edited_then_run: review` to hold those too. **(test)** `test_threat_model.py`
-   - Inline code (`python -c`) is held as hidden.
+   - Inline code (`python -c`, `node -e`, and the same fed on stdin: `python3 - <<EOF`, `cat <<EOF | node`) is read:
+     Python with its own parser (never run), Node by an allowlist. It runs only if every import and call is on a
+     read-only list; a shell, the network, file changes, `exec`/`eval` or anything unrecognised is held as hidden.
+     Other languages (`perl -e`, `ruby -e` ...) are always held. A secret file named in it counts as a secret read.
+     **(test)** `test_commands.py`
    - `npx -y pkg` and `pip install pkg` run code nobody has read, and so do a new dependency's own install scripts
      (they can't be read before it's downloaded). They're recorded (`unknown: warn`), not held: holding every
      install would hold everyday work. Use `npm install --ignore-scripts` where you can.

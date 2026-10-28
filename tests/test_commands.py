@@ -283,13 +283,46 @@ def test_explain_says_what_the_gateway_would_do():
 # ---- what a shell reading can't follow waits for a person
 
 @pytest.mark.parametrize("line", [
-    'python -c "print(1)"', 'python3 -c "x=1"', 'python3.12 -Bc "x=1"', 'py -c "x=1"', 'node -e "1"',
-    'node --eval "1"', 'nodejs -p "1"', 'bun -e "1"', 'deno eval "1"', "perl -e 1", "perl -we 1", "ruby -e 1",
+    'python -c "import os; os.system(1)"', 'python3 -c "exec(x)"', 'python3.12 -Bc "import subprocess"',
+    'py -c "__import__(1)"', '''node -e "require('child_process')"''', 'node --eval "eval(x)"', 'nodejs -p "fetch(1)"',
+    'bun -e "require(x)"', 'deno eval "import(1)"', "perl -e 1", "perl -we 1", "ruby -e 1",
     "php -r 1", 'osascript -e "beep"', 'Rscript -e "1"', 'bash -c "$(cat x)"', "$(cat x) --y", "`cat x` y",
-    'sudo python3 -c "x=1"', 'ls && node -e "1"',
+    'sudo python3 -c "import shutil"', '''ls && node -e "require('fs').unlinkSync(1)"''',
 ])
 def test_inline_programs_are_hidden(line):
     assert kind(line) == "hidden", line
+
+
+# Inline Python and Node that only looks is read, not held: Claude Code runs these all day (27 Oct 2026, a pilot)
+@pytest.mark.parametrize("line", [
+    'python -c "print(1)"', 'python3 -c "x=1"', 'python3.12 -Bc "x=1"', 'py -c "x=1"', 'node -e "1"',
+    'node --eval "1"', 'nodejs -p "1"', 'bun -e "1"', 'deno eval "1"', 'sudo python3 -c "x=1"', 'ls && node -e "1"',
+    """python3 -c "import json; print(json.load(open('package.json'))['version'])" """,
+    """node -e "console.log(require('./package.json').version)" """,
+    "python3 - <<'EOF'\nimport sys\nprint(sys.version)\nEOF",
+])
+def test_inline_code_that_only_looks_runs(line):
+    assert kind(line.strip()) not in ("hidden", "irreversible", "catastrophic"), line
+
+
+@pytest.mark.parametrize("line", [
+    "python3 - <<'EOF'\nimport shutil\nshutil.rmtree('/home')\nEOF",
+    "node <<'EOF'\nrequire('child_process').execSync('rm -rf ~')\nEOF",
+    "cat <<'EOF' | python3\nimport os; os.remove('x')\nEOF",
+    "perl <<'EOF'\nsystem('rm -rf ~')\nEOF",
+    """python3 -c "import sys; sys.modules['os'].system('id')" """,
+    """python3 -c "().__class__.__base__.__subclasses__()" """,
+    """node -e "const f=require('fs'); f['unlink'+'Sync']('x')" """,
+])
+def test_inline_code_that_changes_things_is_hidden(line):
+    assert kind(line.strip()) == "hidden", line
+
+
+@pytest.mark.parametrize("line", ["""python -c "print(open('.env').read())" """,
+                                  "python3 <<EOF\nprint(open('.env').read())\nEOF",
+                                  """node -e "console.log(require('fs').readFileSync('.env','utf8'))" """])
+def test_inline_code_reading_a_secret_is_a_secret_read(line):
+    assert kind(line.strip()) == "secret", line
 
 
 @pytest.mark.parametrize("line", [

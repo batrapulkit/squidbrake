@@ -360,6 +360,116 @@ def _inline_code_flag(prog: str, lower: list[str]) -> str | None:
     return None
 
 
+# Inline Python and Node that only looks (prints, parses JSON, reads a file) runs; anything else is read by a person.
+# An allowlist, not a denylist: an import, a call or a trick this doesn't know means "a person reads it".
+PY_SAFE = {"json", "sys", "re", "math", "cmath", "datetime", "time", "collections", "itertools", "functools",
+           "platform", "textwrap", "string", "statistics", "decimal", "fractions", "csv", "hashlib", "base64",
+           "binascii", "uuid", "random", "pprint", "tomllib", "typing", "enum", "dataclasses", "operator", "struct",
+           "glob", "fnmatch", "os", "os.path", "pathlib", "calendar", "locale", "unicodedata", "difflib", "html",
+           "shlex", "keyword", "importlib.metadata", "configparser"}
+PY_OS_SAFE = {"path", "getcwd", "getenv", "environ", "sep", "linesep", "pathsep", "name", "cpu_count", "listdir",
+              "scandir", "walk", "stat", "getpid", "uname", "get_terminal_size", "devnull", "curdir", "pardir",
+              "extsep", "fspath"}
+PY_SYS_BAD = {"modules", "settrace", "setprofile", "_getframe", "meta_path", "path_hooks", "addaudithook"}
+PY_BAD_NAMES = {"exec", "eval", "compile", "__import__", "getattr", "setattr", "delattr", "globals", "locals", "vars",
+                "breakpoint", "__builtins__", "importlib"}
+PY_WRITES = {"write_text", "write_bytes", "unlink", "rmdir", "touch", "mkdir", "makedirs", "chmod", "chown",
+             "symlink_to", "hardlink_to", "rmtree", "rename", "truncate", "link_to", "lchmod"}
+PY_DUNDER_OK = {"__version__", "__name__", "__file__", "__doc__"}
+
+
+def _py_risk(code: str) -> str | None:
+    import ast
+    try:
+        tree = ast.parse(code)
+    except (SyntaxError, ValueError):
+        return "can't be read as Python"
+    alias: dict[str, str] = {}                         # name in the code -> the module it stands for
+    uses_path = "pathlib" in code or "Path" in code    # Path.replace moves files; str.replace doesn't
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for a in node.names:
+                if a.name not in PY_SAFE or a.name == "importlib.metadata":    # `import importlib.metadata` binds importlib
+                    return f"imports {a.name}"
+                alias[(a.asname or a.name).split(".")[0]] = a.name.split(".")[0]
+        elif isinstance(node, ast.ImportFrom):
+            mod = node.module or ""
+            if node.level or mod not in PY_SAFE:
+                return f"imports from {mod or '.'}"
+            for a in node.names:
+                if a.name == "*":
+                    return f"imports everything from {mod}"
+                if mod == "os" and a.name not in PY_OS_SAFE or mod == "sys" and a.name in PY_SYS_BAD \
+                        or a.name in PY_WRITES:
+                    return f"uses {mod}.{a.name}"
+        elif isinstance(node, ast.Name):
+            if node.id in PY_BAD_NAMES or node.id.startswith("__") and node.id not in PY_DUNDER_OK:
+                return f"uses {node.id}"
+        elif isinstance(node, ast.Attribute):
+            if node.attr.startswith("__") and node.attr not in PY_DUNDER_OK:
+                return f"reaches {node.attr}"
+            if node.attr in PY_WRITES or uses_path and node.attr == "replace":
+                return f"changes files ({node.attr})"
+            base = alias.get(node.value.id) if isinstance(node.value, ast.Name) else None
+            if base == "os" and node.attr not in PY_OS_SAFE or base == "sys" and node.attr in PY_SYS_BAD:
+                return f"uses {base}.{node.attr}"
+        elif isinstance(node, ast.Call):
+            f = node.func
+            if isinstance(f, ast.Name) and f.id == "open" or isinstance(f, ast.Attribute) and f.attr == "open":
+                pos = 1 if isinstance(f, ast.Name) else 0          # open(path, mode) / Path(...).open(mode)
+                mode = next((k.value for k in node.keywords if k.arg == "mode"), None)
+                if mode is None:
+                    mode = node.args[pos] if len(node.args) > pos else ast.Constant("r")
+                if not (isinstance(mode, ast.Constant) and isinstance(mode.value, str)) or set(mode.value) & set("wax+"):
+                    return "opens a file for writing"
+    return None
+
+
+NODE_SAFE = {"fs", "path", "os", "util", "url", "crypto", "assert"}
+NODE_BAD = re.compile(r"child_process|\b(exec|execSync|execFile|execFileSync|spawn|spawnSync|fork|eval|Function|"
+                      r"fetch|XMLHttpRequest|WebSocket|globalThis|global|mainModule|constructor|__proto__|Reflect|"
+                      r"Proxy|process\s*\.\s*(binding|dlopen|kill|chdir|setuid|setgid))\b|\bimport\b|\brequire\s*\.|"
+                      r"\brequire\s*\[")
+NODE_WRITES = re.compile(r"\.\s*(write|append|unlink|rm|rmdir|rename|copy|cp|mkdir|mkdtemp|chmod|chown|lchown|symlink|"
+                         r"link|truncate|utimes|createWriteStream|open|opendir|watch)\w*")
+
+
+def _node_risk(code: str) -> str | None:
+    if m := NODE_BAD.search(code):
+        return f"uses {m.group(0).strip()}"
+    if m := NODE_WRITES.search(code):
+        return f"changes files ({m.group(1)})"
+    mods = re.findall(r"\brequire\s*\(\s*(['\"])([^'\"]*)\1\s*\)", code)
+    if len(mods) != len(re.findall(r"\brequire\s*\(", code)):
+        return "loads a module chosen at run time"
+    for _, mod in mods:
+        if mod.removeprefix("node:") not in NODE_SAFE and not (mod.startswith((".", "/")) and mod.endswith(".json")):
+            return f"loads {mod}"
+    if any(m.removeprefix("node:") == "fs" for _, m in mods) and re.search(r"[\w)\]]\s*\[", code):
+        return "reaches into a module by a computed name"      # fs['unlink' + 'Sync']
+    return None
+
+
+def _inline_secrets(code: str) -> list[str]:
+    """Secret files named in inline code's strings: print(open('.env').read()) is `cat .env`."""
+    return [w for _, w in re.findall(r"(['\"])(.*?)\1", code)
+            if (SECRET_PATH.search(w) or SECRET_EXT.search(w)) and not NOT_SECRET.search(w.rstrip("/"))]
+
+
+def inline_risk(lang: str | None, code: str) -> str | None:
+    """Why inline code (python -c, node -e, a heredoc) needs a person to read it, or None when it only looks."""
+    if lang == "python":
+        return _py_risk(code)
+    if lang == "node":
+        return _node_risk(code)
+    return "is in a language this can't read"
+
+
+def _inline_lang(prog: str) -> str | None:
+    base = re.sub(r"[0-9.]+$", "", prog)
+    return "python" if base in ("python", "py", "pypy") else "node" if base in ("node", "nodejs", "bun", "deno") else None
+
+
 SELF = ("squidbrake", "squidbreak")
 
 
@@ -497,8 +607,14 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
     if re.search(r"\$\(|`|^\$", words[0]):
         return [], ["runs a program whose name is only known when it runs"]
     if (flag := _inline_code_flag(prog, lower)):
-        return [], [f"runs a program written inline ({prog} {flag}), which a shell reading can't follow; a person "
-                    f"reads it first"]
+        at = lower.index(flag, 1)
+        code = words[at + 1] if at + 1 < len(words) else ""
+        if (why := inline_risk(_inline_lang(prog), code)) is None:
+            # only looks, so it's read like any other program; looking at a secret file is still a secret read
+            if found := _inline_secrets(code):
+                cmd.kind, cmd.why = "secret", f"shows the agent a file that may hold secrets ({found[0]})"
+            return [cmd], []
+        return [], [f"runs a program written inline ({prog} {flag}) that {why}; a person reads it first"]
 
     # ---- Squidbrake itself: an agent turning off what checks it waits for a person
     if (why := _turns_off_squidbrake(prog, lower)):
@@ -971,8 +1087,57 @@ _PIPE_TO_SHELL = re.compile(r"\|\s*(sudo\s+)?(ba|z|da|k)?sh\b|\|\s*(sudo\s+)?(py
                             r"|\|\s*(iex|invoke-expression)\b", re.I)
 
 
+_HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][\w.-]*)\1")
+HEREDOC_RUNNERS = {"python", "py", "pypy", "node", "nodejs", "bun", "deno", "perl", "ruby", "php", "lua", "rscript"}
+
+
+def _runner(segment: str) -> str | None:
+    """`python3 -` / `node` / `sudo python3 -u`: an interpreter reading its program from stdin, else None."""
+    words = _strip_wrappers(segment.split())
+    if not words:
+        return None
+    prog = _program(words[0])
+    base = re.sub(r"[0-9.]+$", "", prog)
+    if base not in HEREDOC_RUNNERS or not all(w == "-" or w.startswith("-") and w not in ("-m", "-c", "-e") for w in words[1:]):
+        return None                                     # a script file, a module or inline code: the heredoc is its input
+    return prog
+
+
+def _code_heredocs(line: str) -> tuple[str, list[tuple[str, str]]]:
+    """Heredocs that are a program (python3 - <<EOF, node <<EOF, cat <<EOF | python3): taken out of the line, so their
+    body isn't read as shell commands, and returned as (program, code). Any other heredoc is left as it was."""
+    lines, out, found, i = line.split("\n"), [], [], 0
+    while i < len(lines):
+        head = lines[i]
+        out.append(head)
+        i += 1
+        for m in _HEREDOC.finditer(head):
+            before, after = head[:m.start()], head[m.end():]
+            prog = _runner(re.split(r"[;&|(]", before)[-1])
+            piped = None
+            if prog is None and re.fullmatch(r"\s*cat\s*", re.split(r"[;&|(]", before)[-1]) and "|" in after:
+                piped = after.split("|", 1)[1]
+                prog = _runner(re.split(r"[;&|)]", piped)[0])
+            end = next((j for j in range(i, len(lines)) if lines[j].strip() == m.group(2)), len(lines))
+            if prog is None:
+                continue
+            found.append((prog, "\n".join(lines[i:end])))
+            if piped is not None:                        # `cat <<EOF | python3`: the pipe is read here, not as unreadable
+                out[-1] = head[:m.end()] + after.split("|", 1)[0]
+            i = end + 1
+    return "\n".join(out), found
+
+
 def _read(line: str, depth: int = 0) -> tuple[list[Command], list[str]]:
     commands, hidden = [], []
+    if depth == 0 and "<<" in line:
+        line, programs = _code_heredocs(line)
+        for prog, code in programs:
+            if why := inline_risk(_inline_lang(prog), code):
+                hidden.append(f"runs a program fed to {prog} on its input that {why}; a person reads it first")
+            elif found := _inline_secrets(code):
+                commands.append(Command(program=prog, words=[prog], kind="secret", raw=line,
+                                        why=f"shows the agent a file that may hold secrets ({found[0]})"))
     if _PIPE_TO_SHELL.search(line) and re.search(r"\b(curl|wget|iwr|invoke-webrequest|irm|invoke-restmethod|"
                                                  r"base64|certutil|xxd\s+-r)\b", line, re.I):
         hidden.append("downloads or decodes code and runs it straight away, so it can't be read before it runs")

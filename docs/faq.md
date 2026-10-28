@@ -39,8 +39,9 @@ Here's what that means in practice:
   or to Squidbrake's rules (held for a person), and chains of steps such as backups switched off and then a delete.
   Through the hooks, what a command runs underneath is read too: a Makefile target's recipe (`make clean`), a
   `package.json` script (`npm run release`) and a shell script (`bash cleanup.sh`).
-- **Held because it can't be read:** a program written inline (`python -c`, `node -e`, `perl -e`), a program named
-  only when it runs (`$(...)`, `eval`), and a script the agent created in this conversation and then runs
+- **Held because it can't be read:** inline code that does more than look (`python -c` or `node -e` that runs a
+  shell, uses the network, changes files or builds code at run time; any `perl -e`, `ruby -e`), the same code fed to
+  an interpreter on its input (`python3 - <<EOF`), a program named only when it runs (`$(...)`, `eval`), and a script the agent created in this conversation and then runs
   (`python cleanup.py` right after writing `cleanup.py`). A person reads it first.
 - **Held: the agent turning Squidbrake off.** `squidbrake connect --remove`, `service stop`, uninstalling it, killing
   its process, editing the agents' hook settings or Squidbrake's installed files, or setting a lasting variable that

@@ -121,7 +121,8 @@ def test_block_risky_while_unreachable(c, monkeypatch, tmp_path):
     assert run("Edit", {"file_path": "/repo/a.py", "old_string": "a", "new_string": "b"}) is True
     assert run("Bash", {"command": "npm test"}) is True                              # everyday coding work
     assert run("Bash", {"command": "git push --force origin main"}) is False         # can't be undone
-    assert run("Bash", {"command": "python -c 'import os'"}) is False                # can't be read
+    assert run("Bash", {"command": "python -c 'import os; os.system(x)'"}) is False  # inline code that does things
+    assert run("Bash", {"command": "python -c 'import json; print(1)'"}) is True      # inline code that only looks
     assert run("stripe.refund", {"amount": 5}) is False                              # would wait for a person
     assert run("Read", {"file_path": f"{HOME}/.squidbrake/data/secret.key"}) is False  # its own keys
     assert offline.decide(url, name="stripe.refund", input={}, fail_open=True)[0] is True
