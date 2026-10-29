@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Prompt injection in AI agents: how to stop data exfiltration</title>
+<meta name="description" content="Indirect prompt injection turns AI agents into data leaks. Real incidents (GitHub MCP, Supabase MCP, EchoLeak), the lethal trifecta, and controls that work.">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+<meta name="author" content="Pulkit Batra">
+<link rel="canonical" href="https://squidbrake.com/blog/prompt-injection-ai-agents">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://squidbrake.com/blog/prompt-injection-ai-agents">
+<meta property="og:site_name" content="Squidbrake">
+<meta property="og:title" content="Prompt injection in AI agents: how to stop data exfiltration">
+<meta property="og:description" content="Indirect prompt injection turns AI agents into data leaks. Real incidents (GitHub MCP, Supabase MCP, EchoLeak), the lethal trifecta, and controls that work.">
+<meta property="og:image" content="https://squidbrake.com/assets/og.png">
+<meta property="article:published_time" content="2026-10-29">
+<meta property="article:author" content="https://squidbrake.com/about">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Prompt injection in AI agents: how to stop data exfiltration">
+<meta name="twitter:description" content="Indirect prompt injection turns AI agents into data leaks. Real incidents (GitHub MCP, Supabase MCP, EchoLeak), the lethal trifecta, and controls that work.">
+<meta name="twitter:image" content="https://squidbrake.com/assets/og.png">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "BlogPosting", "headline": "Prompt injection in AI agents: how to stop data exfiltration", "description": "Indirect prompt injection turns AI agents into data leaks. Real incidents (GitHub MCP, Supabase MCP, EchoLeak), the lethal trifecta, and controls that work.", "url": "https://squidbrake.com/blog/prompt-injection-ai-agents", "mainEntityOfPage": "https://squidbrake.com/blog/prompt-injection-ai-agents", "datePublished": "2026-10-29", "dateModified": "2026-10-29", "image": "https://squidbrake.com/assets/og.png", "inLanguage": "en", "keywords": "prompt injection, indirect prompt injection, prompt injection AI agents, lethal trifecta, data exfiltration AI agent, MCP prompt injection, prevent prompt injection", "articleSection": "Guide", "wordCount": 1003, "author": {"@type": "Person", "@id": "https://squidbrake.com/about#pulkit", "name": "Pulkit Batra", "url": "https://squidbrake.com/about"}, "publisher": {"@type": "Organization", "@id": "https://squidbrake.com/#org", "name": "Squidbrake", "url": "https://squidbrake.com/", "logo": "https://squidbrake.com/assets/logo-512.png"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://squidbrake.com/"}, {"@type": "ListItem", "position": 2, "name": "Blog", "item": "https://squidbrake.com/blog"}, {"@type": "ListItem", "position": 3, "name": "Prompt injection in AI agents: how to stop data exfiltration", "item": "https://squidbrake.com/blog/prompt-injection-ai-agents"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What is indirect prompt injection?", "acceptedAnswer": {"@type": "Answer", "text": "Instructions hidden in content an AI agent reads, such as a web page, email, issue or document, rather than typed by the user. The agent treats them as part of its task."}}, {"@type": "Question", "name": "Can prompt injection be fully prevented?", "acceptedAnswer": {"@type": "Answer", "text": "Not at the model level today. Defences that filter text reduce it but get bypassed. The reliable control is to check the actions an agent takes, especially those that send data out."}}, {"@type": "Question", "name": "What is the lethal trifecta?", "acceptedAnswer": {"@type": "Answer", "text": "Simon Willison's term for an agent that has access to private data, exposure to untrusted content, and the ability to communicate externally. With all three, a single injected instruction can leak data."}}, {"@type": "Question", "name": "How does Squidbrake detect prompt injection?", "acceptedAnswer": {"@type": "Answer", "text": "It doesn't try to detect the injection in text. It checks where each outbound action sends data and holds it when the destination appears only in untrusted content the agent read, not in what the user asked."}}]}]}</script>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preload" href="/assets/fonts/host-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/fonts/fonts.css">
+<style>
+:root{
+  --bg:#E6EBE2; --surface:#F4F6F1; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5;
+  --go:#237447; --stop:#C0301C; --hold:#A5560C; --accent:#F2622E; --accent-hover:#E4541F;
+  --code-bg:#1E2A23; --code-ink:#E6EDE4; --code-muted:#93A196;
+  --sans:"Host Grotesk","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:4px}
+.wrap{width:min(1120px,100% - 32px);margin-inline:auto}
+main p,main li,main dd,main>h1{max-width:80ch}   /* the page uses the width, a line of text stays readable */
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 0;border-bottom:1px solid var(--line)}
+.brand{display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:1.2rem;letter-spacing:-0.03em;text-decoration:none}
+.brand svg{width:32px;height:32px}
+header nav{display:flex;gap:20px;font-size:.95rem}
+header nav a{color:var(--muted);text-decoration:none}
+header nav a:hover{color:var(--ink)}
+main{padding:56px 0 80px}
+.kicker{margin:0 0 14px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-weight:500;font-size:clamp(2.2rem,6vw,3.4rem);line-height:1;letter-spacing:-0.05em;margin:0 0 18px}
+.lead{color:var(--muted);font-size:1.1rem;margin:0 0 40px;max-width:52ch}
+h2{display:flex;align-items:baseline;gap:12px;font-weight:500;font-size:1.6rem;letter-spacing:-0.035em;margin:56px 0 12px}
+h2 .n{font:400 .9rem var(--mono);color:var(--muted)}
+p{margin:0 0 14px}
+.muted{color:var(--muted)}
+code{font:400 .9em var(--mono)}
+p code,li code{background:var(--surface);padding:1px 5px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line)}
+pre{margin:0 0 18px;padding:18px 20px;border-radius:10px;background:var(--code-bg);color:var(--code-ink);font:400 .86rem/1.6 var(--mono);overflow-x:auto}
+pre .c{color:var(--code-muted)}
+pre .d{color:#FF8A75}
+pre .h{color:#F7B267}
+.file{display:block;margin:0 0 -6px;padding:8px 20px 14px;border-radius:10px 10px 0 0;background:var(--code-bg);color:var(--code-muted);font:400 .76rem var(--mono)}
+.file+pre{border-radius:0 0 10px 10px}
+.note{margin:18px 0;padding:14px 18px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0;font-size:.95rem}
+ul{padding-left:1.2em;margin:0 0 14px}
+li{margin:4px 0}
+footer{padding:28px 0 40px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem;display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between}
+footer a{text-decoration:none}
+footer a:hover{color:var(--ink)}
+@media (max-width:560px){ header nav a:not(:last-child){display:none} main{padding:36px 0 56px} pre{font-size:.78rem;padding:14px} }
+.ph-badge{display:inline-block;line-height:0}.ph-badge img{max-width:100%;height:auto}
+</style>
+<style>.posts{list-style:none;padding:0;margin:0}.posts li{padding:22px 0;border-bottom:1px solid var(--line)}.posts a{color:var(--ink);font-size:1.3rem;font-weight:500;letter-spacing:-0.02em}.posts p{margin:6px 0 0;color:var(--muted)}.posts time,.byline{font:400 .82rem var(--mono);color:var(--muted)}article h2{display:block}article li{margin:6px 0}.cta-box{margin:48px 0 0;padding:20px 22px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}.cta-box p{margin:0}.cmp{width:100%;border-collapse:collapse;margin:8px 0 0;font-size:.95rem}.cmp th,.cmp td{text-align:left;vertical-align:top;padding:10px 12px 10px 0;border-bottom:1px solid var(--line)}.cmp th{font-weight:500}.cmp td:first-child{color:var(--muted)}.tbl{overflow-x:auto}</style>
+<style>
+.toc{margin:0 0 36px;padding:16px 20px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);max-width:80ch}
+.toc p{margin:0 0 6px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.toc ol{margin:0;padding-left:1.2em}.toc li{margin:2px 0}.toc a{text-decoration:none}.toc a:hover{text-decoration:underline}
+.tldr{margin:0 0 32px;padding:18px 22px;border-radius:12px;border-left:3px solid var(--accent);background:var(--surface);max-width:80ch}
+.tldr p{margin:0 0 6px;font-weight:500}.tldr ul{margin:0}
+figure.fig{margin:28px 0 30px;padding:20px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+figure.fig .scroll{overflow-x:auto}
+figure.fig svg{display:block;width:100%;min-width:560px;height:auto;font-family:var(--sans)}
+figure.fig figcaption{margin:12px 0 0;color:var(--muted);font-size:.9rem;max-width:80ch}
+.fig .bx{fill:var(--bg);stroke:var(--line);stroke-width:1.5}
+.fig .bx-go{fill:var(--bg);stroke:var(--go);stroke-width:2}
+.fig .bx-hold{fill:var(--bg);stroke:var(--hold);stroke-width:2}
+.fig .bx-stop{fill:var(--bg);stroke:var(--stop);stroke-width:2}
+.fig .bx-acc{fill:var(--bg);stroke:var(--accent);stroke-width:2}
+.fig .bx-off{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:5 5}
+.fig .t{fill:var(--ink);font-size:15px;font-weight:500}
+.fig .s{fill:var(--muted);font-size:12.5px}
+.fig .m{fill:var(--muted);font:400 11.5px var(--mono);letter-spacing:.06em}
+.fig .ln{stroke:var(--muted);stroke-width:1.5;fill:none}
+.fig .ah{fill:var(--muted)}
+.fig .go{fill:var(--go)}.fig .hold{fill:var(--hold)}.fig .stop{fill:var(--stop)}.fig .acc{fill:var(--accent)}.fig .mut{fill:var(--muted)}
+.fig .bar{fill:var(--muted)}.fig .bar-hi{fill:var(--accent)}.fig .grid{stroke:var(--line);stroke-width:1}
+.fig .ring-a{fill:var(--go);fill-opacity:.13;stroke:var(--go);stroke-width:1.5}
+.fig .ring-b{fill:var(--hold);fill-opacity:.13;stroke:var(--hold);stroke-width:1.5}
+.fig .ring-c{fill:var(--accent);fill-opacity:.13;stroke:var(--accent);stroke-width:1.5}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:24px 0 30px}
+.stat{padding:16px 18px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+.stat b{display:block;font-size:1.9rem;font-weight:500;letter-spacing:-0.04em;line-height:1.1}
+.stat span{color:var(--muted);font-size:.88rem}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;font:400 .76rem var(--mono);white-space:nowrap;box-shadow:inset 0 0 0 1px currentColor}
+.pill.go{color:var(--go)}.pill.hold{color:var(--hold)}.pill.stop{color:var(--stop)}
+.faq details{padding:14px 0;border-bottom:1px solid var(--line);max-width:80ch}
+.faq summary{cursor:pointer;font-weight:500}
+.faq details p{margin:10px 0 0}
+.related{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0 0;padding:0;list-style:none}
+.related li{margin:0}
+.related a{display:block;height:100%;padding:14px 16px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);text-decoration:none}
+.related a:hover{box-shadow:inset 0 0 0 1px var(--ink)}
+.related b{display:block;font-weight:500}.related span{color:var(--muted);font-size:.88rem}
+article code{overflow-wrap:anywhere}
+details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>squidbrake</a>
+    <nav aria-label="Docs"><a href="/#how">How it works</a><a href="/security">Security</a><a href="/pricing">Pricing</a><a href="/about">About</a><a href="/blog">Blog</a><a href="/changelog">Changelog</a><a href="/signup"><b>Sign up free</b></a></nav>
+  </header>
+
+  <main>
+    <p class="kicker">Guide</p>
+    <article>
+    <h1>Prompt injection in AI agents: how to stop data exfiltration</h1>
+    <p class="byline">By <a href="/about">Pulkit Batra</a> · <time datetime="2026-10-29">29 October 2026</time> · 4 min read</p>
+
+    <p class="lead">You can't reliably stop a language model from following instructions hidden in text it reads. Every serious attempt to filter prompt injection has been bypassed. What you can control is what happens next: the tool call that sends your data somewhere. This guide walks through the incidents, why the usual defences fall short, and the check that catches the pattern they share.</p>
+    <div class="tldr"><p>In short</p><ul><li>Indirect prompt injection hides instructions in content an agent reads: issues, tickets, emails, web pages.</li><li>It becomes a leak when an agent has private data, reads untrusted content and can send data out: the lethal trifecta.</li><li>Filters on the prompt help but are probabilistic. Check the outbound action instead.</li><li>The tell: the destination appears in untrusted content, not in what the user asked.</li></ul></div>
+    <nav class="toc" aria-label="On this page"><p>On this page</p><ol><li><a href="#direct-vs-indirect-prompt-injection">Direct vs indirect prompt injection</a></li><li><a href="#the-lethal-trifecta">The lethal trifecta</a></li><li><a href="#real-incidents">Real incidents</a></li><li><a href="#why-filters-alone-don-t-hold">Why filters alone don't hold</a></li><li><a href="#the-check-that-catches-the-pattern">The check that catches the pattern</a></li><li><a href="#a-short-checklist">A short checklist</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+
+    <h2 id="direct-vs-indirect-prompt-injection">Direct vs indirect prompt injection</h2>
+    <p><strong>Direct</strong> prompt injection is a user typing "ignore your instructions". <strong>Indirect</strong>
+      prompt injection is the one that matters for agents: the instructions arrive inside data. A GitHub issue, a support
+      ticket, a calendar invite, a PDF, a web page the agent fetched. The user never sees them. The model reads them as
+      part of its context and, often enough, follows them.</p>
+
+    <h2 id="the-lethal-trifecta">The lethal trifecta</h2>
+<figure class="fig"><div class="scroll"><svg viewBox="0 0 720 330" role="img" aria-labelledby="ft-t ft-d">
+<title id="ft-t">The lethal trifecta for AI agents</title>
+<desc id="ft-d">Three overlapping circles: access to private data, exposure to untrusted content, and the ability to send data out. Where all three overlap, prompt injection becomes data exfiltration.</desc>
+<circle class="ring-a" cx="290" cy="128" r="104"/><circle class="ring-b" cx="430" cy="128" r="104"/><circle class="ring-c" cx="360" cy="222" r="104"/>
+<text class="t" x="252" y="100" text-anchor="middle">Private data</text><text class="s" x="252" y="120" text-anchor="middle">repos, tokens</text>
+<text class="t" x="470" y="100" text-anchor="middle">Untrusted input</text><text class="s" x="470" y="120" text-anchor="middle">issues, email</text>
+<text class="t" x="360" y="268" text-anchor="middle">Sends data out</text><text class="s" x="360" y="288" text-anchor="middle">PRs, email, curl</text>
+<text class="t" x="360" y="168" text-anchor="middle" style="font-size:13px">Exfiltration</text>
+<text class="m" x="8" y="20">ALL THREE AT ONCE = ONE INJECTED</text><text class="m" x="8" y="38">INSTRUCTION AWAY FROM A LEAK</text>
+<text class="s" x="604" y="200">Remove any one</text><text class="s" x="604" y="218">circle, or check</text><text class="s" x="604" y="236">the step that</text><text class="s" x="604" y="254">sends data out.</text>
+</svg></div><figcaption>Simon Willison's "lethal trifecta". Most agents that do useful work have all three, so the
+practical control is the last step: where is this sending data, and who chose that destination?</figcaption></figure>
+    <p>An agent is exposed when it has all three at once: access to private data, exposure to content an attacker can
+      write, and a way to send data out. Coding agents, support agents and email assistants usually have all three by
+      design. Removing one is the cleanest fix when you can; when you can't, the outbound step is where to put the check.</p>
+
+    <h2 id="real-incidents">Real incidents</h2>
+    <ul>
+      <li><strong>GitHub MCP, May 2025.</strong> A public issue told the agent to gather information about the repo owner's
+        other repositories. It read private repos and published their contents in a public pull request.</li>
+      <li><strong>Supabase MCP, July 2025.</strong> A support ticket asked the agent to read the <code>integration_tokens</code>
+        table and add it to the ticket. The agent ran with a privileged database role and did.</li>
+      <li><strong>EchoLeak (Microsoft 365 Copilot), 2025.</strong> An email carried instructions to include data in an image
+        URL. When the reply rendered, the image loaded and sent the data with no click.</li>
+      <li><strong>CurXecute, CVE-2025-54135.</strong> A Slack message got Cursor to rewrite its own MCP config, which then
+        ran attacker commands.</li>
+    </ul>
+<figure class="fig"><div class="scroll"><svg viewBox="0 0 720 230" role="img" aria-labelledby="fg-t fg-d">
+<title id="fg-t">The GitHub MCP attack, step by step</title>
+<desc id="fg-d">Step 1 the agent reads a public issue containing instructions. Step 2 it reads private repositories. Step 3 it opens a public pull request with their contents. Squidbrake holds step 3 because the destination came from the issue.</desc>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0L10 5L0 10z"/></marker></defs>
+<text class="m" x="8" y="20">MAY 2025 · GITHUB MCP SERVER</text>
+<rect class="bx" x="8" y="40" width="210" height="96" rx="12"/><text class="m" x="24" y="64">STEP 1</text><text class="t" x="24" y="90">Reads a public issue</text><text class="s" x="24" y="112">asking for the author's</text><text class="s" x="24" y="128">other repos, in a PR</text>
+<path class="ln" d="M218 88H250" marker-end="url(#ah)"/>
+<rect class="bx" x="254" y="40" width="210" height="96" rx="12"/><text class="m" x="270" y="64">STEP 2</text><text class="t" x="270" y="90">Reads private repos</text><text class="s" x="270" y="112">fine on its own: the</text><text class="s" x="270" y="128">user can read them</text>
+<path class="ln" d="M464 88H496" marker-end="url(#ah)"/>
+<rect class="bx-hold" x="500" y="40" width="212" height="96" rx="12"/><text class="m" x="516" y="64">STEP 3</text><text class="t" x="516" y="90">Opens a public PR</text><text class="s" x="516" y="112">with the private</text><text class="s" x="516" y="128">contents inside</text>
+<circle class="hold" cx="516" cy="176" r="6"/><text class="t" x="530" y="181">Held for a person</text>
+<text class="s" x="500" y="204">the destination appears only in</text><text class="s" x="500" y="220">content the agent read, not the ask</text>
+<text class="s" x="8" y="176">Each step looks routine alone.</text><text class="s" x="8" y="196">The chain is the attack.</text>
+</svg></div><figcaption>Replayed in our <a href="/benchmark">benchmark</a>: the public PR is held, with a warning that it
+follows outside content.</figcaption></figure>
+
+    <h2 id="why-filters-alone-don-t-hold">Why filters alone don't hold</h2>
+    <p>Most prompt-injection defences inspect text: a classifier on the input, a system prompt telling the model to
+      ignore embedded instructions, delimiters around untrusted content. They lower the rate. They don't get it to zero,
+      because the thing doing the inspecting is also a model reading attacker-controlled text. Researchers routinely
+      publish bypasses within days of a new defence.</p>
+    <p>An attack has to end in an action to do damage: a PR, an email, a <code>curl</code>, a payment. That step is
+      structured, and structured things can be checked deterministically.</p>
+
+    <h2 id="the-check-that-catches-the-pattern">The check that catches the pattern</h2>
+    <p>Look at the destination of every outbound action (an email address, a URL, a repo, a bank account, a channel) and
+      ask where it came from:</p>
+    <ul>
+      <li><span class="pill go">Allow</span> it appears in what the user asked, or is one of your own systems.</li>
+      <li><span class="pill hold">Hold</span> it appears only in content the agent read from outside: the issue, the ticket, the web page.</li>
+      <li><span class="pill stop">Block</span> it follows a read of secrets and points at an unknown host, or money moves right after a message from a look-alike domain.</li>
+    </ul>
+    <p>This is how Squidbrake handled the GitHub and Supabase incidents in our <a href="/benchmark">benchmark</a>: both
+      held, with a warning that the action follows outside content. It also covers markdown images and
+      <code>&lt;img&gt;</code> tags whose URLs carry data (the EchoLeak shape), <code>curl --data</code> and
+      <code>scp</code> uploads, and destinations that only show up the next day in a different session.</p>
+<pre><span class="c"># rules.yaml, as shipped: no model involved</span>
+taint_checks:
+  untrusted_destination: review   <span class="c"># sends to an address/URL/account found only in outside content</span>
+  after_untrusted: warn           <span class="c"># sends anything out after outside content was read</span>
+  lookback_hours: 24
+  scope: identity                 <span class="c"># outside content read in one conversation still counts in the next</span></pre>
+    <p class="muted">By default, web fetches, inboxes, issues and tickets count as outside content, and tools that send,
+      reply, publish, transfer, upload or call a webhook count as outbound. Both lists can be changed.</p>
+
+    <h2 id="a-short-checklist">A short checklist</h2>
+    <ol>
+      <li>Treat every tool result as untrusted input, including ones from your own systems that customers can write to.</li>
+      <li>Give agents the narrowest token that works. The Supabase agent didn't need to read every table.</li>
+      <li>Protect agent configuration (<code>mcp.json</code>, hooks, settings). Edits there should always need a person.</li>
+      <li>Check outbound actions by destination provenance, not by keyword.</li>
+      <li>Log everything with redaction, so you can reconstruct what an agent read before it acted.</li>
+    </ol>
+
+    <h2 id="faq">FAQ</h2>
+    <div class="faq"><details><summary>What is indirect prompt injection?</summary><p>Instructions hidden in content an AI agent reads, such as a web page, email, issue or document, rather than typed by the user. The agent treats them as part of its task.</p></details><details><summary>Can prompt injection be fully prevented?</summary><p>Not at the model level today. Defences that filter text reduce it but get bypassed. The reliable control is to check the actions an agent takes, especially those that send data out.</p></details><details><summary>What is the lethal trifecta?</summary><p>Simon Willison's term for an agent that has access to private data, exposure to untrusted content, and the ability to communicate externally. With all three, a single injected instruction can leak data.</p></details><details><summary>How does Squidbrake detect prompt injection?</summary><p>It doesn't try to detect the injection in text. It checks where each outbound action sends data and holds it when the destination appears only in untrusted content the agent read, not in what the user asked.</p></details></div>
+    <div class="cta-box"><p><strong>Try it on your own agents.</strong> <code>pipx install squidbrake</code>, then
+      <code>squidbrake connect all</code>. Start in shadow mode: nothing is blocked in week one, you see what would have been.
+      <a href="/docs">Quickstart</a> · <a href="/benchmark">Benchmark</a> · <a href="/#demo">Book a demo</a></p></div>
+
+    <h2 id="related">Related guides</h2>
+    <ul class="related"><li><a href="/blog/mcp-security-checklist"><b>MCP security checklist: 10 controls for AI agent tools</b><span>Tokens, untrusted content, config tampering, malicious servers, approvals and logging.</span></a></li><li><a href="/blog/owasp-top-10-agentic-applications"><b>OWASP Top 10 for Agentic Applications (2026), explained with controls</b><span>The OWASP Top 10 for Agentic Applications (ASI01 to ASI10) in plain language, with real incidents and the controls that address each risk.</span></a></li><li><a href="/blog/ai-agent-guardrails"><b>AI agent guardrails: input, output and action guardrails compared</b><span>What AI agent guardrails are, the three kinds (input, output, action), what each catches, and benchmark numbers on approval fatigue and false positives.</span></a></li></ul>
+    </article>
+  </main>
+
+
+  <footer><span>© 2026 Squidbrake, Inc.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="/">Home</a> · <a href="/docs">Docs</a> · <a href="/security">Security</a> · <a href="/pricing">Pricing</a> · <a href="/about">About</a> · <a href="/benchmark">Benchmark</a> · <a href="/blog">Blog</a> · <a href="/changelog">Changelog</a> · <a href="mailto:hello@squidbrake.com">hello@squidbrake.com</a></span></footer>
+</div>
+</body>
+</html>

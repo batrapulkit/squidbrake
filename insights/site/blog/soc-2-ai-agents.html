@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SOC 2 for AI agents: change management evidence (CC8.1)</title>
+<meta name="description" content="When AI agents change production, SOC 2 CC8.1 still applies. What auditors will ask about agent changes, and how to produce approval and audit-trail evidence.">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+<meta name="author" content="Pulkit Batra">
+<link rel="canonical" href="https://squidbrake.com/blog/soc-2-ai-agents">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://squidbrake.com/blog/soc-2-ai-agents">
+<meta property="og:site_name" content="Squidbrake">
+<meta property="og:title" content="SOC 2 for AI agents: change management evidence (CC8.1)">
+<meta property="og:description" content="When AI agents change production, SOC 2 CC8.1 still applies. What auditors will ask about agent changes, and how to produce approval and audit-trail evidence.">
+<meta property="og:image" content="https://squidbrake.com/assets/og.png">
+<meta property="article:published_time" content="2026-10-29">
+<meta property="article:author" content="https://squidbrake.com/about">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="SOC 2 for AI agents: change management evidence (CC8.1)">
+<meta name="twitter:description" content="When AI agents change production, SOC 2 CC8.1 still applies. What auditors will ask about agent changes, and how to produce approval and audit-trail evidence.">
+<meta name="twitter:image" content="https://squidbrake.com/assets/og.png">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "BlogPosting", "headline": "SOC 2 for AI agents: the change-management evidence auditors will ask for", "description": "When AI agents change production, SOC 2 CC8.1 still applies. What auditors will ask about agent changes, and how to produce approval and audit-trail evidence.", "url": "https://squidbrake.com/blog/soc-2-ai-agents", "mainEntityOfPage": "https://squidbrake.com/blog/soc-2-ai-agents", "datePublished": "2026-10-29", "dateModified": "2026-10-29", "image": "https://squidbrake.com/assets/og.png", "inLanguage": "en", "keywords": "SOC 2 AI agents, SOC 2 CC8.1, AI agent audit trail, AI agent audit log, change management AI agents, ISO 27001 AI agents, AI compliance", "articleSection": "Guide", "wordCount": 725, "author": {"@type": "Person", "@id": "https://squidbrake.com/about#pulkit", "name": "Pulkit Batra", "url": "https://squidbrake.com/about"}, "publisher": {"@type": "Organization", "@id": "https://squidbrake.com/#org", "name": "Squidbrake", "url": "https://squidbrake.com/", "logo": "https://squidbrake.com/assets/logo-512.png"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://squidbrake.com/"}, {"@type": "ListItem", "position": 2, "name": "Blog", "item": "https://squidbrake.com/blog"}, {"@type": "ListItem", "position": 3, "name": "SOC 2 for AI agents: the change-management evidence auditors will ask for", "item": "https://squidbrake.com/blog/soc-2-ai-agents"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Does SOC 2 apply to AI agents?", "acceptedAnswer": {"@type": "Answer", "text": "SOC 2 applies to your system, and agents that change it are part of it. Changes an agent makes to production fall under the same change-management criteria (CC8.1) as human changes."}}, {"@type": "Question", "name": "What evidence do auditors want for AI agent changes?", "acceptedAnswer": {"@type": "Answer", "text": "Typically: which agents can change production, a record of what each changed, who approved it, that the approver was independent, and that the log is complete and unaltered."}}, {"@type": "Question", "name": "Is a tamper-evident log the same as tamper-proof?", "acceptedAnswer": {"@type": "Answer", "text": "No. Tamper-evident means any edit or deletion is detectable when the hash chain is verified. It does not prevent someone with database access from changing records; it makes the change visible."}}, {"@type": "Question", "name": "Will Squidbrake make us SOC 2 compliant?", "acceptedAnswer": {"@type": "Answer", "text": "No product does that on its own. Squidbrake produces approval and audit-trail evidence for agent changes that supports your CC8.1 controls. Your auditor decides what it satisfies."}}]}]}</script>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preload" href="/assets/fonts/host-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/fonts/fonts.css">
+<style>
+:root{
+  --bg:#E6EBE2; --surface:#F4F6F1; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5;
+  --go:#237447; --stop:#C0301C; --hold:#A5560C; --accent:#F2622E; --accent-hover:#E4541F;
+  --code-bg:#1E2A23; --code-ink:#E6EDE4; --code-muted:#93A196;
+  --sans:"Host Grotesk","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:4px}
+.wrap{width:min(1120px,100% - 32px);margin-inline:auto}
+main p,main li,main dd,main>h1{max-width:80ch}   /* the page uses the width, a line of text stays readable */
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 0;border-bottom:1px solid var(--line)}
+.brand{display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:1.2rem;letter-spacing:-0.03em;text-decoration:none}
+.brand svg{width:32px;height:32px}
+header nav{display:flex;gap:20px;font-size:.95rem}
+header nav a{color:var(--muted);text-decoration:none}
+header nav a:hover{color:var(--ink)}
+main{padding:56px 0 80px}
+.kicker{margin:0 0 14px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-weight:500;font-size:clamp(2.2rem,6vw,3.4rem);line-height:1;letter-spacing:-0.05em;margin:0 0 18px}
+.lead{color:var(--muted);font-size:1.1rem;margin:0 0 40px;max-width:52ch}
+h2{display:flex;align-items:baseline;gap:12px;font-weight:500;font-size:1.6rem;letter-spacing:-0.035em;margin:56px 0 12px}
+h2 .n{font:400 .9rem var(--mono);color:var(--muted)}
+p{margin:0 0 14px}
+.muted{color:var(--muted)}
+code{font:400 .9em var(--mono)}
+p code,li code{background:var(--surface);padding:1px 5px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line)}
+pre{margin:0 0 18px;padding:18px 20px;border-radius:10px;background:var(--code-bg);color:var(--code-ink);font:400 .86rem/1.6 var(--mono);overflow-x:auto}
+pre .c{color:var(--code-muted)}
+pre .d{color:#FF8A75}
+pre .h{color:#F7B267}
+.file{display:block;margin:0 0 -6px;padding:8px 20px 14px;border-radius:10px 10px 0 0;background:var(--code-bg);color:var(--code-muted);font:400 .76rem var(--mono)}
+.file+pre{border-radius:0 0 10px 10px}
+.note{margin:18px 0;padding:14px 18px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0;font-size:.95rem}
+ul{padding-left:1.2em;margin:0 0 14px}
+li{margin:4px 0}
+footer{padding:28px 0 40px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem;display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between}
+footer a{text-decoration:none}
+footer a:hover{color:var(--ink)}
+@media (max-width:560px){ header nav a:not(:last-child){display:none} main{padding:36px 0 56px} pre{font-size:.78rem;padding:14px} }
+.ph-badge{display:inline-block;line-height:0}.ph-badge img{max-width:100%;height:auto}
+</style>
+<style>.posts{list-style:none;padding:0;margin:0}.posts li{padding:22px 0;border-bottom:1px solid var(--line)}.posts a{color:var(--ink);font-size:1.3rem;font-weight:500;letter-spacing:-0.02em}.posts p{margin:6px 0 0;color:var(--muted)}.posts time,.byline{font:400 .82rem var(--mono);color:var(--muted)}article h2{display:block}article li{margin:6px 0}.cta-box{margin:48px 0 0;padding:20px 22px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}.cta-box p{margin:0}.cmp{width:100%;border-collapse:collapse;margin:8px 0 0;font-size:.95rem}.cmp th,.cmp td{text-align:left;vertical-align:top;padding:10px 12px 10px 0;border-bottom:1px solid var(--line)}.cmp th{font-weight:500}.cmp td:first-child{color:var(--muted)}.tbl{overflow-x:auto}</style>
+<style>
+.toc{margin:0 0 36px;padding:16px 20px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);max-width:80ch}
+.toc p{margin:0 0 6px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.toc ol{margin:0;padding-left:1.2em}.toc li{margin:2px 0}.toc a{text-decoration:none}.toc a:hover{text-decoration:underline}
+.tldr{margin:0 0 32px;padding:18px 22px;border-radius:12px;border-left:3px solid var(--accent);background:var(--surface);max-width:80ch}
+.tldr p{margin:0 0 6px;font-weight:500}.tldr ul{margin:0}
+figure.fig{margin:28px 0 30px;padding:20px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+figure.fig .scroll{overflow-x:auto}
+figure.fig svg{display:block;width:100%;min-width:560px;height:auto;font-family:var(--sans)}
+figure.fig figcaption{margin:12px 0 0;color:var(--muted);font-size:.9rem;max-width:80ch}
+.fig .bx{fill:var(--bg);stroke:var(--line);stroke-width:1.5}
+.fig .bx-go{fill:var(--bg);stroke:var(--go);stroke-width:2}
+.fig .bx-hold{fill:var(--bg);stroke:var(--hold);stroke-width:2}
+.fig .bx-stop{fill:var(--bg);stroke:var(--stop);stroke-width:2}
+.fig .bx-acc{fill:var(--bg);stroke:var(--accent);stroke-width:2}
+.fig .bx-off{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:5 5}
+.fig .t{fill:var(--ink);font-size:15px;font-weight:500}
+.fig .s{fill:var(--muted);font-size:12.5px}
+.fig .m{fill:var(--muted);font:400 11.5px var(--mono);letter-spacing:.06em}
+.fig .ln{stroke:var(--muted);stroke-width:1.5;fill:none}
+.fig .ah{fill:var(--muted)}
+.fig .go{fill:var(--go)}.fig .hold{fill:var(--hold)}.fig .stop{fill:var(--stop)}.fig .acc{fill:var(--accent)}.fig .mut{fill:var(--muted)}
+.fig .bar{fill:var(--muted)}.fig .bar-hi{fill:var(--accent)}.fig .grid{stroke:var(--line);stroke-width:1}
+.fig .ring-a{fill:var(--go);fill-opacity:.13;stroke:var(--go);stroke-width:1.5}
+.fig .ring-b{fill:var(--hold);fill-opacity:.13;stroke:var(--hold);stroke-width:1.5}
+.fig .ring-c{fill:var(--accent);fill-opacity:.13;stroke:var(--accent);stroke-width:1.5}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:24px 0 30px}
+.stat{padding:16px 18px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+.stat b{display:block;font-size:1.9rem;font-weight:500;letter-spacing:-0.04em;line-height:1.1}
+.stat span{color:var(--muted);font-size:.88rem}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;font:400 .76rem var(--mono);white-space:nowrap;box-shadow:inset 0 0 0 1px currentColor}
+.pill.go{color:var(--go)}.pill.hold{color:var(--hold)}.pill.stop{color:var(--stop)}
+.faq details{padding:14px 0;border-bottom:1px solid var(--line);max-width:80ch}
+.faq summary{cursor:pointer;font-weight:500}
+.faq details p{margin:10px 0 0}
+.related{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0 0;padding:0;list-style:none}
+.related li{margin:0}
+.related a{display:block;height:100%;padding:14px 16px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);text-decoration:none}
+.related a:hover{box-shadow:inset 0 0 0 1px var(--ink)}
+.related b{display:block;font-weight:500}.related span{color:var(--muted);font-size:.88rem}
+article code{overflow-wrap:anywhere}
+details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>squidbrake</a>
+    <nav aria-label="Docs"><a href="/#how">How it works</a><a href="/security">Security</a><a href="/pricing">Pricing</a><a href="/about">About</a><a href="/blog">Blog</a><a href="/changelog">Changelog</a><a href="/signup"><b>Sign up free</b></a></nav>
+  </header>
+
+  <main>
+    <p class="kicker">Guide</p>
+    <article>
+    <h1>SOC 2 for AI agents: the change-management evidence auditors will ask for</h1>
+    <p class="byline">By <a href="/about">Pulkit Batra</a> · <time datetime="2026-10-29">29 October 2026</time> · 3 min read</p>
+
+    <p class="lead">SOC 2 doesn't have an AI chapter, and it doesn't need one. If an AI agent changes production (a migration, a config change, a deleted bucket, a refund) that is a change, and the change-management control applies the same way it does to a human's pull request. Most teams running agents can't yet answer the first question an auditor will ask: who approved that?</p>
+    <div class="tldr"><p>In short</p><ul><li>SOC 2 CC8.1 asks that changes be authorized, tested, approved and documented. An agent's changes count.</li><li>Separation of duties: the person running the agent shouldn't be the only approver.</li><li>You need a record of what the agent did, who approved it, and proof the record wasn't edited.</li><li>Squidbrake supports this evidence with a hash-chained log and a one-page evidence pack. Your auditor decides what it satisfies.</li></ul></div>
+    <nav class="toc" aria-label="On this page"><p>On this page</p><ol><li><a href="#why-agents-fall-under-change-management">Why agents fall under change management</a></li><li><a href="#what-auditors-will-ask">What auditors will ask</a></li><li><a href="#designing-controls-that-produce-evidence">Designing controls that produce evidence</a></li><li><a href="#how-it-maps">How it maps</a></li><li><a href="#start-before-the-audit-window">Start before the audit window</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+
+    <h2 id="why-agents-fall-under-change-management">Why agents fall under change management</h2>
+    <p>CC8.1 in the SOC 2 Trust Services Criteria covers authorizing, designing, testing, approving and implementing
+      changes to infrastructure, data and software. Auditors usually test it by sampling changes and asking for the ticket,
+      the approval and the deployment record. Pull requests with required reviews make that easy for code.</p>
+    <p>Agents break the pattern. A coding agent with cloud credentials can run <code>terraform apply</code> from a laptop.
+      A support agent can issue refunds. An ops agent can flip a feature flag for one customer. None of these go through a
+      pull request, and the only "approval" may be the same engineer clicking yes in a chat window.</p>
+
+    <h2 id="what-auditors-will-ask">What auditors will ask</h2>
+<figure class="fig"><div class="scroll"><svg viewBox="0 0 720 176" role="img" aria-labelledby="fe-t fe-d"><title id="fe-t">From an agent's request to audit evidence</title><desc id="fe-d">Five steps: the agent asks, a rule or a second person decides, the change runs with a copy kept, the decision is written to a hash-chained log, and an evidence pack summarises it. Each step answers an auditor question.</desc><defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0L10 5L0 10z"/></marker></defs><text class="m" x="8" y="20">EVERY RISKY CHANGE AN AGENT MAKES</text><rect class="bx" x="0" y="40" width="128" height="84" rx="12"/><text class="m" x="14" y="62">01</text><text class="t" x="14" y="88" style="font-size:14px">Agent asks</text><text class="s" x="14" y="108">tool + input</text><text class="s" x="64" y="156" text-anchor="middle" style="font-style:italic">What changed?</text><path class="ln" d="M128 82H144" marker-end="url(#ah)"/><rect class="bx-hold" x="148" y="40" width="128" height="84" rx="12"/><text class="m" x="162" y="62">02</text><text class="t" x="162" y="88" style="font-size:14px">Second person</text><text class="s" x="162" y="108">approves or not</text><text class="s" x="212" y="156" text-anchor="middle" style="font-style:italic">Who approved it?</text><path class="ln" d="M276 82H292" marker-end="url(#ah)"/><rect class="bx" x="296" y="40" width="128" height="84" rx="12"/><text class="m" x="310" y="62">03</text><text class="t" x="310" y="88" style="font-size:14px">Change runs</text><text class="s" x="310" y="108">copy kept first</text><text class="s" x="360" y="156" text-anchor="middle" style="font-style:italic">Can we undo it?</text><path class="ln" d="M424 82H440" marker-end="url(#ah)"/><rect class="bx" x="444" y="40" width="128" height="84" rx="12"/><text class="m" x="458" y="62">04</text><text class="t" x="458" y="88" style="font-size:14px">Hash-chained</text><text class="s" x="458" y="108">log entry</text><text class="s" x="508" y="156" text-anchor="middle" style="font-style:italic">Was it edited?</text><path class="ln" d="M572 82H588" marker-end="url(#ah)"/><rect class="bx-acc" x="592" y="40" width="128" height="84" rx="12"/><text class="m" x="606" y="62">05</text><text class="t" x="606" y="88" style="font-size:14px">Evidence pack</text><text class="s" x="606" y="108">one page</text><text class="s" x="656" y="156" text-anchor="middle" style="font-style:italic">Show me.</text></svg></div><figcaption>The questions in italics are the ones an auditor asks about any production change. The record has to exist before they ask.</figcaption></figure>
+    <ul>
+      <li><strong>Which agents can change production, and with what credentials?</strong> An inventory and per-agent identity.</li>
+      <li><strong>What changed?</strong> The tool, the input and the effect: rows deleted, resources destroyed.</li>
+      <li><strong>Who approved it, and were they independent?</strong> Separation of duties: not only the person running the agent.</li>
+      <li><strong>How do you know the log is complete and unaltered?</strong> Integrity of the record itself.</li>
+      <li><strong>What happens when something goes wrong?</strong> Rollback, and the ability to stop agents quickly.</li>
+    </ul>
+
+    <h2 id="designing-controls-that-produce-evidence">Designing controls that produce evidence</h2>
+    <ol>
+      <li><strong>Classify agent actions by reversibility.</strong> Reads and in-repo edits are low risk and can be
+        authorized by policy. Deletes, infrastructure changes, money and outbound data need a person.</li>
+      <li><strong>Make the policy itself a controlled change.</strong> Keep the rules in a versioned file in the repo, so
+        changes to what agents may do go through code review. This is your "authorized by policy" evidence.</li>
+      <li><strong>Require a second person for the risky set.</strong> Route by risk: finance approves refunds, the on-call
+        approves infrastructure. Agent keys can never approve.</li>
+      <li><strong>Record every decision in a tamper-evident log.</strong> Squidbrake chains each record to the previous one
+        by hash and signs checkpoints, so an edit or deletion shows up when the chain is verified, offline.</li>
+      <li><strong>Export the evidence on demand.</strong> <code>squidbrake evidence --days 90</code> produces a printable
+        one-page pack; CSV and JSONL exports carry the full detail.</li>
+    </ol>
+
+    <h2 id="how-it-maps">How it maps</h2>
+    <div class="tbl"><table class="cmp"><thead><tr><th>Control</th><th>What it asks</th><th>Evidence from an agent checkpoint</th></tr></thead><tbody>
+      <tr><td>SOC 2 CC8.1</td><td>Changes authorized, approved, documented</td><td>Each change authorized by a versioned rule or approved by a person, with who, what and when</td></tr>
+      <tr><td>ISO/IEC 27001:2022 A.8.32</td><td>Change management</td><td>The same approval record, against a versioned policy file</td></tr>
+      <tr><td>ISO/IEC 27001:2022 A.8.15</td><td>Logging</td><td>Every tool call, decision and approval, hash-chained, exportable</td></tr>
+      <tr><td>EU AI Act Art. 12 and 14</td><td>Record-keeping and human oversight</td><td>Records of agent actions; a person can hold, reject and stop them</td></tr>
+    </tbody></table></div>
+    <p class="muted">This is how we map Squidbrake's records to these controls. It supports your evidence; your auditor
+      decides what it satisfies. More on the <a href="/security">security page</a>.</p>
+
+    <h2 id="start-before-the-audit-window">Start before the audit window</h2>
+    <p>Evidence has to exist for the whole period an auditor samples, often 3 to 12 months. Turning on logging the week
+      before fieldwork leaves a gap. Run in shadow mode first if you're worried about disruption: every action is recorded
+      from day one, and nothing is blocked until you decide to enforce.</p>
+
+    <h2 id="faq">FAQ</h2>
+    <div class="faq"><details><summary>Does SOC 2 apply to AI agents?</summary><p>SOC 2 applies to your system, and agents that change it are part of it. Changes an agent makes to production fall under the same change-management criteria (CC8.1) as human changes.</p></details><details><summary>What evidence do auditors want for AI agent changes?</summary><p>Typically: which agents can change production, a record of what each changed, who approved it, that the approver was independent, and that the log is complete and unaltered.</p></details><details><summary>Is a tamper-evident log the same as tamper-proof?</summary><p>No. Tamper-evident means any edit or deletion is detectable when the hash chain is verified. It does not prevent someone with database access from changing records; it makes the change visible.</p></details><details><summary>Will Squidbrake make us SOC 2 compliant?</summary><p>No product does that on its own. Squidbrake produces approval and audit-trail evidence for agent changes that supports your CC8.1 controls. Your auditor decides what it satisfies.</p></details></div>
+    <div class="cta-box"><p><strong>Try it on your own agents.</strong> <code>pipx install squidbrake</code>, then
+      <code>squidbrake connect all</code>. Start in shadow mode: nothing is blocked in week one, you see what would have been.
+      <a href="/docs">Quickstart</a> · <a href="/benchmark">Benchmark</a> · <a href="/#demo">Book a demo</a></p></div>
+
+    <h2 id="related">Related guides</h2>
+    <ul class="related"><li><a href="/blog/eu-ai-act-article-14-human-oversight-ai-agents"><b>EU AI Act Article 14: human oversight for AI agents</b><span>What Article 14 asks for, and how to produce the evidence for agents that act.</span></a></li><li><a href="/blog/human-in-the-loop-approval-for-ai-agents"><b>Human-in-the-loop approval for AI agents: what to ask about</b><span>How to design approvals that catch the risky 1% without the fatigue.</span></a></li><li><a href="/blog/owasp-top-10-agentic-applications"><b>OWASP Top 10 for Agentic Applications (2026), explained with controls</b><span>The OWASP Top 10 for Agentic Applications (ASI01 to ASI10) in plain language, with real incidents and the controls that address each risk.</span></a></li></ul>
+    </article>
+  </main>
+
+
+  <footer><span>© 2026 Squidbrake, Inc.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="/">Home</a> · <a href="/docs">Docs</a> · <a href="/security">Security</a> · <a href="/pricing">Pricing</a> · <a href="/about">About</a> · <a href="/benchmark">Benchmark</a> · <a href="/blog">Blog</a> · <a href="/changelog">Changelog</a> · <a href="mailto:hello@squidbrake.com">hello@squidbrake.com</a></span></footer>
+</div>
+</body>
+</html>

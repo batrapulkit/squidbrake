@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OWASP Top 10 for Agentic Applications (2026), explained</title>
+<meta name="description" content="The OWASP Top 10 for Agentic Applications (ASI01 to ASI10) in plain language, with real incidents and the controls that address each risk.">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+<meta name="author" content="Pulkit Batra">
+<link rel="canonical" href="https://squidbrake.com/blog/owasp-top-10-agentic-applications">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://squidbrake.com/blog/owasp-top-10-agentic-applications">
+<meta property="og:site_name" content="Squidbrake">
+<meta property="og:title" content="OWASP Top 10 for Agentic Applications (2026), explained">
+<meta property="og:description" content="The OWASP Top 10 for Agentic Applications (ASI01 to ASI10) in plain language, with real incidents and the controls that address each risk.">
+<meta property="og:image" content="https://squidbrake.com/assets/og.png">
+<meta property="article:published_time" content="2026-10-29">
+<meta property="article:author" content="https://squidbrake.com/about">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="OWASP Top 10 for Agentic Applications (2026), explained">
+<meta name="twitter:description" content="The OWASP Top 10 for Agentic Applications (ASI01 to ASI10) in plain language, with real incidents and the controls that address each risk.">
+<meta name="twitter:image" content="https://squidbrake.com/assets/og.png">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "BlogPosting", "headline": "OWASP Top 10 for Agentic Applications (2026), explained with controls", "description": "The OWASP Top 10 for Agentic Applications (ASI01 to ASI10) in plain language, with real incidents and the controls that address each risk.", "url": "https://squidbrake.com/blog/owasp-top-10-agentic-applications", "mainEntityOfPage": "https://squidbrake.com/blog/owasp-top-10-agentic-applications", "datePublished": "2026-10-29", "dateModified": "2026-10-29", "image": "https://squidbrake.com/assets/og.png", "inLanguage": "en", "keywords": "OWASP Top 10 for Agentic Applications, OWASP agentic AI, ASI01 agent goal hijack, AI agent security risks, agentic AI security, OWASP LLM top 10", "articleSection": "Guide", "wordCount": 909, "author": {"@type": "Person", "@id": "https://squidbrake.com/about#pulkit", "name": "Pulkit Batra", "url": "https://squidbrake.com/about"}, "publisher": {"@type": "Organization", "@id": "https://squidbrake.com/#org", "name": "Squidbrake", "url": "https://squidbrake.com/", "logo": "https://squidbrake.com/assets/logo-512.png"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://squidbrake.com/"}, {"@type": "ListItem", "position": 2, "name": "Blog", "item": "https://squidbrake.com/blog"}, {"@type": "ListItem", "position": 3, "name": "OWASP Top 10 for Agentic Applications (2026), explained with controls", "item": "https://squidbrake.com/blog/owasp-top-10-agentic-applications"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What is the OWASP Top 10 for Agentic Applications?", "acceptedAnswer": {"@type": "Answer", "text": "A peer-reviewed list of the ten most critical security risks for autonomous AI agents, published by the OWASP GenAI Security Project in December 2025. The entries are numbered ASI01 to ASI10."}}, {"@type": "Question", "name": "How is it different from the OWASP Top 10 for LLM Applications?", "acceptedAnswer": {"@type": "Answer", "text": "The LLM list focuses on the model and its outputs, such as prompt injection and data leakage. The agentic list covers what happens when the model can act: tool misuse, privilege abuse, memory poisoning, inter-agent communication and rogue agents."}}, {"@type": "Question", "name": "What is ASI01 agent goal hijack?", "acceptedAnswer": {"@type": "Answer", "text": "An attacker changes what the agent is trying to do through content it reads, such as an issue, email or web page. It is the agentic form of indirect prompt injection."}}, {"@type": "Question", "name": "Does one tool cover all ten risks?", "acceptedAnswer": {"@type": "Answer", "text": "No. A checkpoint on tool calls covers tool misuse and human-agent trust well and limits several others. Supply chain and inter-agent communication need package provenance and signed messaging."}}]}]}</script>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preload" href="/assets/fonts/host-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/fonts/fonts.css">
+<style>
+:root{
+  --bg:#E6EBE2; --surface:#F4F6F1; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5;
+  --go:#237447; --stop:#C0301C; --hold:#A5560C; --accent:#F2622E; --accent-hover:#E4541F;
+  --code-bg:#1E2A23; --code-ink:#E6EDE4; --code-muted:#93A196;
+  --sans:"Host Grotesk","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:4px}
+.wrap{width:min(1120px,100% - 32px);margin-inline:auto}
+main p,main li,main dd,main>h1{max-width:80ch}   /* the page uses the width, a line of text stays readable */
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 0;border-bottom:1px solid var(--line)}
+.brand{display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:1.2rem;letter-spacing:-0.03em;text-decoration:none}
+.brand svg{width:32px;height:32px}
+header nav{display:flex;gap:20px;font-size:.95rem}
+header nav a{color:var(--muted);text-decoration:none}
+header nav a:hover{color:var(--ink)}
+main{padding:56px 0 80px}
+.kicker{margin:0 0 14px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-weight:500;font-size:clamp(2.2rem,6vw,3.4rem);line-height:1;letter-spacing:-0.05em;margin:0 0 18px}
+.lead{color:var(--muted);font-size:1.1rem;margin:0 0 40px;max-width:52ch}
+h2{display:flex;align-items:baseline;gap:12px;font-weight:500;font-size:1.6rem;letter-spacing:-0.035em;margin:56px 0 12px}
+h2 .n{font:400 .9rem var(--mono);color:var(--muted)}
+p{margin:0 0 14px}
+.muted{color:var(--muted)}
+code{font:400 .9em var(--mono)}
+p code,li code{background:var(--surface);padding:1px 5px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line)}
+pre{margin:0 0 18px;padding:18px 20px;border-radius:10px;background:var(--code-bg);color:var(--code-ink);font:400 .86rem/1.6 var(--mono);overflow-x:auto}
+pre .c{color:var(--code-muted)}
+pre .d{color:#FF8A75}
+pre .h{color:#F7B267}
+.file{display:block;margin:0 0 -6px;padding:8px 20px 14px;border-radius:10px 10px 0 0;background:var(--code-bg);color:var(--code-muted);font:400 .76rem var(--mono)}
+.file+pre{border-radius:0 0 10px 10px}
+.note{margin:18px 0;padding:14px 18px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0;font-size:.95rem}
+ul{padding-left:1.2em;margin:0 0 14px}
+li{margin:4px 0}
+footer{padding:28px 0 40px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem;display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between}
+footer a{text-decoration:none}
+footer a:hover{color:var(--ink)}
+@media (max-width:560px){ header nav a:not(:last-child){display:none} main{padding:36px 0 56px} pre{font-size:.78rem;padding:14px} }
+.ph-badge{display:inline-block;line-height:0}.ph-badge img{max-width:100%;height:auto}
+</style>
+<style>.posts{list-style:none;padding:0;margin:0}.posts li{padding:22px 0;border-bottom:1px solid var(--line)}.posts a{color:var(--ink);font-size:1.3rem;font-weight:500;letter-spacing:-0.02em}.posts p{margin:6px 0 0;color:var(--muted)}.posts time,.byline{font:400 .82rem var(--mono);color:var(--muted)}article h2{display:block}article li{margin:6px 0}.cta-box{margin:48px 0 0;padding:20px 22px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}.cta-box p{margin:0}.cmp{width:100%;border-collapse:collapse;margin:8px 0 0;font-size:.95rem}.cmp th,.cmp td{text-align:left;vertical-align:top;padding:10px 12px 10px 0;border-bottom:1px solid var(--line)}.cmp th{font-weight:500}.cmp td:first-child{color:var(--muted)}.tbl{overflow-x:auto}</style>
+<style>
+.toc{margin:0 0 36px;padding:16px 20px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);max-width:80ch}
+.toc p{margin:0 0 6px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.toc ol{margin:0;padding-left:1.2em}.toc li{margin:2px 0}.toc a{text-decoration:none}.toc a:hover{text-decoration:underline}
+.tldr{margin:0 0 32px;padding:18px 22px;border-radius:12px;border-left:3px solid var(--accent);background:var(--surface);max-width:80ch}
+.tldr p{margin:0 0 6px;font-weight:500}.tldr ul{margin:0}
+figure.fig{margin:28px 0 30px;padding:20px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+figure.fig .scroll{overflow-x:auto}
+figure.fig svg{display:block;width:100%;min-width:560px;height:auto;font-family:var(--sans)}
+figure.fig figcaption{margin:12px 0 0;color:var(--muted);font-size:.9rem;max-width:80ch}
+.fig .bx{fill:var(--bg);stroke:var(--line);stroke-width:1.5}
+.fig .bx-go{fill:var(--bg);stroke:var(--go);stroke-width:2}
+.fig .bx-hold{fill:var(--bg);stroke:var(--hold);stroke-width:2}
+.fig .bx-stop{fill:var(--bg);stroke:var(--stop);stroke-width:2}
+.fig .bx-acc{fill:var(--bg);stroke:var(--accent);stroke-width:2}
+.fig .bx-off{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:5 5}
+.fig .t{fill:var(--ink);font-size:15px;font-weight:500}
+.fig .s{fill:var(--muted);font-size:12.5px}
+.fig .m{fill:var(--muted);font:400 11.5px var(--mono);letter-spacing:.06em}
+.fig .ln{stroke:var(--muted);stroke-width:1.5;fill:none}
+.fig .ah{fill:var(--muted)}
+.fig .go{fill:var(--go)}.fig .hold{fill:var(--hold)}.fig .stop{fill:var(--stop)}.fig .acc{fill:var(--accent)}.fig .mut{fill:var(--muted)}
+.fig .bar{fill:var(--muted)}.fig .bar-hi{fill:var(--accent)}.fig .grid{stroke:var(--line);stroke-width:1}
+.fig .ring-a{fill:var(--go);fill-opacity:.13;stroke:var(--go);stroke-width:1.5}
+.fig .ring-b{fill:var(--hold);fill-opacity:.13;stroke:var(--hold);stroke-width:1.5}
+.fig .ring-c{fill:var(--accent);fill-opacity:.13;stroke:var(--accent);stroke-width:1.5}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:24px 0 30px}
+.stat{padding:16px 18px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+.stat b{display:block;font-size:1.9rem;font-weight:500;letter-spacing:-0.04em;line-height:1.1}
+.stat span{color:var(--muted);font-size:.88rem}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;font:400 .76rem var(--mono);white-space:nowrap;box-shadow:inset 0 0 0 1px currentColor}
+.pill.go{color:var(--go)}.pill.hold{color:var(--hold)}.pill.stop{color:var(--stop)}
+.faq details{padding:14px 0;border-bottom:1px solid var(--line);max-width:80ch}
+.faq summary{cursor:pointer;font-weight:500}
+.faq details p{margin:10px 0 0}
+.related{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0 0;padding:0;list-style:none}
+.related li{margin:0}
+.related a{display:block;height:100%;padding:14px 16px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);text-decoration:none}
+.related a:hover{box-shadow:inset 0 0 0 1px var(--ink)}
+.related b{display:block;font-weight:500}.related span{color:var(--muted);font-size:.88rem}
+article code{overflow-wrap:anywhere}
+details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>squidbrake</a>
+    <nav aria-label="Docs"><a href="/#how">How it works</a><a href="/security">Security</a><a href="/pricing">Pricing</a><a href="/about">About</a><a href="/blog">Blog</a><a href="/changelog">Changelog</a><a href="/signup"><b>Sign up free</b></a></nav>
+  </header>
+
+  <main>
+    <p class="kicker">Guide</p>
+    <article>
+    <h1>OWASP Top 10 for Agentic Applications (2026), explained with controls</h1>
+    <p class="byline">By <a href="/about">Pulkit Batra</a> · <time datetime="2026-10-29">29 October 2026</time> · 4 min read</p>
+
+    <p class="lead">In December 2025 the OWASP GenAI Security Project published the Top 10 for Agentic Applications: the ten risks that appear once an AI system stops answering and starts acting. It is quickly becoming the checklist security teams use to review agent projects. Here is each risk in plain language, a real incident where we have one, and what actually reduces it.</p>
+    <div class="tldr"><p>In short</p><ul><li>The list covers ten risks, ASI01 to ASI10, from goal hijack to rogue agents.</li><li>Most of them end the same way: a tool call that does something nobody authorized.</li><li>A checkpoint on agent actions covers tool misuse and human-agent trust well and limits the damage of seven more.</li><li>Inter-agent communication and supply chain need their own controls. No single product covers the list.</li></ul></div>
+    <nav class="toc" aria-label="On this page"><p>On this page</p><ol><li><a href="#why-a-separate-list-for-agents">Why a separate list for agents</a></li><li><a href="#all-ten-at-a-glance">All ten at a glance</a></li><li><a href="#asi01-to-asi05">ASI01 to ASI05</a></li><li><a href="#asi06-to-asi10">ASI06 to ASI10</a></li><li><a href="#a-practical-order-of-work">A practical order of work</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+
+    <h2 id="why-a-separate-list-for-agents">Why a separate list for agents</h2>
+    <p>The OWASP Top 10 for LLM Applications already covers prompt injection and "excessive agency". The agentic list
+      exists because agents add things a chatbot doesn't have: tools with write access, memory that persists, other
+      agents to talk to, and a loop that runs without a person reading every step. The risks move from "the model said
+      something bad" to "the model did something bad".</p>
+
+    <h2 id="all-ten-at-a-glance">All ten at a glance</h2>
+<figure class="fig"><div class="scroll"><svg viewBox="0 0 720 260" role="img" aria-labelledby="fo-t fo-d"><title id="fo-t">OWASP Top 10 for Agentic Applications: where an action checkpoint helps</title><desc id="fo-d">Two risks covered strongly (tool misuse, human-agent trust exploitation), seven partly, one not covered (insecure inter-agent communication).</desc><rect class="bx" x="0" y="8" width="132" height="104" rx="12"/><text class="m" x="14" y="32">ASI01</text><text class="t" x="14" y="58" style="font-size:13.5px">Agent goal</text><text class="t" x="14" y="76" style="font-size:13.5px">hijack</text><circle class="hold" cx="20" cy="96" r="5"/><text class="s" x="31" y="100">Partial</text><rect class="bx" x="147" y="8" width="132" height="104" rx="12"/><text class="m" x="161" y="32">ASI02</text><text class="t" x="161" y="58" style="font-size:13.5px">Tool misuse &</text><text class="t" x="161" y="76" style="font-size:13.5px">exploitation</text><circle class="go" cx="167" cy="96" r="5"/><text class="s" x="178" y="100">Strong</text><rect class="bx" x="294" y="8" width="132" height="104" rx="12"/><text class="m" x="308" y="32">ASI03</text><text class="t" x="308" y="58" style="font-size:13.5px">Identity &</text><text class="t" x="308" y="76" style="font-size:13.5px">privilege abuse</text><circle class="hold" cx="314" cy="96" r="5"/><text class="s" x="325" y="100">Partial</text><rect class="bx" x="441" y="8" width="132" height="104" rx="12"/><text class="m" x="455" y="32">ASI04</text><text class="t" x="455" y="58" style="font-size:13.5px">Agentic supply</text><text class="t" x="455" y="76" style="font-size:13.5px">chain</text><circle class="hold" cx="461" cy="96" r="5"/><text class="s" x="472" y="100">Partial</text><rect class="bx" x="588" y="8" width="132" height="104" rx="12"/><text class="m" x="602" y="32">ASI05</text><text class="t" x="602" y="58" style="font-size:13.5px">Unexpected code</text><text class="t" x="602" y="76" style="font-size:13.5px">execution</text><circle class="hold" cx="608" cy="96" r="5"/><text class="s" x="619" y="100">Partial</text><rect class="bx" x="0" y="126" width="132" height="104" rx="12"/><text class="m" x="14" y="150">ASI06</text><text class="t" x="14" y="176" style="font-size:13.5px">Memory & context</text><text class="t" x="14" y="194" style="font-size:13.5px">poisoning</text><circle class="hold" cx="20" cy="214" r="5"/><text class="s" x="31" y="218">Partial</text><rect class="bx" x="147" y="126" width="132" height="104" rx="12"/><text class="m" x="161" y="150">ASI07</text><text class="t" x="161" y="176" style="font-size:13.5px">Insecure inter-</text><text class="t" x="161" y="194" style="font-size:13.5px">agent comms</text><circle class="mut" cx="167" cy="214" r="5"/><text class="s" x="178" y="218">Not covered</text><rect class="bx" x="294" y="126" width="132" height="104" rx="12"/><text class="m" x="308" y="150">ASI08</text><text class="t" x="308" y="176" style="font-size:13.5px">Cascading</text><text class="t" x="308" y="194" style="font-size:13.5px">failures</text><circle class="hold" cx="314" cy="214" r="5"/><text class="s" x="325" y="218">Partial</text><rect class="bx" x="441" y="126" width="132" height="104" rx="12"/><text class="m" x="455" y="150">ASI09</text><text class="t" x="455" y="176" style="font-size:13.5px">Human-agent</text><text class="t" x="455" y="194" style="font-size:13.5px">trust exploitation</text><circle class="go" cx="461" cy="214" r="5"/><text class="s" x="472" y="218">Strong</text><rect class="bx" x="588" y="126" width="132" height="104" rx="12"/><text class="m" x="602" y="150">ASI10</text><text class="t" x="602" y="176" style="font-size:13.5px">Rogue</text><text class="t" x="602" y="194" style="font-size:13.5px">agents</text><circle class="hold" cx="608" cy="214" r="5"/><text class="s" x="619" y="218">Partial</text></svg></div><figcaption>How much a checkpoint on agent actions (like Squidbrake) addresses each risk. "Partial" means it limits the damage, not the root cause. Our judgement, explained row by row below.</figcaption></figure>
+
+    <h2 id="asi01-to-asi05">ASI01 to ASI05</h2>
+    <p><strong>ASI01 Agent goal hijack.</strong> Content the agent reads (an issue, an email, a web page) redirects what
+      it is trying to do. In May 2025 a GitHub issue got an agent using the GitHub MCP server to copy private repositories
+      into a public pull request. <em>Controls:</em> treat tool output as untrusted, and check where an action sends data
+      against where that destination came from. A checkpoint can't stop the hijack, but it can stop what the hijack leads to.
+      See <a href="/blog/prompt-injection-ai-agents">prompt injection in AI agents</a>.</p>
+    <p><strong>ASI02 Tool misuse and exploitation.</strong> Legitimate tools used for harm: a delete, a refund, a force
+      push, or safe tools chained into an unsafe result. Replit's agent ran destructive SQL on production during a code
+      freeze. <em>Controls:</em> per-tool rules, holding irreversible calls for a person, and rules that look at sequences
+      ("backups turned off, then a delete within a day").</p>
+    <p><strong>ASI03 Identity and privilege abuse.</strong> Agents running on shared, long-lived or borrowed credentials
+      can reach far more than their task needs. <em>Controls:</em> one key per agent so each call is attributable and
+      revocable alone, tokens held on a gateway instead of in the agent's environment, least privilege on the tokens
+      themselves.</p>
+    <p><strong>ASI04 Agentic supply chain.</strong> Compromised MCP servers, plugins, prompts or packages. A copycat
+      <code>postmark-mcp</code> package added a hidden BCC to every email. <em>Controls:</em> verified publishers, pinned
+      versions, holding changes to agent config. Be honest about the limit: a gateway approves the visible call, and a
+      malicious server can add side effects inside itself afterwards. That is the one incident in our
+      <a href="/benchmark">benchmark</a> Squidbrake does not stop.</p>
+    <p><strong>ASI05 Unexpected code execution.</strong> Natural language turns into code that runs: a generated script,
+      <code>python -c</code>, a heredoc. <em>Controls:</em> sandboxes for untrusted agents, parsing inline code rather than
+      trusting the outer command, and holding scripts the agent just wrote before they run.</p>
+
+    <h2 id="asi06-to-asi10">ASI06 to ASI10</h2>
+    <p><strong>ASI06 Memory and context poisoning.</strong> False or malicious content planted in memory shapes behaviour
+      later, sometimes in another session. <em>Controls:</em> track where content came from across sessions, so an action
+      the next day that sends data to an address from yesterday's web page is still flagged.</p>
+    <p><strong>ASI07 Insecure inter-agent communication.</strong> Agents impersonating each other, replayed delegations,
+      tampered messages. <em>Controls:</em> authenticated, signed messages between agents and per-agent identity. This
+      is protocol work; an action checkpoint doesn't address it.</p>
+    <p><strong>ASI08 Cascading failures.</strong> One bad decision spreads through every workflow that trusts the agent.
+      <em>Controls:</em> a kill switch that stops one session, one agent or all of them in one call, and rate limits on
+      high-impact actions.</p>
+    <p><strong>ASI09 Human-agent trust exploitation.</strong> People approve because the agent's summary sounded fine. This
+      is the risk most approval flows get wrong: if the approver only sees what the agent says it's doing, the agent
+      controls the approval. <em>Controls:</em> show the measured effect, not the agent's description ("deletes 4,312 rows",
+      "destroys 12 resources including the prod database"), and require someone other than the person running the agent.</p>
+    <p><strong>ASI10 Rogue agents.</strong> Agents acting outside policy through compromise, misalignment or drift, while
+      looking normal. <em>Controls:</em> policy enforced outside the model, a tamper-evident record of every action, alerts on
+      agents trying to change their own permissions, and the kill switch.</p>
+
+    <h2 id="a-practical-order-of-work">A practical order of work</h2>
+    <ol>
+      <li><strong>Inventory</strong> every agent and every tool it can reach (ASI03, ASI04).</li>
+      <li><strong>Put a checkpoint between agents and tools</strong>, in shadow mode first, to see what they actually do (ASI02, ASI10).</li>
+      <li><strong>Hold irreversible actions for a second person who sees the effect</strong> (ASI02, ASI09).</li>
+      <li><strong>Track untrusted content</strong> and flag actions whose destination came from it (ASI01, ASI06).</li>
+      <li><strong>Sandbox</strong> agents you don't trust and code they generate (ASI05).</li>
+      <li><strong>Sign inter-agent messages</strong> if you run multi-agent systems (ASI07).</li>
+    </ol>
+
+    <h2 id="faq">FAQ</h2>
+    <div class="faq"><details><summary>What is the OWASP Top 10 for Agentic Applications?</summary><p>A peer-reviewed list of the ten most critical security risks for autonomous AI agents, published by the OWASP GenAI Security Project in December 2025. The entries are numbered ASI01 to ASI10.</p></details><details><summary>How is it different from the OWASP Top 10 for LLM Applications?</summary><p>The LLM list focuses on the model and its outputs, such as prompt injection and data leakage. The agentic list covers what happens when the model can act: tool misuse, privilege abuse, memory poisoning, inter-agent communication and rogue agents.</p></details><details><summary>What is ASI01 agent goal hijack?</summary><p>An attacker changes what the agent is trying to do through content it reads, such as an issue, email or web page. It is the agentic form of indirect prompt injection.</p></details><details><summary>Does one tool cover all ten risks?</summary><p>No. A checkpoint on tool calls covers tool misuse and human-agent trust well and limits several others. Supply chain and inter-agent communication need package provenance and signed messaging.</p></details></div>
+    <div class="cta-box"><p><strong>Try it on your own agents.</strong> <code>pipx install squidbrake</code>, then
+      <code>squidbrake connect all</code>. Start in shadow mode: nothing is blocked in week one, you see what would have been.
+      <a href="/docs">Quickstart</a> · <a href="/benchmark">Benchmark</a> · <a href="/#demo">Book a demo</a></p></div>
+
+    <h2 id="related">Related guides</h2>
+    <ul class="related"><li><a href="/blog/mcp-security-checklist"><b>MCP security checklist: 10 controls for AI agent tools</b><span>Tokens, untrusted content, config tampering, malicious servers, approvals and logging.</span></a></li><li><a href="/blog/prompt-injection-ai-agents"><b>Prompt injection in AI agents: how to stop data exfiltration</b><span>Indirect prompt injection turns AI agents into data leaks. Real incidents (GitHub MCP, Supabase MCP, EchoLeak), the lethal trifecta, and controls that work.</span></a></li><li><a href="/blog/ai-agent-guardrails"><b>AI agent guardrails: input, output and action guardrails compared</b><span>What AI agent guardrails are, the three kinds (input, output, action), what each catches, and benchmark numbers on approval fatigue and false positives.</span></a></li></ul>
+    </article>
+  </main>
+
+
+  <footer><span>© 2026 Squidbrake, Inc.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="/">Home</a> · <a href="/docs">Docs</a> · <a href="/security">Security</a> · <a href="/pricing">Pricing</a> · <a href="/about">About</a> · <a href="/benchmark">Benchmark</a> · <a href="/blog">Blog</a> · <a href="/changelog">Changelog</a> · <a href="mailto:hello@squidbrake.com">hello@squidbrake.com</a></span></footer>
+</div>
+</body>
+</html>

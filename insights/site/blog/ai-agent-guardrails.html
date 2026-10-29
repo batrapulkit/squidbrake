@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI agent guardrails: input, output and action guardrails</title>
+<meta name="description" content="What AI agent guardrails are, the three kinds (input, output, action), what each catches, and benchmark numbers on approval fatigue and false positives.">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+<meta name="author" content="Pulkit Batra">
+<link rel="canonical" href="https://squidbrake.com/blog/ai-agent-guardrails">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://squidbrake.com/blog/ai-agent-guardrails">
+<meta property="og:site_name" content="Squidbrake">
+<meta property="og:title" content="AI agent guardrails: input, output and action guardrails">
+<meta property="og:description" content="What AI agent guardrails are, the three kinds (input, output, action), what each catches, and benchmark numbers on approval fatigue and false positives.">
+<meta property="og:image" content="https://squidbrake.com/assets/og.png">
+<meta property="article:published_time" content="2026-10-29">
+<meta property="article:author" content="https://squidbrake.com/about">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="AI agent guardrails: input, output and action guardrails">
+<meta name="twitter:description" content="What AI agent guardrails are, the three kinds (input, output, action), what each catches, and benchmark numbers on approval fatigue and false positives.">
+<meta name="twitter:image" content="https://squidbrake.com/assets/og.png">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "BlogPosting", "headline": "AI agent guardrails: input, output and action guardrails compared", "description": "What AI agent guardrails are, the three kinds (input, output, action), what each catches, and benchmark numbers on approval fatigue and false positives.", "url": "https://squidbrake.com/blog/ai-agent-guardrails", "mainEntityOfPage": "https://squidbrake.com/blog/ai-agent-guardrails", "datePublished": "2026-10-29", "dateModified": "2026-10-29", "image": "https://squidbrake.com/assets/og.png", "inLanguage": "en", "keywords": "AI agent guardrails, AI guardrails, LLM guardrails, guardrails for AI agents, agent runtime security, AI agent security, action guardrails", "articleSection": "Guide", "wordCount": 908, "author": {"@type": "Person", "@id": "https://squidbrake.com/about#pulkit", "name": "Pulkit Batra", "url": "https://squidbrake.com/about"}, "publisher": {"@type": "Organization", "@id": "https://squidbrake.com/#org", "name": "Squidbrake", "url": "https://squidbrake.com/", "logo": "https://squidbrake.com/assets/logo-512.png"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://squidbrake.com/"}, {"@type": "ListItem", "position": 2, "name": "Blog", "item": "https://squidbrake.com/blog"}, {"@type": "ListItem", "position": 3, "name": "AI agent guardrails: input, output and action guardrails compared", "item": "https://squidbrake.com/blog/ai-agent-guardrails"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What are AI agent guardrails?", "acceptedAnswer": {"@type": "Answer", "text": "Controls that limit what an AI agent can do. Input and output guardrails filter text going into and out of the model; action guardrails decide whether each tool call the agent makes is allowed, held for a person or blocked."}}, {"@type": "Question", "name": "What is the difference between LLM guardrails and agent guardrails?", "acceptedAnswer": {"@type": "Answer", "text": "LLM guardrails are mostly about text: what the model is asked and what it says. Agent guardrails add control over actions: commands, API calls, database writes, payments and messages."}}, {"@type": "Question", "name": "Do guardrails use an LLM?", "acceptedAnswer": {"@type": "Answer", "text": "Many input and output guardrails do. Squidbrake does not: decisions come from rules, a command parser and the agent's recent history, so the same call always gets the same answer."}}, {"@type": "Question", "name": "How do you avoid approval fatigue?", "acceptedAnswer": {"@type": "Answer", "text": "Only ask about what can't be undone, show the effect rather than the raw call, and look at sessions instead of single steps. In our benchmark that held 3 of 41 routine steps, against 40 for asking about everything."}}]}]}</script>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preload" href="/assets/fonts/host-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/fonts/fonts.css">
+<style>
+:root{
+  --bg:#E6EBE2; --surface:#F4F6F1; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5;
+  --go:#237447; --stop:#C0301C; --hold:#A5560C; --accent:#F2622E; --accent-hover:#E4541F;
+  --code-bg:#1E2A23; --code-ink:#E6EDE4; --code-muted:#93A196;
+  --sans:"Host Grotesk","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:4px}
+.wrap{width:min(1120px,100% - 32px);margin-inline:auto}
+main p,main li,main dd,main>h1{max-width:80ch}   /* the page uses the width, a line of text stays readable */
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 0;border-bottom:1px solid var(--line)}
+.brand{display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:1.2rem;letter-spacing:-0.03em;text-decoration:none}
+.brand svg{width:32px;height:32px}
+header nav{display:flex;gap:20px;font-size:.95rem}
+header nav a{color:var(--muted);text-decoration:none}
+header nav a:hover{color:var(--ink)}
+main{padding:56px 0 80px}
+.kicker{margin:0 0 14px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-weight:500;font-size:clamp(2.2rem,6vw,3.4rem);line-height:1;letter-spacing:-0.05em;margin:0 0 18px}
+.lead{color:var(--muted);font-size:1.1rem;margin:0 0 40px;max-width:52ch}
+h2{display:flex;align-items:baseline;gap:12px;font-weight:500;font-size:1.6rem;letter-spacing:-0.035em;margin:56px 0 12px}
+h2 .n{font:400 .9rem var(--mono);color:var(--muted)}
+p{margin:0 0 14px}
+.muted{color:var(--muted)}
+code{font:400 .9em var(--mono)}
+p code,li code{background:var(--surface);padding:1px 5px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line)}
+pre{margin:0 0 18px;padding:18px 20px;border-radius:10px;background:var(--code-bg);color:var(--code-ink);font:400 .86rem/1.6 var(--mono);overflow-x:auto}
+pre .c{color:var(--code-muted)}
+pre .d{color:#FF8A75}
+pre .h{color:#F7B267}
+.file{display:block;margin:0 0 -6px;padding:8px 20px 14px;border-radius:10px 10px 0 0;background:var(--code-bg);color:var(--code-muted);font:400 .76rem var(--mono)}
+.file+pre{border-radius:0 0 10px 10px}
+.note{margin:18px 0;padding:14px 18px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0;font-size:.95rem}
+ul{padding-left:1.2em;margin:0 0 14px}
+li{margin:4px 0}
+footer{padding:28px 0 40px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem;display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between}
+footer a{text-decoration:none}
+footer a:hover{color:var(--ink)}
+@media (max-width:560px){ header nav a:not(:last-child){display:none} main{padding:36px 0 56px} pre{font-size:.78rem;padding:14px} }
+.ph-badge{display:inline-block;line-height:0}.ph-badge img{max-width:100%;height:auto}
+</style>
+<style>.posts{list-style:none;padding:0;margin:0}.posts li{padding:22px 0;border-bottom:1px solid var(--line)}.posts a{color:var(--ink);font-size:1.3rem;font-weight:500;letter-spacing:-0.02em}.posts p{margin:6px 0 0;color:var(--muted)}.posts time,.byline{font:400 .82rem var(--mono);color:var(--muted)}article h2{display:block}article li{margin:6px 0}.cta-box{margin:48px 0 0;padding:20px 22px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}.cta-box p{margin:0}.cmp{width:100%;border-collapse:collapse;margin:8px 0 0;font-size:.95rem}.cmp th,.cmp td{text-align:left;vertical-align:top;padding:10px 12px 10px 0;border-bottom:1px solid var(--line)}.cmp th{font-weight:500}.cmp td:first-child{color:var(--muted)}.tbl{overflow-x:auto}</style>
+<style>
+.toc{margin:0 0 36px;padding:16px 20px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);max-width:80ch}
+.toc p{margin:0 0 6px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.toc ol{margin:0;padding-left:1.2em}.toc li{margin:2px 0}.toc a{text-decoration:none}.toc a:hover{text-decoration:underline}
+.tldr{margin:0 0 32px;padding:18px 22px;border-radius:12px;border-left:3px solid var(--accent);background:var(--surface);max-width:80ch}
+.tldr p{margin:0 0 6px;font-weight:500}.tldr ul{margin:0}
+figure.fig{margin:28px 0 30px;padding:20px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+figure.fig .scroll{overflow-x:auto}
+figure.fig svg{display:block;width:100%;min-width:560px;height:auto;font-family:var(--sans)}
+figure.fig figcaption{margin:12px 0 0;color:var(--muted);font-size:.9rem;max-width:80ch}
+.fig .bx{fill:var(--bg);stroke:var(--line);stroke-width:1.5}
+.fig .bx-go{fill:var(--bg);stroke:var(--go);stroke-width:2}
+.fig .bx-hold{fill:var(--bg);stroke:var(--hold);stroke-width:2}
+.fig .bx-stop{fill:var(--bg);stroke:var(--stop);stroke-width:2}
+.fig .bx-acc{fill:var(--bg);stroke:var(--accent);stroke-width:2}
+.fig .bx-off{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:5 5}
+.fig .t{fill:var(--ink);font-size:15px;font-weight:500}
+.fig .s{fill:var(--muted);font-size:12.5px}
+.fig .m{fill:var(--muted);font:400 11.5px var(--mono);letter-spacing:.06em}
+.fig .ln{stroke:var(--muted);stroke-width:1.5;fill:none}
+.fig .ah{fill:var(--muted)}
+.fig .go{fill:var(--go)}.fig .hold{fill:var(--hold)}.fig .stop{fill:var(--stop)}.fig .acc{fill:var(--accent)}.fig .mut{fill:var(--muted)}
+.fig .bar{fill:var(--muted)}.fig .bar-hi{fill:var(--accent)}.fig .grid{stroke:var(--line);stroke-width:1}
+.fig .ring-a{fill:var(--go);fill-opacity:.13;stroke:var(--go);stroke-width:1.5}
+.fig .ring-b{fill:var(--hold);fill-opacity:.13;stroke:var(--hold);stroke-width:1.5}
+.fig .ring-c{fill:var(--accent);fill-opacity:.13;stroke:var(--accent);stroke-width:1.5}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:24px 0 30px}
+.stat{padding:16px 18px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+.stat b{display:block;font-size:1.9rem;font-weight:500;letter-spacing:-0.04em;line-height:1.1}
+.stat span{color:var(--muted);font-size:.88rem}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;font:400 .76rem var(--mono);white-space:nowrap;box-shadow:inset 0 0 0 1px currentColor}
+.pill.go{color:var(--go)}.pill.hold{color:var(--hold)}.pill.stop{color:var(--stop)}
+.faq details{padding:14px 0;border-bottom:1px solid var(--line);max-width:80ch}
+.faq summary{cursor:pointer;font-weight:500}
+.faq details p{margin:10px 0 0}
+.related{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0 0;padding:0;list-style:none}
+.related li{margin:0}
+.related a{display:block;height:100%;padding:14px 16px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);text-decoration:none}
+.related a:hover{box-shadow:inset 0 0 0 1px var(--ink)}
+.related b{display:block;font-weight:500}.related span{color:var(--muted);font-size:.88rem}
+article code{overflow-wrap:anywhere}
+details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>squidbrake</a>
+    <nav aria-label="Docs"><a href="/#how">How it works</a><a href="/security">Security</a><a href="/pricing">Pricing</a><a href="/about">About</a><a href="/blog">Blog</a><a href="/changelog">Changelog</a><a href="/signup"><b>Sign up free</b></a></nav>
+  </header>
+
+  <main>
+    <p class="kicker">Guide</p>
+    <article>
+    <h1>AI agent guardrails: input, output and action guardrails compared</h1>
+    <p class="byline">By <a href="/about">Pulkit Batra</a> · <time datetime="2026-10-29">29 October 2026</time> · 4 min read</p>
+
+    <p class="lead">"Guardrails" now means at least three different things, and most products marketed as AI guardrails only do one of them. If your agent can write to production, the kind you need is the one that is least talked about: the guardrail on actions. Here is how the three kinds differ, and what we measured when we compared approaches on 62 real and realistic agent sessions.</p>
+    <div class="tldr"><p>In short</p><ul><li>Input guardrails filter what goes into the model. Output guardrails filter what comes out as text.</li><li>Action guardrails decide whether a tool call runs. They sit outside the model, where injected text can't reach them.</li><li>"Ask for everything" stops harm but held 40 of 41 routine steps in our benchmark. People stop reading.</li><li>Checking whole sessions stopped 65 of 66 harmful steps while holding 3 routine ones.</li></ul></div>
+    <nav class="toc" aria-label="On this page"><p>On this page</p><ol><li><a href="#three-kinds-of-guardrail">Three kinds of guardrail</a></li><li><a href="#what-an-action-guardrail-needs">What an action guardrail needs</a></li><li><a href="#what-we-measured">What we measured</a></li><li><a href="#guardrails-compared-with-what-you-already-have">Guardrails compared with what you already have</a></li><li><a href="#rolling-one-out">Rolling one out</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+
+    <h2 id="three-kinds-of-guardrail">Three kinds of guardrail</h2>
+<figure class="fig"><div class="scroll"><svg viewBox="0 0 720 250" role="img" aria-labelledby="fl-t fl-d">
+<title id="fl-t">Where AI agent guardrails sit</title>
+<desc id="fl-d">Input guardrails and output guardrails sit around the model and can be influenced by the content they inspect. Action guardrails sit between the agent and its tools, outside the model's reach, and decide allow, hold or block.</desc>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0L10 5L0 10z"/></marker></defs>
+<text class="m" x="8" y="20">INSIDE THE AGENT LOOP</text><text class="m" x="474" y="20">OUTSIDE THE MODEL'S REACH</text>
+<rect class="bx" x="8" y="40" width="120" height="70" rx="12"/><text class="t" x="68" y="70" text-anchor="middle">Input</text><text class="s" x="68" y="90" text-anchor="middle">guardrail</text>
+<path class="ln" d="M128 75H150" marker-end="url(#ah)"/>
+<rect class="bx" x="154" y="40" width="120" height="70" rx="12"/><text class="t" x="214" y="80" text-anchor="middle">Model</text>
+<path class="ln" d="M274 75H296" marker-end="url(#ah)"/>
+<rect class="bx" x="300" y="40" width="130" height="70" rx="12"/><text class="t" x="365" y="70" text-anchor="middle">Output</text><text class="s" x="365" y="90" text-anchor="middle">guardrail</text>
+<path class="ln" d="M430 75H470" marker-end="url(#ah)"/>
+<rect class="bx-acc" x="474" y="40" width="130" height="70" rx="12"/><text class="t" x="539" y="70" text-anchor="middle">Action</text><text class="s" x="539" y="90" text-anchor="middle">guardrail</text>
+<path class="ln" d="M604 75H626" marker-end="url(#ah)"/>
+<rect class="bx" x="630" y="40" width="82" height="70" rx="12"/><text class="t" x="671" y="80" text-anchor="middle">Tools</text>
+<rect class="bx" x="8" y="140" width="422" height="92" rx="12" style="fill:none"/>
+<text class="t" x="24" y="168">Filters text: toxicity, PII, jailbreaks, topics.</text><text class="s" x="24" y="192">Often a model judging a model, so the same injected text</text><text class="s" x="24" y="210">it inspects can talk it round. Probabilistic.</text>
+<rect class="bx-acc" x="474" y="140" width="238" height="92" rx="12" style="fill:none"/>
+<text class="t" x="490" y="168">Decides on the tool call.</text><text class="s" x="490" y="192">Rules and history, not a prompt.</text><text class="s" x="490" y="210">Same call, same answer.</text>
+</svg></div><figcaption>Text guardrails decide what the model says. Action guardrails decide what it does. An agent with
+write access needs the second kind.</figcaption></figure>
+    <ul>
+      <li><strong>Input guardrails</strong> screen prompts and retrieved content: jailbreak detection, PII redaction,
+        topic limits. Useful for chatbots. They are usually a model judging text, so they share the model's weaknesses.</li>
+      <li><strong>Output guardrails</strong> check what the model writes: toxicity, leaked secrets, format, grounding.
+        Useful when text is the product.</li>
+      <li><strong>Action guardrails</strong> sit between the agent and its tools and decide whether each call runs, waits
+        for a person, or is refused. When the agent can delete, pay, push or email, this is the layer that matters.</li>
+    </ul>
+
+    <h2 id="what-an-action-guardrail-needs">What an action guardrail needs</h2>
+    <ul>
+      <li><strong>Out of the model's reach.</strong> If the guardrail lives in the system prompt, injected text can argue
+        with it. It has to run as a separate process the agent can't edit.</li>
+      <li><strong>Reads the real action.</strong> Parse the shell command, the SQL, the API request. <code>rm -rf ./build</code>
+        and <code>rm -rf ~/</code> are one character apart.</li>
+      <li><strong>Remembers.</strong> Single calls look fine; chains don't. Backups off, then a delete. A secret read, then
+        an upload.</li>
+      <li><strong>Has a middle answer.</strong> Allow and block aren't enough. Most risky actions are legitimate sometimes;
+        they need a person, with the effect shown.</li>
+      <li><strong>Deterministic.</strong> The same call gets the same answer, so you can test it, review it in a pull
+        request and explain it to an auditor.</li>
+    </ul>
+
+    <h2 id="what-we-measured">What we measured</h2>
+    <div class="stats">
+      <div class="stat"><b>65/66</b><span>harmful steps stopped, Squidbrake on whole sessions</span></div>
+      <div class="stat"><b>3/41</b><span>routine steps held (the false positives)</span></div>
+      <div class="stat"><b>112</b><span>times "ask for everything" asked a person</span></div>
+      <div class="stat"><b>3.9 ms</b><span>median decision time, in-process</span></div>
+    </div>
+<figure class="fig"><div class="scroll"><svg viewBox="0 0 830 250" role="img" aria-labelledby="fb-t fb-d"><title id="fb-t">Five approaches on 62 agent sessions</title><desc id="fb-d">Harmful steps stopped out of 66: auto-run 0, ask for everything 65, allowlist 53, Squidbrake one step 62, Squidbrake whole session 65. Routine steps held out of 41: 0, 40, 10, 2, 3.</desc><text class="t" x="0" y="22">Harmful steps stopped</text><text class="s" x="0" y="40">more is better</text><line class="grid" x1="178" y1="54" x2="178" y2="234"/><line class="grid" x1="268.0" y1="54" x2="268.0" y2="234"/><line class="grid" x1="358" y1="54" x2="358" y2="234"/><text class="s" x="170" y="77" text-anchor="end">Auto-run (no checks)</text><text class="s" x="184.0" y="77">0/66</text><text class="s" x="170" y="113" text-anchor="end">Ask for everything</text><path class="bar" d="M178 98h173.3a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-173.3z"><title>Ask for everything: 65 of 66</title></path><text class="s" x="361.3" y="113">65/66</text><text class="s" x="170" y="149" text-anchor="end">Allowlist of dev tools</text><path class="bar" d="M178 134h140.5a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-140.5z"><title>Allowlist of dev tools: 53 of 66</title></path><text class="s" x="328.5" y="149">53/66</text><text class="s" x="170" y="185" text-anchor="end">Squidbrake, one step</text><path class="bar" d="M178 170h165.1a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-165.1z"><title>Squidbrake, one step: 62 of 66</title></path><text class="s" x="353.1" y="185">62/66</text><text class="s" x="170" y="221" text-anchor="end">Squidbrake, whole session</text><path class="bar-hi" d="M178 206h173.3a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-173.3z"><title>Squidbrake, whole session: 65 of 66</title></path><text class="s" x="361.3" y="221">65/66</text><text class="t" x="430" y="22">Routine steps held</text><text class="s" x="430" y="40">fewer is better</text><line class="grid" x1="608" y1="54" x2="608" y2="234"/><line class="grid" x1="698.0" y1="54" x2="698.0" y2="234"/><line class="grid" x1="788" y1="54" x2="788" y2="234"/><text class="s" x="600" y="77" text-anchor="end">Auto-run (no checks)</text><text class="s" x="614.0" y="77">0/41</text><text class="s" x="600" y="113" text-anchor="end">Ask for everything</text><path class="bar" d="M608 98h171.6a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-171.6z"><title>Ask for everything: 40 of 41</title></path><text class="s" x="789.6" y="113">40/41</text><text class="s" x="600" y="149" text-anchor="end">Allowlist of dev tools</text><path class="bar" d="M608 134h39.9a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-39.9z"><title>Allowlist of dev tools: 10 of 41</title></path><text class="s" x="657.9" y="149">10/41</text><text class="s" x="600" y="185" text-anchor="end">Squidbrake, one step</text><path class="bar" d="M608 170h4.8a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-4.8z"><title>Squidbrake, one step: 2 of 41</title></path><text class="s" x="622.8" y="185">2/41</text><text class="s" x="600" y="221" text-anchor="end">Squidbrake, whole session</text><path class="bar-hi" d="M608 206h9.2a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-9.2z"><title>Squidbrake, whole session: 3 of 41</title></path><text class="s" x="627.2" y="221">3/41</text></svg></div><figcaption>62 agent sessions, 113 steps, each labelled before any approach saw it. Last run 21 October 2026 on Squidbrake 0.14.2. Full method on the <a href="/benchmark">benchmark page</a>.<details class="data"><summary>Show as a table</summary><div class="tbl"><table class="cmp"><thead><tr><th>Approach</th><th>Harmful stopped (of 66)</th><th>Routine held (of 41)</th></tr></thead><tbody><tr><td>Auto-run (no checks)</td><td>0</td><td>0</td></tr><tr><td>Ask for everything</td><td>65</td><td>40</td></tr><tr><td>Allowlist of dev tools</td><td>53</td><td>10</td></tr><tr><td>Squidbrake, one step</td><td>62</td><td>2</td></tr><tr><td>Squidbrake, whole session</td><td>65</td><td>3</td></tr></tbody></table></div></details></figcaption></figure>
+    <p>Two things stand out. Asking a person about everything stops nearly as much harm, but it held 40 of 41 routine steps
+      and asked 112 times; nobody reads the 112th prompt. An allowlist of common developer tools is quieter but stopped only
+      53 of 66 harmful steps, because it can't tell a safe <code>curl</code> from one that posts your config to an address a
+      web page named. We kept our 3 false positives in the published numbers rather than tune them away.</p>
+
+    <h2 id="guardrails-compared-with-what-you-already-have">Guardrails compared with what you already have</h2>
+    <div class="tbl"><table class="cmp"><thead><tr><th></th><th>Action guardrail</th><th>IAM</th><th>Policy engine (OPA, Cedar)</th><th>Text guardrail</th></tr></thead><tbody>
+      <tr><td>Remembers what the agent did before</td><td>Yes</td><td>No</td><td>No, stateless</td><td>Only in the prompt</td></tr>
+      <tr><td>Reads the actual command</td><td>Yes, parsed</td><td>API action only</td><td>If you write it</td><td>As text</td></tr>
+      <tr><td>Out of the model's reach</td><td>Yes</td><td>Yes</td><td>Yes</td><td>Often not</td></tr>
+      <tr><td>Holds one step for a person</td><td>Yes</td><td>No</td><td>No</td><td>Asks in the chat</td></tr>
+      <tr><td>Shows the effect before approval</td><td>Rows, resources, commits</td><td>No</td><td>No</td><td>No</td></tr>
+    </tbody></table></div>
+    <p>You still want IAM and least privilege. The action guardrail covers what they can't: the gray area where the agent
+      is allowed to do something, but not right now, not this way, or not without someone else agreeing.</p>
+
+    <h2 id="rolling-one-out">Rolling one out</h2>
+    <ol>
+      <li>Start in <strong>shadow mode</strong>: log what would have been held or blocked, change nothing.</li>
+      <li>After a week, read the would-have-held list. Tune the rules that fired on routine work.</li>
+      <li>Enforce for irreversible actions first: deletes, destructive SQL, infrastructure, money, outbound messages.</li>
+      <li>Route approvals to the right people (finance for refunds, the on-call for infra) where they already are, such as Slack or their phone.</li>
+    </ol>
+
+    <h2 id="faq">FAQ</h2>
+    <div class="faq"><details><summary>What are AI agent guardrails?</summary><p>Controls that limit what an AI agent can do. Input and output guardrails filter text going into and out of the model; action guardrails decide whether each tool call the agent makes is allowed, held for a person or blocked.</p></details><details><summary>What is the difference between LLM guardrails and agent guardrails?</summary><p>LLM guardrails are mostly about text: what the model is asked and what it says. Agent guardrails add control over actions: commands, API calls, database writes, payments and messages.</p></details><details><summary>Do guardrails use an LLM?</summary><p>Many input and output guardrails do. Squidbrake does not: decisions come from rules, a command parser and the agent's recent history, so the same call always gets the same answer.</p></details><details><summary>How do you avoid approval fatigue?</summary><p>Only ask about what can't be undone, show the effect rather than the raw call, and look at sessions instead of single steps. In our benchmark that held 3 of 41 routine steps, against 40 for asking about everything.</p></details></div>
+    <div class="cta-box"><p><strong>Try it on your own agents.</strong> <code>pipx install squidbrake</code>, then
+      <code>squidbrake connect all</code>. Start in shadow mode: nothing is blocked in week one, you see what would have been.
+      <a href="/docs">Quickstart</a> · <a href="/benchmark">Benchmark</a> · <a href="/#demo">Book a demo</a></p></div>
+
+    <h2 id="related">Related guides</h2>
+    <ul class="related"><li><a href="/blog/human-in-the-loop-approval-for-ai-agents"><b>Human-in-the-loop approval for AI agents: what to ask about</b><span>How to design approvals that catch the risky 1% without the fatigue.</span></a></li><li><a href="/blog/owasp-top-10-agentic-applications"><b>OWASP Top 10 for Agentic Applications (2026), explained with controls</b><span>The OWASP Top 10 for Agentic Applications (ASI01 to ASI10) in plain language, with real incidents and the controls that address each risk.</span></a></li><li><a href="/blog/prompt-injection-ai-agents"><b>Prompt injection in AI agents: how to stop data exfiltration</b><span>Indirect prompt injection turns AI agents into data leaks. Real incidents (GitHub MCP, Supabase MCP, EchoLeak), the lethal trifecta, and controls that work.</span></a></li></ul>
+    </article>
+  </main>
+
+
+  <footer><span>© 2026 Squidbrake, Inc.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="/">Home</a> · <a href="/docs">Docs</a> · <a href="/security">Security</a> · <a href="/pricing">Pricing</a> · <a href="/about">About</a> · <a href="/benchmark">Benchmark</a> · <a href="/blog">Blog</a> · <a href="/changelog">Changelog</a> · <a href="mailto:hello@squidbrake.com">hello@squidbrake.com</a></span></footer>
+</div>
+</body>
+</html>

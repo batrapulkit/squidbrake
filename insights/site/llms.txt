@@ -30,6 +30,11 @@ Coding agents (Claude Code, Cursor, Codex, Gemini CLI, VS Code Copilot, Antigrav
 - [MCP security checklist](https://squidbrake.com/blog/mcp-security-checklist)
 - [EU AI Act Article 14: human oversight for AI agents](https://squidbrake.com/blog/eu-ai-act-article-14-human-oversight-ai-agents)
 - [Squidbrake vs Kontext](https://squidbrake.com/blog/squidbrake-vs-kontext): human approval, open source, MCP, self-hosting, price
+- [Claude Code --dangerously-skip-permissions: how to use it safely](https://squidbrake.com/blog/claude-code-dangerously-skip-permissions)
+- [OWASP Top 10 for Agentic Applications (2026), explained with controls](https://squidbrake.com/blog/owasp-top-10-agentic-applications)
+- [Prompt injection in AI agents: how to stop data exfiltration](https://squidbrake.com/blog/prompt-injection-ai-agents)
+- [AI agent guardrails: input, output and action guardrails compared](https://squidbrake.com/blog/ai-agent-guardrails)
+- [SOC 2 for AI agents: the change-management evidence auditors will ask for](https://squidbrake.com/blog/soc-2-ai-agents)
 
 ## Contact
 

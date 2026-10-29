@@ -135,7 +135,7 @@ footer a:hover{color:var(--ink)}
     match:
       name: ["stripe.*refund*", "stripe.*payout*"]</pre>
     <p>Two more rules of thumb: an agent's key must never be able to approve, and an approval should be recorded with who
-      approved what and when, in a log that can't be edited after the fact. That record is also what an auditor will ask
+      approved what and when, in a tamper-evident log, so an edit after the fact shows. That record is also what an auditor will ask
       for under change-management controls like SOC 2 CC8.1.</p>
 
     <h2>Roll it out without breaking anything</h2>
@@ -145,11 +145,13 @@ footer a:hover{color:var(--ink)}
     <div class="cta-box"><p><strong>Try it on your own agents.</strong> <code>pipx install squidbrake</code>, then
       <code>squidbrake connect all</code>. Start in shadow mode: nothing is blocked in week one, you see what would have been.
       <a href="/docs">Quickstart</a> · <a href="/benchmark">Benchmark</a> · <a href="/#demo">Book a demo</a></p></div>
+    <h2 id="related">Related guides</h2>
+    <ul><li><a href="/blog/ai-agent-guardrails">AI agent guardrails: input, output and action guardrails compared</a></li><li><a href="/blog/soc-2-ai-agents">SOC 2 for AI agents: the change-management evidence auditors will ask for</a></li><li><a href="/blog/claude-code-dangerously-skip-permissions">Claude Code --dangerously-skip-permissions: how to use it safely</a></li></ul>
     </article>
   </main>
 
 
-  <footer><span>© 2026 Squidbrake, Inc.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="/">Home</a> ·  · <a href="mailto:hello@squidbrake.com">hello@squidbrake.com</a></span></footer>
+  <footer><span>© 2026 Squidbrake, Inc.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="/">Home</a> · <a href="/docs">Docs</a> · <a href="/security">Security</a> · <a href="/pricing">Pricing</a> · <a href="/about">About</a> · <a href="/benchmark">Benchmark</a> · <a href="/blog">Blog</a> · <a href="/changelog">Changelog</a> · <a href="mailto:hello@squidbrake.com">hello@squidbrake.com</a></span></footer>
 </div>
 </body>
 </html>

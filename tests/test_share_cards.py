@@ -52,3 +52,16 @@ def test_site_has_one_address_per_page_and_answers_head(insights):  # noqa: F811
     assert insights.get("/.well-known/security.txt").text.startswith("Contact:")
     assert insights.get("/blog/mcp-security-checklist").status_code == 200
     assert insights.get("/blog/nope").status_code == 404
+
+
+def test_sitemap_lists_every_page_and_every_listed_page_answers(insights):  # noqa: F811
+    from pathlib import Path
+    import re
+    urls = re.findall(r"<loc>https://squidbrake\.com(/[^<]*)</loc>", insights.get("/sitemap.xml").text)
+    for u in urls:
+        assert insights.get(u, follow_redirects=False).status_code == 200, u
+    blog = Path(__file__).resolve().parent.parent / "insights" / "site" / "blog"
+    for p in blog.glob("*.html"):
+        path = "/blog" if p.stem == "index" else f"/blog/{p.stem}"
+        assert path in urls, f"{path} is missing from sitemap.xml"
+        assert f'<link rel="canonical" href="https://squidbrake.com{path}">' in p.read_text(encoding="utf-8"), p.name

@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Claude Code --dangerously-skip-permissions: use it safely</title>
+<meta name="description" content="What Claude Code&#x27;s --dangerously-skip-permissions flag (YOLO mode) skips, what still runs, and five ways to keep auto mode without deleted folders or databases.">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+<meta name="author" content="Pulkit Batra">
+<link rel="canonical" href="https://squidbrake.com/blog/claude-code-dangerously-skip-permissions">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://squidbrake.com/blog/claude-code-dangerously-skip-permissions">
+<meta property="og:site_name" content="Squidbrake">
+<meta property="og:title" content="Claude Code --dangerously-skip-permissions: use it safely">
+<meta property="og:description" content="What Claude Code&#x27;s --dangerously-skip-permissions flag (YOLO mode) skips, what still runs, and five ways to keep auto mode without deleted folders or databases.">
+<meta property="og:image" content="https://squidbrake.com/assets/og.png">
+<meta property="article:published_time" content="2026-10-29">
+<meta property="article:author" content="https://squidbrake.com/about">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Claude Code --dangerously-skip-permissions: use it safely">
+<meta name="twitter:description" content="What Claude Code&#x27;s --dangerously-skip-permissions flag (YOLO mode) skips, what still runs, and five ways to keep auto mode without deleted folders or databases.">
+<meta name="twitter:image" content="https://squidbrake.com/assets/og.png">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "BlogPosting", "headline": "Claude Code <code>--dangerously-skip-permissions<\/code>: how to use it safely", "description": "What Claude Code's --dangerously-skip-permissions flag (YOLO mode) skips, what still runs, and five ways to keep auto mode without deleted folders or databases.", "url": "https://squidbrake.com/blog/claude-code-dangerously-skip-permissions", "mainEntityOfPage": "https://squidbrake.com/blog/claude-code-dangerously-skip-permissions", "datePublished": "2026-10-29", "dateModified": "2026-10-29", "image": "https://squidbrake.com/assets/og.png", "inLanguage": "en", "keywords": "claude code dangerously-skip-permissions, claude code yolo mode, claude code hooks, PreToolUse hook, claude code permissions, claude code safety", "articleSection": "Guide", "wordCount": 1009, "author": {"@type": "Person", "@id": "https://squidbrake.com/about#pulkit", "name": "Pulkit Batra", "url": "https://squidbrake.com/about"}, "publisher": {"@type": "Organization", "@id": "https://squidbrake.com/#org", "name": "Squidbrake", "url": "https://squidbrake.com/", "logo": "https://squidbrake.com/assets/logo-512.png"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://squidbrake.com/"}, {"@type": "ListItem", "position": 2, "name": "Blog", "item": "https://squidbrake.com/blog"}, {"@type": "ListItem", "position": 3, "name": "Claude Code <code>--dangerously-skip-permissions<\/code>: how to use it safely", "item": "https://squidbrake.com/blog/claude-code-dangerously-skip-permissions"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is --dangerously-skip-permissions the same as YOLO mode?", "acceptedAnswer": {"@type": "Answer", "text": "Yes, informally. Claude Code calls it bypassPermissions mode; people call it YOLO mode, the same name Cursor and Gemini CLI use for their auto-run settings."}}, {"@type": "Question", "name": "Do Claude Code hooks run with --dangerously-skip-permissions?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Hooks are a separate layer from permission prompts. A PreToolUse hook receives permission_mode \"bypassPermissions\" and can still deny the call. Test it on your version before relying on it."}}, {"@type": "Question", "name": "Is auto mode safer than --dangerously-skip-permissions?", "acceptedAnswer": {"@type": "Answer", "text": "Auto mode decides each step with a classifier, which is a real improvement, but the same person running the agent is still the only one who can say yes. For the small set of irreversible actions, a rule-based hold for a second person is stronger."}}, {"@type": "Question", "name": "Can I block rm -rf in Claude Code?", "acceptedAnswer": {"@type": "Answer", "text": "Yes, with a PreToolUse hook that parses the command. Matching the text \"rm -rf\" is not enough: the December 2025 incident hid ~/ at the end of a normal-looking cleanup, and variations like find -delete or a script do the same thing."}}, {"@type": "Question", "name": "Can a team stop developers using the flag?", "acceptedAnswer": {"@type": "Answer", "text": "Yes. Claude Code's managed settings file can disable bypassPermissions mode and allow only managed hooks. squidbrake lockdown generates it."}}]}]}</script>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preload" href="/assets/fonts/host-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/fonts/fonts.css">
+<style>
+:root{
+  --bg:#E6EBE2; --surface:#F4F6F1; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5;
+  --go:#237447; --stop:#C0301C; --hold:#A5560C; --accent:#F2622E; --accent-hover:#E4541F;
+  --code-bg:#1E2A23; --code-ink:#E6EDE4; --code-muted:#93A196;
+  --sans:"Host Grotesk","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:4px}
+.wrap{width:min(1120px,100% - 32px);margin-inline:auto}
+main p,main li,main dd,main>h1{max-width:80ch}   /* the page uses the width, a line of text stays readable */
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 0;border-bottom:1px solid var(--line)}
+.brand{display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:1.2rem;letter-spacing:-0.03em;text-decoration:none}
+.brand svg{width:32px;height:32px}
+header nav{display:flex;gap:20px;font-size:.95rem}
+header nav a{color:var(--muted);text-decoration:none}
+header nav a:hover{color:var(--ink)}
+main{padding:56px 0 80px}
+.kicker{margin:0 0 14px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-weight:500;font-size:clamp(2.2rem,6vw,3.4rem);line-height:1;letter-spacing:-0.05em;margin:0 0 18px}
+.lead{color:var(--muted);font-size:1.1rem;margin:0 0 40px;max-width:52ch}
+h2{display:flex;align-items:baseline;gap:12px;font-weight:500;font-size:1.6rem;letter-spacing:-0.035em;margin:56px 0 12px}
+h2 .n{font:400 .9rem var(--mono);color:var(--muted)}
+p{margin:0 0 14px}
+.muted{color:var(--muted)}
+code{font:400 .9em var(--mono)}
+p code,li code{background:var(--surface);padding:1px 5px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line)}
+pre{margin:0 0 18px;padding:18px 20px;border-radius:10px;background:var(--code-bg);color:var(--code-ink);font:400 .86rem/1.6 var(--mono);overflow-x:auto}
+pre .c{color:var(--code-muted)}
+pre .d{color:#FF8A75}
+pre .h{color:#F7B267}
+.file{display:block;margin:0 0 -6px;padding:8px 20px 14px;border-radius:10px 10px 0 0;background:var(--code-bg);color:var(--code-muted);font:400 .76rem var(--mono)}
+.file+pre{border-radius:0 0 10px 10px}
+.note{margin:18px 0;padding:14px 18px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0;font-size:.95rem}
+ul{padding-left:1.2em;margin:0 0 14px}
+li{margin:4px 0}
+footer{padding:28px 0 40px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem;display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between}
+footer a{text-decoration:none}
+footer a:hover{color:var(--ink)}
+@media (max-width:560px){ header nav a:not(:last-child){display:none} main{padding:36px 0 56px} pre{font-size:.78rem;padding:14px} }
+.ph-badge{display:inline-block;line-height:0}.ph-badge img{max-width:100%;height:auto}
+</style>
+<style>.posts{list-style:none;padding:0;margin:0}.posts li{padding:22px 0;border-bottom:1px solid var(--line)}.posts a{color:var(--ink);font-size:1.3rem;font-weight:500;letter-spacing:-0.02em}.posts p{margin:6px 0 0;color:var(--muted)}.posts time,.byline{font:400 .82rem var(--mono);color:var(--muted)}article h2{display:block}article li{margin:6px 0}.cta-box{margin:48px 0 0;padding:20px 22px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}.cta-box p{margin:0}.cmp{width:100%;border-collapse:collapse;margin:8px 0 0;font-size:.95rem}.cmp th,.cmp td{text-align:left;vertical-align:top;padding:10px 12px 10px 0;border-bottom:1px solid var(--line)}.cmp th{font-weight:500}.cmp td:first-child{color:var(--muted)}.tbl{overflow-x:auto}</style>
+<style>
+.toc{margin:0 0 36px;padding:16px 20px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);max-width:80ch}
+.toc p{margin:0 0 6px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.toc ol{margin:0;padding-left:1.2em}.toc li{margin:2px 0}.toc a{text-decoration:none}.toc a:hover{text-decoration:underline}
+.tldr{margin:0 0 32px;padding:18px 22px;border-radius:12px;border-left:3px solid var(--accent);background:var(--surface);max-width:80ch}
+.tldr p{margin:0 0 6px;font-weight:500}.tldr ul{margin:0}
+figure.fig{margin:28px 0 30px;padding:20px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+figure.fig .scroll{overflow-x:auto}
+figure.fig svg{display:block;width:100%;min-width:560px;height:auto;font-family:var(--sans)}
+figure.fig figcaption{margin:12px 0 0;color:var(--muted);font-size:.9rem;max-width:80ch}
+.fig .bx{fill:var(--bg);stroke:var(--line);stroke-width:1.5}
+.fig .bx-go{fill:var(--bg);stroke:var(--go);stroke-width:2}
+.fig .bx-hold{fill:var(--bg);stroke:var(--hold);stroke-width:2}
+.fig .bx-stop{fill:var(--bg);stroke:var(--stop);stroke-width:2}
+.fig .bx-acc{fill:var(--bg);stroke:var(--accent);stroke-width:2}
+.fig .bx-off{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:5 5}
+.fig .t{fill:var(--ink);font-size:15px;font-weight:500}
+.fig .s{fill:var(--muted);font-size:12.5px}
+.fig .m{fill:var(--muted);font:400 11.5px var(--mono);letter-spacing:.06em}
+.fig .ln{stroke:var(--muted);stroke-width:1.5;fill:none}
+.fig .ah{fill:var(--muted)}
+.fig .go{fill:var(--go)}.fig .hold{fill:var(--hold)}.fig .stop{fill:var(--stop)}.fig .acc{fill:var(--accent)}.fig .mut{fill:var(--muted)}
+.fig .bar{fill:var(--muted)}.fig .bar-hi{fill:var(--accent)}.fig .grid{stroke:var(--line);stroke-width:1}
+.fig .ring-a{fill:var(--go);fill-opacity:.13;stroke:var(--go);stroke-width:1.5}
+.fig .ring-b{fill:var(--hold);fill-opacity:.13;stroke:var(--hold);stroke-width:1.5}
+.fig .ring-c{fill:var(--accent);fill-opacity:.13;stroke:var(--accent);stroke-width:1.5}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:24px 0 30px}
+.stat{padding:16px 18px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+.stat b{display:block;font-size:1.9rem;font-weight:500;letter-spacing:-0.04em;line-height:1.1}
+.stat span{color:var(--muted);font-size:.88rem}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;font:400 .76rem var(--mono);white-space:nowrap;box-shadow:inset 0 0 0 1px currentColor}
+.pill.go{color:var(--go)}.pill.hold{color:var(--hold)}.pill.stop{color:var(--stop)}
+.faq details{padding:14px 0;border-bottom:1px solid var(--line);max-width:80ch}
+.faq summary{cursor:pointer;font-weight:500}
+.faq details p{margin:10px 0 0}
+.related{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0 0;padding:0;list-style:none}
+.related li{margin:0}
+.related a{display:block;height:100%;padding:14px 16px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);text-decoration:none}
+.related a:hover{box-shadow:inset 0 0 0 1px var(--ink)}
+.related b{display:block;font-weight:500}.related span{color:var(--muted);font-size:.88rem}
+article code{overflow-wrap:anywhere}
+details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>squidbrake</a>
+    <nav aria-label="Docs"><a href="/#how">How it works</a><a href="/security">Security</a><a href="/pricing">Pricing</a><a href="/about">About</a><a href="/blog">Blog</a><a href="/changelog">Changelog</a><a href="/signup"><b>Sign up free</b></a></nav>
+  </header>
+
+  <main>
+    <p class="kicker">Guide</p>
+    <article>
+    <h1>Claude Code <code>--dangerously-skip-permissions</code>: how to use it safely</h1>
+    <p class="byline">By <a href="/about">Pulkit Batra</a> · <time datetime="2026-10-29">29 October 2026</time> · 4 min read</p>
+
+    <p class="lead">Claude Code's <code>--dangerously-skip-permissions</code> flag, often called YOLO mode, stops it asking before it runs commands and edits files. It is the fastest way to work, and it is how a developer lost their home folder in December 2025. You don't have to choose between speed and safety. Here is what the flag turns off, what it doesn't, and how to keep it on without betting the machine.</p>
+    <div class="tldr"><p>In short</p><ul><li>The flag skips Claude Code's permission prompts. It does <strong>not</strong> skip hooks.</li><li>A <code>PreToolUse</code> hook can still refuse a call, or hold it for a person, with the flag on.</li><li>Let reads, tests and git-tracked edits run freely; hold deletes, force pushes and cloud changes; block the few catastrophic commands.</li><li>On a team, managed settings can turn the flag off and make the hook mandatory.</li></ul></div>
+    <nav class="toc" aria-label="On this page"><p>On this page</p><ol><li><a href="#what-the-flag-does">What the flag does</a></li><li><a href="#what-still-runs-with-the-flag-on">What still runs with the flag on</a></li><li><a href="#what-goes-wrong-in-yolo-mode">What goes wrong in YOLO mode</a></li><li><a href="#five-ways-to-keep-yolo-mode-safe">Five ways to keep YOLO mode safe</a></li><li><a href="#doing-it-with-squidbrake">Doing it with Squidbrake</a></li><li><a href="#on-a-team-turn-the-flag-off-centrally">On a team: turn the flag off centrally</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+
+    <h2 id="what-the-flag-does">What the flag does</h2>
+    <p>By default Claude Code asks before it runs a shell command, edits a file or calls an MCP tool you haven't allowed.
+      Start it with <code>claude --dangerously-skip-permissions</code> and it stops asking: the session runs in
+      <code>bypassPermissions</code> mode and every tool call goes straight through. People use it for long refactors,
+      overnight runs and anything where approving 200 prompts would take longer than the work.</p>
+    <p>The name is honest. With no prompts, the only thing between the model and <code>rm -rf</code> is the model's own
+      judgement, and that judgement can be wrong or can be steered by text it read in an issue, a README or a web page.</p>
+
+    <h2 id="what-still-runs-with-the-flag-on">What still runs with the flag on</h2>
+<figure class="fig"><div class="scroll"><svg viewBox="0 0 720 300" role="img" aria-labelledby="fs-t fs-d">
+<title id="fs-t">What --dangerously-skip-permissions skips, and what still runs</title>
+<desc id="fs-d">A tool call goes to the PreToolUse hook, which still runs, then to the permission prompt, which the flag skips, then to the tool. The hook can allow, hold for a teammate, or block.</desc>
+<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0L10 5L0 10z"/></marker></defs>
+<rect class="bx" x="8" y="36" width="150" height="72" rx="12"/><text class="t" x="83" y="68" text-anchor="middle">Claude Code</text><text class="s" x="83" y="88" text-anchor="middle">wants to run a tool</text>
+<path class="ln" d="M158 72H190" marker-end="url(#ah)"/>
+<rect class="bx-go" x="194" y="36" width="170" height="72" rx="12"/><text class="t" x="279" y="68" text-anchor="middle">PreToolUse hook</text><text class="s" x="279" y="88" text-anchor="middle">still runs with the flag</text>
+<path class="ln" d="M364 72H396" marker-end="url(#ah)"/>
+<rect class="bx-off" x="400" y="36" width="160" height="72" rx="12"/><text class="s" x="480" y="66" text-anchor="middle" text-decoration="line-through">Permission prompt</text><text class="m" x="480" y="88" text-anchor="middle">SKIPPED BY THE FLAG</text>
+<path class="ln" d="M560 72H592" marker-end="url(#ah)"/>
+<rect class="bx" x="596" y="36" width="116" height="72" rx="12"/><text class="t" x="654" y="78" text-anchor="middle">Tool runs</text>
+<path class="ln" d="M279 108V150H120V190" marker-end="url(#ah)"/><path class="ln" d="M279 108V190" marker-end="url(#ah)"/><path class="ln" d="M279 108V150H470V190" marker-end="url(#ah)"/>
+<rect class="bx-go" x="20" y="194" width="200" height="74" rx="12"/><circle class="go" cx="42" cy="218" r="6"/><text class="t" x="56" y="223">Allow</text><text class="s" x="36" y="250">reads, tests, edits in git</text>
+<rect class="bx-hold" x="236" y="194" width="200" height="74" rx="12"/><circle class="hold" cx="258" cy="218" r="6"/><text class="t" x="272" y="223">Hold</text><text class="s" x="252" y="250">a teammate approves</text>
+<rect class="bx-stop" x="452" y="194" width="200" height="74" rx="12"/><circle class="stop" cx="474" cy="218" r="6"/><text class="t" x="488" y="223">Block</text><text class="s" x="468" y="250">rm -rf ~, wiping a drive</text>
+<text class="m" x="8" y="20">ONE TOOL CALL, WITH --dangerously-skip-permissions ON</text>
+</svg></div><figcaption>The flag removes Claude Code's own "may I?" prompts. Hooks are a separate layer that Claude Code calls
+before every tool, and it tells them the session is in <code>bypassPermissions</code> mode, so a hook can still refuse
+the call or send it to a person.</figcaption></figure>
+    <p>Hooks are commands Claude Code runs at fixed points. A <code>PreToolUse</code> hook runs before every tool call,
+      receives the tool name and its input as JSON, and answers. Claude Code passes it the current
+      <code>permission_mode</code>, including <code>bypassPermissions</code>, and the hook can still return
+      <code>"permissionDecision": "deny"</code>. That makes hooks the right place for a safety net in YOLO mode: they don't
+      depend on the prompts the flag removes.</p>
+<pre><span class="c"># ~/.claude/settings.json: a PreToolUse hook on every tool</span>
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "*", "hooks": [{ "type": "command", "command": "squidbrake hook", "timeout": 600 }] }
+    ]
+  }
+}</pre>
+    <p>Check this on your own version before you rely on it: run a session with the flag, ask for a command your hook
+      denies, and watch it get refused. <code>squidbrake doctor</code> does that check for you.</p>
+
+    <h2 id="what-goes-wrong-in-yolo-mode">What goes wrong in YOLO mode</h2>
+    <p>These are public incidents we replay in our <a href="/benchmark">benchmark</a>, none with a rule written for the occasion:</p>
+    <div class="tbl"><table class="cmp"><thead><tr><th>Incident</th><th>What the agent ran</th><th>Result</th></tr></thead><tbody>
+      <tr><td>Claude Code deletes a home folder (Dec 2025)</td><td><code>rm -rf tests/ patches/ plan/ ~/</code></td><td><span class="pill stop">Blocked</span></td></tr>
+      <tr><td>Antigravity wipes a D: drive (Dec 2025)</td><td><code>rmdir /s /q d:\</code> in auto-execute</td><td><span class="pill stop">Blocked</span></td></tr>
+      <tr><td>An agent deletes a production volume and its backups (Apr 2026)</td><td>Found a token, called Railway's <code>volumeDelete</code></td><td><span class="pill hold">Held</span></td></tr>
+      <tr><td>A Slack message rewrites Cursor's MCP config (CVE-2025-54135)</td><td>Edits <code>~/.cursor/mcp.json</code></td><td><span class="pill hold">Held</span></td></tr>
+    </tbody></table></div>
+    <p>Note the first row. A trailing <code>~/</code> on an otherwise reasonable cleanup command. No prompt-level instruction
+      would reliably catch that; a parser that reads the command does.</p>
+
+    <h2 id="five-ways-to-keep-yolo-mode-safe">Five ways to keep YOLO mode safe</h2>
+    <ol>
+      <li><strong>Run it somewhere disposable.</strong> A dev container, a VM or a fresh clone with no production
+        credentials. This is the strongest control and the one most people skip because it's inconvenient.</li>
+      <li><strong>Keep credentials out of reach.</strong> The Railway incident started with a token sitting in the repo.
+        Tokens the agent can read are tokens the agent can use.</li>
+      <li><strong>Put a checkpoint in a <code>PreToolUse</code> hook.</strong> Let reads, searches, builds, tests and edits
+        inside git run on their own. Hold what can't be taken back for a person: deletes outside git, destructive SQL,
+        <code>git push --force</code>, <code>terraform destroy</code>, cloud API deletes, changes to the agent's own settings.
+        Block the handful nobody should approve in the moment: deleting a home folder or a drive.</li>
+      <li><strong>Keep an undo.</strong> Squidbrake copies files, and the git state, right before an approved delete,
+        <code>git reset</code> or <code>git clean</code> runs, so <code>squidbrake undo</code> puts them back.</li>
+      <li><strong>Look at the session, not just the step.</strong> Reading <code>.env</code> is fine. Reading
+        <code>.env</code> and then <code>curl</code>-ing it to an address from a web page the agent fetched is not.</li>
+    </ol>
+
+    <h2 id="doing-it-with-squidbrake">Doing it with Squidbrake</h2>
+<pre>pipx install squidbrake
+squidbrake connect claude-code     <span class="c"># adds the PreToolUse hook</span>
+claude --dangerously-skip-permissions</pre>
+    <p>Routine work keeps flowing. When Claude Code reaches for something it can't take back, the call waits and a
+      teammate sees what it will change ("deletes 4,312 rows of 10,240 in orders") on Slack, their phone or the
+      dashboard. The rules are one YAML file; the check takes a few milliseconds and uses no LLM.</p>
+
+    <h2 id="on-a-team-turn-the-flag-off-centrally">On a team: turn the flag off centrally</h2>
+    <p>For a company, the better answer is often "nobody runs with the flag and nobody can remove the hook". Claude
+      Code reads a managed settings file that users can't override. <code>squidbrake lockdown --url https://gateway.yourcompany.com</code>
+      writes that file for Claude Code (and the equivalents for Codex, Gemini CLI and Cursor): Squidbrake's hook, only
+      managed hooks allowed, and <code>--dangerously-skip-permissions</code> disabled. IT pushes it with the MDM you already
+      use. See <a href="/docs">the docs</a> for paths per OS.</p>
+
+    <h2 id="faq">FAQ</h2>
+    <div class="faq"><details><summary>Is --dangerously-skip-permissions the same as YOLO mode?</summary><p>Yes, informally. Claude Code calls it bypassPermissions mode; people call it YOLO mode, the same name Cursor and Gemini CLI use for their auto-run settings.</p></details><details><summary>Do Claude Code hooks run with --dangerously-skip-permissions?</summary><p>Yes. Hooks are a separate layer from permission prompts. A PreToolUse hook receives permission_mode "bypassPermissions" and can still deny the call. Test it on your version before relying on it.</p></details><details><summary>Is auto mode safer than --dangerously-skip-permissions?</summary><p>Auto mode decides each step with a classifier, which is a real improvement, but the same person running the agent is still the only one who can say yes. For the small set of irreversible actions, a rule-based hold for a second person is stronger.</p></details><details><summary>Can I block rm -rf in Claude Code?</summary><p>Yes, with a PreToolUse hook that parses the command. Matching the text "rm -rf" is not enough: the December 2025 incident hid ~/ at the end of a normal-looking cleanup, and variations like find -delete or a script do the same thing.</p></details><details><summary>Can a team stop developers using the flag?</summary><p>Yes. Claude Code's managed settings file can disable bypassPermissions mode and allow only managed hooks. squidbrake lockdown generates it.</p></details></div>
+    <div class="cta-box"><p><strong>Try it on your own agents.</strong> <code>pipx install squidbrake</code>, then
+      <code>squidbrake connect all</code>. Start in shadow mode: nothing is blocked in week one, you see what would have been.
+      <a href="/docs">Quickstart</a> · <a href="/benchmark">Benchmark</a> · <a href="/#demo">Book a demo</a></p></div>
+
+    <h2 id="related">Related guides</h2>
+    <ul class="related"><li><a href="/blog/ai-agent-deleted-production-database"><b>How an AI agent deleted a prod database and how to stop it</b><span>Replit&#x27;s agent wiped a production database during a code freeze. What happened and the controls that would have stopped it.</span></a></li><li><a href="/blog/human-in-the-loop-approval-for-ai-agents"><b>Human-in-the-loop approval for AI agents: what to ask about</b><span>How to design approvals that catch the risky 1% without the fatigue.</span></a></li><li><a href="/blog/mcp-security-checklist"><b>MCP security checklist: 10 controls for AI agent tools</b><span>Tokens, untrusted content, config tampering, malicious servers, approvals and logging.</span></a></li></ul>
+    </article>
+  </main>
+
+
+  <footer><span>© 2026 Squidbrake, Inc.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="/">Home</a> · <a href="/docs">Docs</a> · <a href="/security">Security</a> · <a href="/pricing">Pricing</a> · <a href="/about">About</a> · <a href="/benchmark">Benchmark</a> · <a href="/blog">Blog</a> · <a href="/changelog">Changelog</a> · <a href="mailto:hello@squidbrake.com">hello@squidbrake.com</a></span></footer>
+</div>
+</body>
+</html>
