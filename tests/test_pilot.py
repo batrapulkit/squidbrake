@@ -601,6 +601,24 @@ def test_team_plan_signup_is_a_hosted_trial_waiting_for_approval(insights, monke
     assert insights.post("/v1/signup", json={"name": "x", "email": "x@t.dev", "company": "x", "plan": "gold"}).status_code == 422
 
 
+def test_hosted_signup_starts_on_its_own_while_a_slot_is_free(insights, monkeypatch):
+    import app as insights_app
+    insights_app._requests.clear()
+    told = []
+    monkeypatch.setattr(insights_app, "notify", told.append)
+    monkeypatch.setattr(insights_app, "HOSTED_AUTO_APPROVE", True)
+    with insights_app.db() as c:
+        live = c.execute(f"SELECT COUNT(*) FROM pilots WHERE {insights_app.LIVE}").fetchone()[0]
+    monkeypatch.setattr(insights_app, "HOSTED_MAX", live + 1)
+    sign = lambda email: insights.post("/v1/signup", json={"name": "Ola", "email": email, "company": "Auto",
+                                                           "plan": "team"}).json()["link"].rsplit("/", 1)[1]
+    first = sign("ola@auto.dev")
+    assert insights.get(f"/v1/pilot/{first}/status").json()["state"] == "requested"   # provision.py starts it
+    assert "started on its own" in told[0]
+    second = sign("bo@auto.dev")                                                         # no slot left: it waits
+    assert insights.get(f"/v1/pilot/{second}/status").json()["state"] == "waiting" and "Approve it" in told[1]
+
+
 def test_stripe_payments_reach_the_pilot_they_were_for(insights, monkeypatch):
     import hashlib
     import hmac as _hmac

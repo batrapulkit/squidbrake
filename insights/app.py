@@ -144,6 +144,7 @@ seed_community()
 
 HOSTED_DOMAIN = os.getenv("HOSTED_DOMAIN", "")        # e.g. app.squidbrake.com (with a *.app wildcard DNS record)
 HOSTED_MAX = int(os.getenv("HOSTED_MAX", "6"))         # each hosted gateway uses ~50-100 MB of memory
+HOSTED_AUTO_APPROVE = os.getenv("HOSTED_AUTO_APPROVE", "") == "1"   # 1: a hosted sign-up starts on its own while a slot is free
 LIVE = "hosted=1 AND state NOT IN ('deleting', 'waiting')"     # takes a hosted slot (waiting: not approved yet)
 
 # Where you hear about a hosted request or a demo request: an ntfy.sh topic URL (push to your phone), or a Slack or
@@ -1287,19 +1288,20 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
                                      "hello@squidbrake.com")
         if not s.name.strip() or not s.company.strip():
             raise HTTPException(422, "please add your name and company")
-        # hosted: the request waits for you to approve it in the admin (no gateway is started on its own)
+        # hosted: the request waits for you to approve it in the admin, unless HOSTED_AUTO_APPROVE and a slot is free
         setup = "hosted" if s.plan == "team" else s.setup
         sub = _subdomain(c, slug) if setup == "hosted" and HOSTED_DOMAIN else None
+        auto = bool(sub) and HOSTED_AUTO_APPROVE and c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0] < HOSTED_MAX
         trial = (datetime.now(timezone.utc).date() + timedelta(days=14)).isoformat() if s.plan == "team" else None
         c.execute("INSERT INTO pilots (code, company, contact, note, created_at, email, uses_agents, hosted, subdomain, "
                   "state, plan, trial_ends) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                   (code, s.company.strip(), f"{s.name.strip()} · {email}",
                    f"signup ({s.plan or setup})" + (f" from {s.source}" if s.source else "") + " · agents: "
                    + (", ".join(agents) or "-"), now(), email, json.dumps(agents),
-                   int(bool(sub)), sub, "waiting" if sub else None, s.plan or None, trial))
+                   int(bool(sub)), sub, ("requested" if auto else "waiting") if sub else None, s.plan or None, trial))
     if sub:
         notify(f"Squidbrake {'Team trial' if s.plan else 'hosted'} request: {s.name.strip()} ({email}), {s.company.strip()}. "
-               f"Approve it in {PUBLIC_URL}/admin")
+               + (f"It started on its own; see {PUBLIC_URL}/admin" if auto else f"Approve it in {PUBLIC_URL}/admin"))
     return {"ok": True, "link": f"{public_url(request)}/start/{code}"}
 
 
