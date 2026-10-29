@@ -392,3 +392,49 @@ def test_gh_harmless_lookalikes_keep_existing_classification(line):
 ])
 def test_gh_irreversible_reasons_describe_the_operation(line, reason):
     assert reason in commands.read(line).summary()
+
+
+# These are inert command-reader inputs. No task, registry change or service is executed.
+@pytest.mark.parametrize("line", [
+    r"schtasks /create /sc onlogon /tn updater /tr C:\Users\me\x.exe",
+    r"SCHTASKS.EXE /Create /SC DAILY /TN example /TR C:\example.exe",
+    "Register-ScheduledTask -TaskName updater -Action $a -Trigger $t",
+    r"reg add HKCU\Software\Microsoft\Windows\CurrentVersion\Run /v updater /d x.exe",
+    r'reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\RunOnce" /v test /d x.exe',
+    r"New-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Run -Name updater -Value x.exe",
+    r'Set-ItemProperty -LiteralPath "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name updater -Value x.exe',
+    "systemctl enable --now example.service",
+    "sudo systemctl --user enable example.service",
+    "systemctl --host example.invalid enable example.service",
+    "launchctl load -w ~/Library/LaunchAgents/com.example.plist",
+    "crontab -",
+    "crontab schedule.txt",
+    "crontab -e",
+    '(crontab -l; echo "@reboot echo example") | crontab -',
+])
+def test_startup_changes_wait_for_a_person(line):
+    reading = commands.read(line)
+    assert reading.kind == "irreversible", reading.summary()
+    assert reading.summary()
+
+
+@pytest.mark.parametrize("line", [
+    "schtasks /query",
+    "schtasks /query /tn enable",
+    "systemctl status nginx",
+    "systemctl status enable",
+    "systemctl --user status nginx",
+    "launchctl list",
+    "launchctl print system/com.example",
+    "crontab -l",
+    "crontab -u root -l",
+    "Get-ScheduledTask",
+    r"reg query HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+    r"Get-ItemProperty -Path HKCU:\Software\Microsoft\Windows\CurrentVersion\Run",
+    r"reg add HKCU\Software\Example\Settings /v mode /d default",
+    r"New-ItemProperty -Path HKCU:\Software\Example\RunHistory -Name test -Value example",
+    "echo systemctl enable example.service",
+])
+def test_startup_queries_and_lookalikes_are_not_persistence_changes(line):
+    reading = commands.read(line)
+    assert reading.kind in ("read_only", "other"), reading.summary()

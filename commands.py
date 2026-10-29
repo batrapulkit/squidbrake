@@ -568,6 +568,38 @@ def _gh_option(words: list[str], flag: str, short: str = "", boolean: bool = Fal
     return value.lower()
 
 
+def _starts_automatically(prog: str, lower: list[str]) -> str | None:
+    """Changes that schedule work after this command has finished."""
+    if prog == "schtasks":
+        action = next((w for w in lower[1:] if w in
+                       ("/create", "/query", "/change", "/delete", "/run", "/end", "/showsid")), None)
+        if action == "/create":
+            return "creates a scheduled task that can run after this session (schtasks /create)"
+    if prog == "register-scheduledtask":
+        return "registers a task that can run after this session (Register-ScheduledTask)"
+    if (prog == "reg" and lower[1:2] == ["add"]) or prog in ("new-itemproperty", "set-itemproperty"):
+        if any(re.search(r"(?:^|\\)currentversion\\run(?:once)?$", w.rstrip("\\")) for w in lower[1:]):
+            return "adds a Windows Run key value that starts a program at login"
+    if prog == "systemctl":
+        args = iter(lower[1:])
+        for word in args:
+            if word in ("-h", "--host", "-m", "--machine", "--root", "--image"):
+                next(args, None)
+                continue
+            if word.startswith("-"):
+                continue
+            if word == "enable":
+                return "enables a service to start automatically (systemctl enable)"
+            break
+    if prog == "launchctl" and lower[1:2] == ["load"]:
+        return "loads a launch agent or daemon that can run after this session (launchctl load)"
+    if prog == "crontab" and "-l" not in lower and "-r" not in lower:
+        if "-e" in lower or "-" in lower[1:] or _positional(lower):
+            return "installs or edits scheduled commands that will run later (crontab)"
+    return None
+
+
+
 def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Command], list[str]]:
     """One simple command (already split into words). -> (commands, hidden-reasons)."""
     words = words[1:] if words[:1] == ["{"] else words       # a group, `{ curl URL > x.sh; } && bash x.sh`
@@ -852,6 +884,9 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         return [cmd], []
     if prog == "crontab" and "-r" in lower:
         cmd.kind, cmd.why = "irreversible", "deletes every scheduled job (crontab -r)"
+        return [cmd], []
+    if (why := _starts_automatically(prog, lower)):
+        cmd.kind, cmd.why = "irreversible", why
         return [cmd], []
     if prog == "truncate" or prog in ("clear-content", "clc") or (prog == "mv" and any(w in ("/dev/null", "nul") for w in lower[1:])) \
             or (prog == "cp" and lower[1:2] == ["/dev/null"] and len(_positional(words)) == 2):

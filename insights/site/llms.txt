@@ -38,5 +38,5 @@ Coding agents (Claude Code, Cursor, Codex, Gemini CLI, VS Code Copilot, Antigrav
 
 ## Contact
 
-- Email: hello@squidbrake.com
+- Email: pulkit@squidbrake.com
 - Book a 30-minute demo: https://calendly.com/pulkitbatra2024/new-meeting-1

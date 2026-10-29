@@ -1,4 +1,4 @@
-Contact: mailto:hello@squidbrake.com?subject=Security%20report
+Contact: mailto:pulkit@squidbrake.com?subject=Security%20report
 Expires: 2027-10-29T00:00:00.000Z
 Preferred-Languages: en
 Canonical: https://squidbrake.com/.well-known/security.txt

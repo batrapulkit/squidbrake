@@ -16,7 +16,7 @@
 <meta name="twitter:title" content="About Squidbrake: team, product and pilot case studies">
 <meta name="twitter:description" content="Who builds Squidbrake, what it does for AI agents, and what early pilots found: a red-team retest, a cloud console scare and ops agents at a data company.">
 <meta name="twitter:image" content="https://squidbrake.com/assets/og.png">
-<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "AboutPage", "name": "About Squidbrake", "url": "https://squidbrake.com/about", "mainEntity": {"@type": "Organization", "@id": "https://squidbrake.com/#org", "name": "Squidbrake", "url": "https://squidbrake.com/", "logo": "https://squidbrake.com/assets/logo-512.png", "email": "hello@squidbrake.com", "founder": [{"@id": "https://squidbrake.com/about#pulkit"}]}}, {"@type": "Person", "@id": "https://squidbrake.com/about#pulkit", "name": "Pulkit Batra", "jobTitle": "Cofounder", "worksFor": {"@id": "https://squidbrake.com/#org"}, "url": "https://squidbrake.com/about", "sameAs": ["https://github.com/batrapulkit"]}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://squidbrake.com/"}, {"@type": "ListItem", "position": 2, "name": "About", "item": "https://squidbrake.com/about"}]}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "AboutPage", "name": "About Squidbrake", "url": "https://squidbrake.com/about", "mainEntity": {"@type": "Organization", "@id": "https://squidbrake.com/#org", "name": "Squidbrake", "url": "https://squidbrake.com/", "logo": "https://squidbrake.com/assets/logo-512.png", "email": "pulkit@squidbrake.com", "founder": [{"@id": "https://squidbrake.com/about#pulkit"}, {"@id": "https://squidbrake.com/about#karishma"}]}}, {"@type": "Person", "@id": "https://squidbrake.com/about#pulkit", "name": "Pulkit Batra", "jobTitle": "Cofounder", "worksFor": {"@id": "https://squidbrake.com/#org"}, "url": "https://squidbrake.com/about", "email": "pulkit@squidbrake.com", "sameAs": ["https://www.linkedin.com/in/pulkitbatra2077", "https://github.com/batrapulkit"], "knowsAbout": ["AI agent security", "Penetration testing", "Application security", "SOC 2", "OWASP LLM Top 10"], "alumniOf": [{"@type": "CollegeOrUniversity", "name": "University of Delhi"}, {"@type": "CollegeOrUniversity", "name": "Loyalist College"}]}, {"@type": "Person", "@id": "https://squidbrake.com/about#karishma", "name": "Karishma Sinha", "jobTitle": "Cofounder", "worksFor": {"@id": "https://squidbrake.com/#org"}, "url": "https://squidbrake.com/about", "sameAs": ["https://www.linkedin.com/in/karishma-sinha-7b46b8182/", "https://github.com/escher-m", "https://escher-m.github.io/"], "knowsAbout": ["Distributed systems", "Backend engineering", "AWS", "AI agents", "Go-to-market"], "alumniOf": [{"@type": "CollegeOrUniversity", "name": "IIIT Delhi"}]}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://squidbrake.com/"}, {"@type": "ListItem", "position": 2, "name": "About", "item": "https://squidbrake.com/about"}]}]}</script>
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
 <link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png">
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
@@ -87,6 +87,7 @@ dl.facts dd{margin:2px 0 0;color:var(--muted)}
 h2.plain{display:block;margin:44px 0 6px}
 @media (max-width:560px){ .rel{grid-template-columns:80px 1fr} .rel time{display:none} td:first-child{white-space:normal} }
 .ph-badge{display:inline-block;line-height:0}.ph-badge img{max-width:100%;height:auto}
+.founder{margin:8px 0 18px;padding:24px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}.founder-pitch{font-size:clamp(1.25rem,2.4vw,1.6rem);font-weight:500;letter-spacing:-0.025em;line-height:1.25;margin:0 0 20px;max-width:34ch}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin:0 0 20px}.stats b{display:block;font-size:1.7rem;font-weight:500;letter-spacing:-0.04em}.stats span{display:block;font:400 .78rem var(--mono);color:var(--muted);line-height:1.35}.cv{padding-left:18px;margin:0 0 14px}.cv li{margin:0 0 10px}.founder .links{margin:0;font-size:.95rem}@media (max-width:640px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.founder{padding:18px 16px}}
 </style>
 </head>
 <body>
@@ -139,12 +140,41 @@ h2.plain{display:block;margin:44px 0 6px}
     </dl>
 
     <h2 class="plain">The team</h2>
+    <div class="founder">
+      <p class="kicker" style="margin:0 0 6px">Pulkit Batra · cofounder, builds the product</p>
+      <p class="founder-pitch">He's been the attacker, the defender and the person who has to pass the audit. Squidbrake is
+        what he wished existed in all three jobs.</p>
+      <div class="stats">
+        <div><b>Top 2,000</b><span>ethical hackers on Bugcrowd</span></div>
+        <div><b>3 of 3</b><span>enterprise security reviews passed with zero findings</span></div>
+        <div><b>1,000+</b><span>students trained in ethical hacking</span></div>
+        <div><b>4th</b><span>company, the first started at 19</span></div>
+      </div>
+      <ul class="cv">
+        <li><strong>Broke into systems for a living.</strong> Founded SecurityElla at 19 and ran penetration tests and
+          vulnerability assessments for businesses. Certified Ethical Hacker (European Open University), Certified AppSec Practitioner, and a course reviewer
+          for EC-Council.</li>
+        <li><strong>Shipped AI that handles money and personal data, alone.</strong> As the sole engineer, built Triponic's
+          AI travel platform end to end: passenger PII and payments for about 12 travel agencies, and SOC 2 and ISO
+          27001-aligned security reviews at three enterprise onboardings, passed without a single remediation item.</li>
+        <li><strong>Secured AI before it was a category.</strong> Wrote a production AI risk register covering the full
+          OWASP LLM Top 10 for systems handling personal data; it drove four governance policy changes. Ran SOC triage in
+          Splunk and Microsoft Sentinel, and today assesses client cloud environments as a cybersecurity engineer.</li>
+        <li><strong>Teaches it.</strong> Taught cybersecurity and ethical hacking at Hansraj College, University of Delhi;
+          ran the cybersecurity club as Club Master at Loyalist College in Canada; guest lecturer at IIT Kanpur. Published
+          in a newspaper, invited speaker, Best Young Entrepreneur nominee.</li>
+      </ul>
+      <p class="links"><a href="https://www.linkedin.com/in/pulkitbatra2077" target="_blank" rel="noopener">LinkedIn</a> ·
+        <a href="https://github.com/batrapulkit" target="_blank" rel="noopener">GitHub</a> ·
+        <a href="mailto:pulkit@squidbrake.com">pulkit@squidbrake.com</a></p>
+    </div>
     <dl class="facts">
-      <div><dt>Pulkit Batra, cofounder</dt><dd>His fourth company. He started the first, cybersecurity for small
-        businesses, at 19, and has spent 6+ years in cybersecurity across the systems agents now touch. Builds the
-        product. <a href="https://github.com/batrapulkit" target="_blank" rel="noopener">GitHub</a></dd></div>
-      <div><dt>Karishma Sinha, cofounder</dt><dd>Ex-Qualcomm. Ran her own startup with paying customers. Leads sales
-        and the teams we work with.</dd></div>
+      <div><dt>Karishma Sinha, cofounder</dt><dd>Ex-Qualcomm, where she ran backend systems for 300k+ users and
+        automated license updates for 1M+ licenses across 4,000+ companies. Founded DropStop, an AI product-research
+        tool for Indian sellers, and took it to paying customers without funding. Computer science at IIIT Delhi, with
+        published research on social networks. Leads sales and the teams we work with, and writes code too.
+        <a href="https://github.com/escher-m" target="_blank" rel="noopener">GitHub</a> ·
+        <a href="https://www.linkedin.com/in/karishma-sinha-7b46b8182/" target="_blank" rel="noopener">LinkedIn</a></dd></div>
     </dl>
 
     <h2 class="plain">Backed by</h2>
@@ -156,10 +186,10 @@ h2.plain{display:block;margin:44px 0 6px}
 
     <h2 class="plain">Talk to us</h2>
     <p class="lead" style="margin-bottom:0"><a href="https://calendly.com/pulkitbatra2024/new-meeting-1" target="_blank"
-      rel="noopener">Book a call</a> or write to <a href="mailto:hello@squidbrake.com">hello@squidbrake.com</a>.</p>
+      rel="noopener">Book a call</a> or write to <a href="mailto:pulkit@squidbrake.com">pulkit@squidbrake.com</a>.</p>
   </main>
 
-  <footer><span>© 2026 Squidbrake, Inc.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="/">Home</a> · <a href="/docs">Docs</a> · <a href="/security">Security</a> · <a href="/pricing">Pricing</a> · <a href="/about">About</a> · <a href="/benchmark">Benchmark</a> · <a href="/blog">Blog</a> · <a href="/changelog">Changelog</a> · <a href="mailto:hello@squidbrake.com">hello@squidbrake.com</a></span></footer>
+  <footer><span>© 2026 Squidbrake, Inc.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="/">Home</a> · <a href="/docs">Docs</a> · <a href="/security">Security</a> · <a href="/pricing">Pricing</a> · <a href="/about">About</a> · <a href="/benchmark">Benchmark</a> · <a href="/blog">Blog</a> · <a href="/changelog">Changelog</a> · <a href="mailto:pulkit@squidbrake.com">pulkit@squidbrake.com</a></span></footer>
 </div>
 <script src="assets/booking.js" defer></script>
 </body>
