@@ -51,3 +51,15 @@ def test_docker_image_copies_everything_the_server_imports():
     assert not missing, f"Dockerfile doesn't COPY {missing}; the image would crash on start"
     assert "rules.shipped" in copied and "rules.yaml" in copied
     assert re.search(r"^CMD .*server\.py", (ROOT / "Dockerfile").read_text(encoding="utf-8"), re.M)
+
+
+def test_example_rules_are_valid_yaml():
+    import yaml
+
+    rules_dir = ROOT / "examples" / "rules"
+    assert rules_dir.is_dir()
+    for yf in rules_dir.glob("*.yaml"):
+        data = yaml.safe_load(yf.read_text(encoding="utf-8"))
+        assert "rules" in data, f"{yf.name} missing 'rules' section"
+        assert "default" in data, f"{yf.name} missing 'default' section"
+

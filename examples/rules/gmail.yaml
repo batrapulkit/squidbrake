@@ -1,0 +1,49 @@
+# Example policy for the Gmail MCP server (checked against @modelcontextprotocol/server-gmail and Google Workspace MCP).
+# Tool names use the <app>.<tool> form produced by `connect.py wrap --app gmail`.
+default: review
+default_reason: Gmail changes require approval
+
+rules:
+  - id: block-destructive-gmail-actions
+    action: deny
+    reason: Permanently deleting messages or threads, emptying trash, and configuring forwarding addresses are not allowed
+    match:
+      name:
+        - "gmail.*delete*"
+        - "gmail.*empty*trash*"
+        - "gmail.*forwarding*"
+
+  - id: allow-gmail-reads
+    action: allow
+    reason: Read-only Gmail operation
+    match:
+      name:
+        - "gmail.list_messages"
+        - "gmail.get_message"
+        - "gmail.search_messages"
+        - "gmail.read_message"
+        - "gmail.list_threads"
+        - "gmail.get_thread"
+        - "gmail.read_thread"
+        - "gmail.list_labels"
+        - "gmail.get_label"
+        - "gmail.list_drafts"
+        - "gmail.get_draft"
+
+  - id: review-gmail-sending
+    action: review
+    reason: Sending emails, replying, or creating drafts requires your approval
+    match:
+      name:
+        - "gmail.*send*"
+        - "gmail.*reply*"
+        - "gmail.*create*draft*"
+        - "gmail.*update*draft*"
+
+  - id: review-gmail-labels-and-filters
+    action: review
+    reason: Modifying message labels or mail filters requires your approval
+    match:
+      name:
+        - "gmail.*label*"
+        - "gmail.*filter*"

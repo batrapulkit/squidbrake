@@ -56,7 +56,7 @@ If a command that destroys or publishes something comes back as `other`, add it 
 with a plain-English `why` (the approver reads it), add the line to the matching list in `tests/test_commands.py`,
 and add a harmless look-alike to a "not" list so it doesn't cause false alarms.
 
-**Add a policy for an MCP server.** Copy [`examples/rules/github.yaml`](examples/rules/github.yaml), list the server's
+**Add a policy for an MCP server.** Copy [`examples/rules/github.yaml`](examples/rules/github.yaml) or [`examples/rules/gmail.yaml`](examples/rules/gmail.yaml), list the server's
 real tool names, and sort them: reads run, changes wait for a person, destructive ones are blocked.
 
 **Add an incident.** A public report of an agent doing damage goes in [`incidents/scenarios.py`](incidents/scenarios.py)
