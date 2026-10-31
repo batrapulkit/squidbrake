@@ -102,7 +102,7 @@ from a clone, use the `.venv` Python that `start.bat` / `start.sh` created):
   (`data/shop.db`, created with sample customers / products / orders; set `DB_PATH` to use your own).
   Reads run immediately, `UPDATE`/`DELETE`/`INSERT`/`ALTER` wait for your approval, and `DROP`/`TRUNCATE` are blocked.
 
-Wrapping a GitHub, Stripe, Slack or Postgres / Supabase MCP server? Start with the commented example policies in
+Wrapping a GitHub, Stripe, Slack, Atlassian (Jira/Confluence) or Postgres / Supabase MCP server? Start with the commented example policies in
 [`examples/rules/`](../examples/rules/) and adjust their tool-name patterns to the server's tool list.
 Running an agent with nobody watching (a nightly loop, a cron job, a Routine)? Start from
 [`unattended-agent.yaml`](../examples/rules/unattended-agent.yaml): a step cap, an allowlist, no redoing work,
