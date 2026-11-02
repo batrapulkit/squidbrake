@@ -61,6 +61,70 @@ def test_nothing_is_sent_without_joining(tmp_path, monkeypatch):
     assert pilot.send(tmp_path, {"days": {}}) is False and calls == []
 
 
+def _joined(home: Path) -> None:
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "pilot.json").write_text(json.dumps({"code": "community-x", "server": "https://pilots.example.com",
+                                                 "install_id": "i1"}), encoding="utf-8")
+
+
+def test_counts_are_sent_only_when_they_change_or_the_heartbeat_is_due(tmp_path, monkeypatch):
+    """Looked at every 2 minutes; an idle gateway doesn't send the same counts again until HEARTBEAT goes by."""
+    assert pilot.INTERVAL == 120
+    sent = []
+    monkeypatch.setattr(pilot, "_post", lambda server, path, body, timeout=15: sent.append((body, timeout)) or {})
+    monkeypatch.setattr(pilot, "_last", {})
+    clock = [1000.0]
+    monkeypatch.setattr(pilot.time, "monotonic", lambda: clock[0])
+    payload = {"days": {"2026-11-02": {"events": 3}}}
+    assert pilot.send_if_changed(tmp_path, lambda: payload) is None and sent == []   # not joined: nothing
+    _joined(tmp_path)
+    assert pilot.send_if_changed(tmp_path, lambda: payload) is True and len(sent) == 1
+    clock[0] += pilot.INTERVAL
+    assert pilot.send_if_changed(tmp_path, lambda: dict(payload)) is None and len(sent) == 1   # same counts
+    payload = {"days": {"2026-11-02": {"events": 4}}}
+    assert pilot.send_if_changed(tmp_path, lambda: payload) is True and len(sent) == 2       # one more action
+    clock[0] += pilot.HEARTBEAT
+    assert pilot.send_if_changed(tmp_path, lambda: payload) is True and len(sent) == 3       # idle, but alive
+    assert sent[-1][0]["usage"] == payload and sent[-1][1] == 15
+
+
+def test_a_failed_send_is_tried_again_next_time(tmp_path, monkeypatch):
+    _joined(tmp_path)
+    monkeypatch.setattr(pilot, "_last", {})
+    def down(*a, **k):
+        raise httpx.ConnectError("offline")
+    monkeypatch.setattr(pilot, "_post", down)
+    assert pilot.send_if_changed(tmp_path, lambda: {"days": {}}) is False
+    sent = []
+    monkeypatch.setattr(pilot, "_post", lambda server, path, body, timeout=15: sent.append(path) or {})
+    assert pilot.send_if_changed(tmp_path, lambda: {"days": {}}) is True and sent == ["/v1/ping"]
+
+
+def test_stopping_sends_what_changed_with_a_short_timeout_and_never_raises(tmp_path, monkeypatch):
+    _joined(tmp_path)
+    monkeypatch.setattr(pilot, "_last", {})
+    timeouts = []
+    monkeypatch.setattr(pilot, "_post", lambda server, path, body, timeout=15: timeouts.append(timeout) or {})
+    pilot.flush(tmp_path, lambda: {"days": {"d": {"events": 1}}})
+    pilot.flush(tmp_path, lambda: {"days": {"d": {"events": 1}}})          # nothing new since: not sent again
+    assert timeouts == [3]
+    pilot.flush(tmp_path, lambda: 1 / 0)                                   # a broken payload can't stop a shutdown
+
+
+def test_the_gateway_sends_its_last_counts_when_it_stops(tmp_path, monkeypatch):
+    import server
+    calls = []
+    monkeypatch.setattr(server, "PILOT_DIR", tmp_path)
+    monkeypatch.setattr(pilot, "flush", lambda home, make_payload: calls.append((home, make_payload())))
+    with TestClient(server.app):
+        assert calls == []
+    assert calls == []                                       # not joined: nothing at shutdown either
+    _joined(tmp_path)
+    with TestClient(server.app):
+        pass
+    assert len(calls) == 1 and calls[0][0] == tmp_path and "days" in calls[0][1]
+
+
 def test_link_previews_are_not_views(insights):
     """LinkedIn, Slack and mail scanners fetch a pasted link for its preview; only the page running in a browser counts."""
     admin = {"X-Admin-Key": "admin-test-key"}
