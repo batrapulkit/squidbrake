@@ -1745,3 +1745,17 @@ def test_telegram_token_never_logged_on_error(monkeypatch, caplog):
     assert ok is False
     assert "super_secret_bot_token_999" not in caplog.text
 
+
+def test_telegram_token_not_logged_when_telegram_refuses_it(monkeypatch, caplog):
+    import logging
+
+    def refused(url, json, timeout):                       # a wrong token: httpx's error text carries the URL
+        req = httpx.Request("POST", url)
+        return httpx.Response(401, request=req)
+
+    monkeypatch.setattr(server.httpx, "post", refused)
+    with caplog.at_level(logging.DEBUG):
+        ok = server.send_telegram("123456:wrong_secret_token", "123", "Title", "Body")
+    assert ok is False
+    assert "wrong_secret_token" not in caplog.text and "401" in caplog.text
+

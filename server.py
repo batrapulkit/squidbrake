@@ -2632,8 +2632,9 @@ def send_telegram(token: str, chat_id: str, title: str, body: str, link: str | N
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         httpx.post(url, timeout=10, json=payload).raise_for_status()
         return True
-    except Exception:
-        log.exception("Telegram notification failed")
+    except Exception as e:   # the URL carries the bot token, so neither it nor the error's text is logged
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        log.warning("Telegram notification failed (%s)", status or type(e).__name__)
         return False
 
 
