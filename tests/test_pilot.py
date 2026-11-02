@@ -25,8 +25,21 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 import pilot  # noqa: E402
+import telemetry  # noqa: E402
 
 SECRET = "PLANTED-MARKER-not-a-real-secret"   # must never show up in what a pilot install sends
+
+
+@pytest.fixture(autouse=True)
+def reporting_for_fake_collectors(tmp_path, monkeypatch):
+    """These tests explicitly exercise enabled reporting against intercepted transports.
+
+    Keep automatic community enrollment off so gateway fixtures never send to production.
+    """
+    for name in ("CI", "DO_NOT_TRACK", "SQUIDBRAKE_TELEMETRY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("SQUIDBRAKE_HOME", str(tmp_path / "settings"))
+    monkeypatch.setattr(telemetry, "gateway_start", lambda *a, **kw: False)
 
 
 @pytest.fixture(scope="module")
@@ -173,7 +186,11 @@ def test_join_ping_leave(insights, tmp_path, monkeypatch):
     stranger = {"code": code, "install_id": "f" * 32, "usage": usage}
     assert insights.post("/v1/ping", json=stranger).status_code == 403
     assert pilot.leave(tmp_path) == 0 and pilot.load(tmp_path) is None
+    # Leaving is local/offline: no more sends, but not deletion or remote revocation.
+    assert pilot.send(tmp_path, usage) is False
+    # The legacy server-side leave operation still revokes an enrollment when called explicitly.
     again = {"code": code, "install_id": cfg["install_id"], "usage": usage}
+    assert insights.post("/v1/pilot/leave", json=again).status_code == 200
     assert insights.post("/v1/ping", json=again).status_code == 403
 
 

@@ -23,7 +23,7 @@ The `squidbrake` command (installed with pip):
                                      (same as: python gateway_proxy.py ...); add --serve HOST:PORT --token T to
                                      serve it by URL, for ChatGPT / claude.ai connectors, Devin, n8n, cloud agents
   squidbrake pilot join CODE --server URL   share usage counts with a pilot (asks first; see pilot.py)
-  squidbrake telemetry status        exactly what the anonymous usage stats send (see telemetry.py)
+  squidbrake telemetry status|on|off inspect or change usage reporting (see telemetry.py)
   squidbrake register EMAIL [--name NAME]   tell the Squidbrake team who you are (optional, asks first)
   squidbrake add-key NAME | keys | verify FILE | ...   see: squidbrake --help
 

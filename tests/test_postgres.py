@@ -19,6 +19,14 @@ TABLES = {"events", "notes", "gateway_state", "audit_log", "audit_checkpoints", 
           "capabilities", "policy_versions"}
 
 
+def test_reporting_epoch_uses_the_configured_database_schema(c):
+    import reporting
+    first = reporting.dataset_epoch(server.engine)
+    assert reporting.dataset_epoch(server.engine) == first
+    rotated = reporting.dataset_epoch(server.engine, rotate=True)
+    assert rotated != first and reporting.dataset_epoch(server.engine) == rotated
+
+
 def test_the_url_from_supabase_works_as_given():
     assert server.engine.dialect.name == "postgresql" and server.DATABASE_URL.startswith("postgresql+psycopg://")
 
