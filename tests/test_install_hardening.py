@@ -197,12 +197,11 @@ def test_stopping_the_service_only_kills_a_python():
     assert not service._is_python(4_000_000)
 
 
-def test_saying_no_to_the_background_says_the_agents_wait_for_it(monkeypatch, capsys):
-    monkeypatch.setattr("builtins.input", lambda _: "n")
-    assert service._ask("windows") is False
-    assert "your agents' actions are blocked" in capsys.readouterr().out
-    monkeypatch.setattr("builtins.input", lambda _: "")
-    assert service._ask("windows") is True                  # Enter: in the background, never locked out by a closed window
+def test_the_background_service_is_never_asked_about(monkeypatch):
+    monkeypatch.delenv("SQUIDBRAKE_BACKGROUND", raising=False)
+    monkeypatch.setattr("builtins.input", lambda _: pytest.fail("asked"))
+    monkeypatch.setattr(service, "_save_choice", lambda yes: None)
+    assert service.wants_background("windows") is True        # always: never locked out by a closed window
 
 
 def test_pilot_join_never_asks_the_usage_question(monkeypatch, tmp_path):

@@ -214,9 +214,14 @@ def main(argv: list[str] | None = None) -> int:
             shown_keys.append(True)
             server.print_banner(shown, created)
 
-    if running:
+    kind = service.backend()
+    # an older install's service (or an older version) answering: set the service up again, pointing at this one
+    replace = running and bool(kind) and service.stale(kind, server.VERSION)
+    if running and not replace:
         _say("OK", f"Squidbrake is already running at {shown}")
-    elif service.backend():
+    elif kind:
+        if replace:
+            _say("OK", f"Another Squidbrake (an older install or version) was running: switching to this one, {server.VERSION}")
         os.environ["SQUIDBRAKE_NO_BROWSER"] = "1"         # opened below, signed in
         service._save_choice(True)
         service.start(["--background", "--port", str(port)])
