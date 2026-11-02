@@ -105,7 +105,9 @@ keys or the audit trail.
 country, plus the gateway's usage counts described below (what it allowed, held and blocked). The first run also
 asks, optionally, where you heard about Squidbrake (pick from a list, or Enter to skip); if you installed from a
 named link, that name (`SQUIDBRAKE_REF`, e.g. `linkedin`) answers it instead. The agent hooks never send anything,
-and scripts, CI and `--yes` send nothing until that first run in a terminal has happened. `squidbrake telemetry
+and scripts, CI and `--yes` send nothing until that first run in a terminal has happened. A gateway that starts
+without one (Docker, a background service) writes the same notice to its log, then shares its counts; turn it off
+before starting it with `SQUIDBRAKE_TELEMETRY=0` or `DO_NOT_TRACK=1`. `squidbrake telemetry
 status` shows exactly what is sent.
 **Update check.** Once a day, running `squidbrake` in a terminal asks pypi.org for the newest version number, and
 the next time says if there's a newer one. That request carries nothing about you beyond the request itself; never

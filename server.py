@@ -3276,6 +3276,11 @@ async def lifespan(app: FastAPI):
         reasons={r["id"]: r.get("reason", "") for r in policy.rules + policy.sequences},
         connected=_agents_connected_here())
     tasks.append(asyncio.create_task(pilot.loop(PILOT_DIR, pilot_usage)))
+    # a gateway with no terminal first run (Docker, a background service) shares counts too, after saying so in its
+    # log; off with SQUIDBRAKE_TELEMETRY=0 or DO_NOT_TRACK=1 (telemetry.gateway_start). In the background: a slow
+    # network never holds up the start
+    import telemetry
+    tasks.append(asyncio.create_task(asyncio.to_thread(telemetry.gateway_start, VERSION, log.warning)))
     yield
     for t in tasks:
         t.cancel()
