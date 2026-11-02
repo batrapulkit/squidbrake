@@ -17,6 +17,17 @@ def test_observe_toggle_lets_held_actions_through_and_back(c, shipped):
     assert c.post("/v1/events", headers=H, json=refund).json()["decision"] == "review"
 
 
+def test_docker_keeps_rules_on_the_data_volume(monkeypatch, tmp_path):
+    # the image's /app/rules.yaml is root-owned and replaced by each new image; the volume copy is what gets edited
+    (tmp_path / "rules.yaml").write_text("mode: enforce\nrules: []\n")
+    monkeypatch.setattr(server, "BASE_DIR", tmp_path)
+    monkeypatch.setenv("IN_DOCKER", "1")
+    path = server._default_rules()
+    assert path == tmp_path / "data" / "rules.yaml" and path.read_text() == "mode: enforce\nrules: []\n"
+    path.write_text("mode: shadow\nrules: []\n")      # switched from the dashboard, then a new image starts
+    assert server._default_rules().read_text() == "mode: shadow\nrules: []\n"
+
+
 def test_mode_toggle_needs_admin_and_a_real_mode(c, shipped):
     assert c.put("/v1/policy/mode", headers=H, json={"mode": "observe"}).status_code in (401, 403)
     assert c.put("/v1/policy/mode", headers=BOSS, json={"mode": "off"}).status_code == 400

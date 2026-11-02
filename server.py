@@ -97,11 +97,12 @@ except ImportError:
 
 
 def _default_rules() -> Path:
-    """rules.yaml in HOME_DIR; a pip install starts from a copy of the shipped one, which you then edit."""
-    path = HOME_DIR / "rules.yaml"
-    if (BASE_DIR / "rules.yaml").exists() and HOME_DIR != BASE_DIR:
+    """rules.yaml in HOME_DIR; a pip install starts from a copy of the shipped one, which you then edit. In Docker the
+    copy lives on the data volume, so dashboard edits (the observe switch, packs) survive a new image."""
+    path = (BASE_DIR / "data" if os.getenv("IN_DOCKER") else HOME_DIR) / "rules.yaml"
+    if (BASE_DIR / "rules.yaml").exists() and path.parent != BASE_DIR:
         if not path.exists():
-            HOME_DIR.mkdir(parents=True, exist_ok=True)
+            path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes((BASE_DIR / "rules.yaml").read_bytes())
         else:
             update_unedited_rules(path, BASE_DIR / "rules.yaml", BASE_DIR / "rules.shipped")
@@ -662,7 +663,7 @@ migrate(engine)
 # Keys, the record, the link and ledger secrets and the rules: readable by this user only (POSIX; 600 / folder 700)
 import offline  # noqa: E402
 for _p in [KEYS_PATH.parent, *KEYS_PATH.parent.glob("*.db*"), *KEYS_PATH.parent.glob("*.key"),
-           *KEYS_PATH.parent.glob("*.json"), *([RULES_PATH] if HOME_DIR != BASE_DIR else [])]:
+           *KEYS_PATH.parent.glob("*.json"), *([RULES_PATH] if RULES_PATH.parent != BASE_DIR else [])]:
     if _p.exists():
         offline._private(_p)
 
