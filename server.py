@@ -3238,13 +3238,16 @@ async def lifespan(app: FastAPI):
             os.getenv("SQUIDBRAKE_AUTO_CONNECT", "1").strip().lower() not in ("0", "no", "false", "off"):
         tasks.append(asyncio.create_task(_auto_connect_loop()))
     # usage counts for the pilot programme: does nothing unless this install joined one (squidbrake pilot join)
-    tasks.append(asyncio.create_task(pilot.loop(PILOT_DIR, lambda: pilot.usage(
+    pilot_usage = lambda: pilot.usage(
         engine, events, policy.mode, len(policy.rules), VERSION,
         reasons={r["id"]: r.get("reason", "") for r in policy.rules + policy.sequences},
-        connected=_agents_connected_here()))))
+        connected=_agents_connected_here())
+    tasks.append(asyncio.create_task(pilot.loop(PILOT_DIR, pilot_usage)))
     yield
     for t in tasks:
         t.cancel()
+    if pilot.load(PILOT_DIR):        # the last minutes of counts, before stopping (a few seconds at most)
+        await run_in_threadpool(pilot.flush, PILOT_DIR, pilot_usage)
     await app.state.http.aclose()
     await app.state.mcp_http.aclose()
     hub.stop_all()

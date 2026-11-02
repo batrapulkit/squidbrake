@@ -7,7 +7,7 @@ Squidbrake Insights: see how pilot users use Squidbrake, without ever seeing wha
   /team                a form for teams that want help setting Squidbrake up (linked from `connect all` and the
                        dashboard): the only way to hear from installs that aren't pilots, since nothing is tracked
   POST /v1/pilot/join  an install joins with a code (squidbrake pilot join)
-  POST /v1/ping        an install's usage counts (every 6 hours)
+  POST /v1/ping        an install's usage counts (every 2 minutes while they change)
 
 Run:  INSIGHTS_ADMIN_KEY=... uvicorn app:app --port 8090      (data in INSIGHTS_DB, default ./data/insights.db)
 """

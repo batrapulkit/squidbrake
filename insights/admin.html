@@ -1252,7 +1252,7 @@ function communityPanel(d) {
     </div>`;
   const catches = c.catches || [];
   return `<section id="individuals">
-    <div class="sec-h"><h2>Individual installs</h2><span class="sub">pip installs that share anonymous counts: not pilots, no names, no links. Reported every 6 hours.</span></div>
+    <div class="sec-h"><h2>Individual installs</h2><span class="sub">pip installs that share anonymous counts: not pilots, no names, no links. Reported within a few minutes.</span></div>
     <div class="ind-head"><h1>${c.installs ? `${c.used_this_week} of ${c.installs} individual installs used Squidbrake this week` : "No individual install shares stats yet"}</h1>
       ${c.installs ? `<span class="sub">${(wk.events || 0).toLocaleString()} actions went through them, ${(wk.held || 0).toLocaleString()} held, ${c.stopped} risky ${c.stopped === 1 ? "action" : "actions"} stopped</span>` : ""}</div>
     <div class="kpis">${kpis}</div>
