@@ -2614,8 +2614,9 @@ def send_teams(webhook: str, title: str, body: str, link: str | None = None) -> 
 def send_telegram(token: str, chat_id: str, title: str, body: str, link: str | None = None) -> bool:
     """Send a Telegram notification; an optional inline-keyboard button opens the approval link."""
     import html
-    escaped_title = html.escape(title)
-    escaped_body = html.escape(body)
+    # Telegram refuses a message over 4096 characters; cut before escaping so an entity is never split
+    escaped_title = html.escape(title[:200])
+    escaped_body = html.escape(body if len(body) <= 3000 else body[:3000] + "…")
     message_text = f"<b>{escaped_title}</b>\n\n{escaped_body}"
     payload: dict[str, Any] = {
         "chat_id": chat_id,

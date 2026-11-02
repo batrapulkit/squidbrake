@@ -1759,3 +1759,13 @@ def test_telegram_token_not_logged_when_telegram_refuses_it(monkeypatch, caplog)
     assert ok is False
     assert "wrong_secret_token" not in caplog.text and "401" in caplog.text
 
+
+def test_telegram_long_message_fits(monkeypatch):
+    got = {}
+    monkeypatch.setattr(server.httpx, "post", lambda url, json, timeout: got.update(json=json) or
+                        httpx.Response(200, request=httpx.Request("POST", url)))
+    assert server.send_telegram("t", "1", "Title", "rm -rf <&> " * 2000)
+    import html
+    shown = html.unescape(got["json"]["text"].replace("<b>", "").replace("</b>", ""))   # Telegram counts after parsing
+    assert len(shown) <= 4096 and shown.endswith("…")
+
