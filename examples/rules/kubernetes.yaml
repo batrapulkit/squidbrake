@@ -1,6 +1,7 @@
 # Example policy for Kubernetes MCP servers (e.g. containers/kubernetes-mcp-server,
 # Flux159/mcp-server-kubernetes, or wrapped with connect.py wrap --app kubernetes).
-# Tool names support both kubernetes.<tool> and *.k8s_<tool> patterns.
+# Tool names support both kubernetes.<tool> and *.k8s_<tool> patterns. Every pattern names Kubernetes, so copying
+# this file next to other apps' rules doesn't change what their tools do.
 #
 # Tested against:
 #   - containers/kubernetes-mcp-server (k8s_list_resources, k8s_get_resources,
@@ -19,7 +20,7 @@ rules:
     action: deny
     reason: Deleting namespaces, PVCs, or resources in kube-system is strictly prohibited
     match:
-      name: ["*.delete*", "*.k8s_delete*"]
+      name: ["kubernetes.delete*", "*.k8s_delete*"]
       input_regex: '(?i)"(?:kind|resource)"\s*:\s*"(?:Namespace|PersistentVolumeClaim|PVC)"|"(?:namespace|ns)"\s*:\s*"kube-system"'
 
   # Deleting custom resource definitions or cluster roles
@@ -27,17 +28,31 @@ rules:
     action: deny
     reason: Deleting CRDs or ClusterRoles is not allowed
     match:
-      name: ["*.delete*", "*.k8s_delete*"]
+      name: ["kubernetes.delete*", "*.k8s_delete*"]
       input_regex: '(?i)"(?:kind|resource)"\s*:\s*"(?:CustomResourceDefinition|CRD|ClusterRole|ClusterRoleBinding)"'
 
   # ---- Requires Review (high-impact operations) ----
+
+  # Reading Secrets shows credentials (base64 is not encryption), so a person approves it
+  - id: review-k8s-secret-reads
+    action: review
+    reason: Reading a Secret shows its credentials
+    match:
+      name: ["kubernetes.*secret*", "*.k8s_*secret*"]
+
+  - id: review-k8s-secret-kind
+    action: review
+    reason: Reading a Secret shows its credentials
+    match:
+      name: ["kubernetes.*", "*.k8s_*"]
+      input_regex: '(?i)"(?:kind|resource|type)"\s*:\s*"secrets?"'
 
   # Any operation targeting a production context or cluster
   - id: review-k8s-prod-context
     action: review
     reason: Any action targeting a production cluster/context requires human review
     match:
-      name: ["*kubernetes*", "*.k8s_*"]
+      name: ["kubernetes.*", "*.k8s_*"]
       input_regex: '(?i)"(?:context|cluster)"\s*:\s*"[^"]*prod[^"]*"'
 
   # Executing commands inside pods
@@ -45,21 +60,21 @@ rules:
     action: review
     reason: Interactive exec into a pod requires human review
     match:
-      name: ["*.exec*", "*.k8s_exec*", "*.pod_exec*"]
+      name: ["kubernetes.*exec*", "*.k8s_exec*", "*.k8s_*pod_exec*"]
 
   # Scaling workloads to 0 or modifying replica counts
   - id: review-k8s-scale
     action: review
     reason: Scaling deployments or stateful sets requires human review
     match:
-      name: ["*.scale*", "*.k8s_scale*"]
+      name: ["kubernetes.*scale*", "*.k8s_scale*"]
 
   # Deleting deployments, daemonsets, statefulsets, or services
   - id: review-k8s-delete-workloads
     action: review
     reason: Deleting workloads or services requires human review
     match:
-      name: ["*.delete*", "*.k8s_delete*"]
+      name: ["kubernetes.delete*", "*.k8s_delete*"]
       input_regex: '(?i)"(?:kind|resource)"\s*:\s*"(?:Deployment|StatefulSet|DaemonSet|Service|Ingress)"'
 
   # Granting cluster-admin or creating role bindings
@@ -67,21 +82,20 @@ rules:
     action: review
     reason: Creating or updating RBAC role bindings requires human review
     match:
-      name: ["*.create*", "*.apply*", "*.k8s_create*", "*.k8s_apply*"]
+      name: ["kubernetes.create*", "kubernetes.apply*", "*.k8s_create*", "*.k8s_apply*"]
       input_regex: '(?i)cluster-admin|RoleBinding|ClusterRoleBinding'
 
   # ---- Allowed Read-only Operations ----
 
-  # Listing, getting, describing resources and reading pod logs
+  # Listing, getting, describing resources and reading pod logs (Secrets are held above)
   - id: allow-k8s-read-only
     action: allow
     match:
       name:
-        - "*.get*"
-        - "*.list*"
-        - "*.describe*"
-        - "*.logs*"
+        - "kubernetes.get*"
+        - "kubernetes.list*"
+        - "kubernetes.describe*"
+        - "kubernetes.*logs*"
         - "*.k8s_get*"
         - "*.k8s_list*"
         - "*.k8s_describe*"
-        - "*.k8s_get_pod_logs*"

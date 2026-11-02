@@ -1150,6 +1150,13 @@ def test_kubernetes_example_policy():
     assert decide("kubernetes.apply", {"context": "prod-cluster", "kind": "ConfigMap"})[0] == "review"
     assert decide("kubernetes.apply", {"yaml": "kind: ClusterRoleBinding\nroleRef: cluster-admin"})[0] == "review"
 
+    # Reading a Secret shows credentials, however it's asked for
+    assert decide("kubernetes.get_secret", {"name": "db-password"})[0] == "review"
+    assert decide("k8s.k8s_get_resources", {"kind": "Secret", "name": "db-password"})[0] == "review"
+    assert decide("kubernetes.list_resources", {"resource": "secrets"})[0] == "review"
+    # The pack only covers Kubernetes: another app's tools aren't allowed or blocked by it
+    assert decide("stripe.get_balance")[0] == "review"
+    assert decide("github.delete_repo", {"kind": "Namespace"})[0] == "review"
 
 
 def test_proxy(c):
