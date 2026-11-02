@@ -1115,6 +1115,40 @@ def test_slack_example_policy():
         assert decide(name)[0] == "deny", name
 
 
+def test_atlassian_example_policy():
+    rules = Path(__file__).resolve().parents[1] / "examples" / "rules" / "atlassian.yaml"
+    p = server.Policy(rules)
+
+    def decide(name):
+        return p.evaluate(kind="mcp", name=name, source=None, client="test", session_id=None, input={})
+
+    for name in (
+        "atlassian.jira_get_issue",
+        "atlassian.jira_search_issues",
+        "atlassian.jira_get_all_projects",
+        "atlassian.confluence_search",
+        "atlassian.confluence_get_page",
+    ):
+        assert decide(name)[0] == "allow", name
+
+    for name in (
+        "atlassian.jira_create_issue",
+        "atlassian.jira_update_issue",
+        "atlassian.jira_add_comment",
+        "atlassian.confluence_create_page",
+        "atlassian.confluence_update_page",
+    ):
+        assert decide(name)[0] == "review", name
+
+    for name in (
+        "atlassian.jira_delete_issue",
+        "atlassian.confluence_delete_page",
+        "atlassian.jira_delete_project",
+        "atlassian.confluence_delete_space",
+    ):
+        assert decide(name)[0] == "deny", name
+
+
 def test_proxy(c):
     seen = {}
 
