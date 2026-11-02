@@ -1680,3 +1680,126 @@ def test_setup_rule_leaves_agents_own_notes_alone():
                   "/home/a/.claude/plans/../commands/evil.md", r"C:\Users\a\.claude\plans\..\commands\evil.md",
                   r"C:\Users\a\.gemini\antigravity\mcp_config.json", r"C:\Users\a\.gemini\antigravity\brain\x\..\..\mcp_config.md"]:
         assert held(setup), setup
+
+# --------------------------------------------------------------------------- Telegram notifications (#145)
+
+def test_telegram_approval_notification(c, monkeypatch):
+    import threading
+    got, done = {}, threading.Event()
+
+    def fake_post(url, json, timeout):
+        got.update(url=url, json=json)
+        done.set()
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123456:ABC-DEF")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "987654321")
+    monkeypatch.setattr(server, "PUBLIC_URL", "https://gw.test")
+    monkeypatch.setattr(server.httpx, "post", fake_post)
+
+    eid = _held(c, "payments.refund")
+    assert done.wait(3), "Telegram notification was not sent in time"
+    assert got["url"] == "https://api.telegram.org/bot123456:ABC-DEF/sendMessage"
+    assert got["json"]["chat_id"] == "987654321"
+    assert got["json"]["parse_mode"] == "HTML"
+    text = got["json"]["text"]
+    assert "<b>" in text and "</b>" in text
+    assert "payments.refund" in text
+    keyboard = got["json"]["reply_markup"]["inline_keyboard"]
+    assert keyboard[0][0]["text"] == "Open"
+    assert "/a/" in keyboard[0][0]["url"]
+    token = keyboard[0][0]["url"].rsplit("/", 1)[1]
+    assert server.read_link_token(token) == (eid, "admin")
+
+
+def test_telegram_escaping_and_button_behavior(monkeypatch):
+    got = {}
+
+    def fake_post(url, json, timeout):
+        got.update(url=url, json=json)
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(server.httpx, "post", fake_post)
+
+    # With link: has Open button and escapes HTML
+    ok = server.send_telegram(
+        token="tok123",
+        chat_id="chat999",
+        title="Command <script>alert(1)</script>",
+        body="Argument: <test & 'quote'>",
+        link="https://gw.test/open/link",
+    )
+    assert ok is True
+    assert got["url"] == "https://api.telegram.org/bottok123/sendMessage"
+    assert "&lt;script&gt;" in got["json"]["text"]
+    assert "&lt;test &amp; &#x27;quote&#x27;&gt;" in got["json"]["text"]
+    assert got["json"]["reply_markup"]["inline_keyboard"][0][0] == {"text": "Open", "url": "https://gw.test/open/link"}
+
+    # Without link: no reply_markup
+    got.clear()
+    ok_no_link = server.send_telegram(
+        token="tok123",
+        chat_id="chat999",
+        title="Plain title",
+        body="Plain body",
+    )
+    assert ok_no_link is True
+    assert "reply_markup" not in got["json"]
+
+
+def test_telegram_notify_text(monkeypatch):
+    got = {}
+
+    def fake_post(url, json, timeout):
+        got.update(url=url, json=json)
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot_token_xyz")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat_456")
+    monkeypatch.setattr(server.httpx, "post", fake_post)
+
+    server.notify_text("Daily Alert", "All agents running normally.")
+    assert got["url"] == "https://api.telegram.org/botbot_token_xyz/sendMessage"
+    assert got["json"]["chat_id"] == "chat_456"
+    assert "<b>Daily Alert</b>" in got["json"]["text"]
+    assert "All agents running normally." in got["json"]["text"]
+    assert "reply_markup" not in got["json"]
+
+
+def test_telegram_token_never_logged_on_error(monkeypatch, caplog):
+    import logging
+
+    def failing_post(url, json, timeout):
+        raise httpx.ConnectError("Connection refused")
+
+    monkeypatch.setattr(server.httpx, "post", failing_post)
+
+    with caplog.at_level(logging.ERROR):
+        ok = server.send_telegram("super_secret_bot_token_999", "123", "Title", "Body")
+    assert ok is False
+    assert "super_secret_bot_token_999" not in caplog.text
+
+
+def test_telegram_token_not_logged_when_telegram_refuses_it(monkeypatch, caplog):
+    import logging
+
+    def refused(url, json, timeout):                       # a wrong token: httpx's error text carries the URL
+        req = httpx.Request("POST", url)
+        return httpx.Response(401, request=req)
+
+    monkeypatch.setattr(server.httpx, "post", refused)
+    with caplog.at_level(logging.DEBUG):
+        ok = server.send_telegram("123456:wrong_secret_token", "123", "Title", "Body")
+    assert ok is False
+    assert "wrong_secret_token" not in caplog.text and "401" in caplog.text
+
+
+def test_telegram_long_message_fits(monkeypatch):
+    got = {}
+    monkeypatch.setattr(server.httpx, "post", lambda url, json, timeout: got.update(json=json) or
+                        httpx.Response(200, request=httpx.Request("POST", url)))
+    assert server.send_telegram("t", "1", "Title", "rm -rf <&> " * 2000)
+    import html
+    shown = html.unescape(got["json"]["text"].replace("<b>", "").replace("</b>", ""))   # Telegram counts after parsing
+    assert len(shown) <= 4096 and shown.endswith("…")
+
