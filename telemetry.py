@@ -2,6 +2,8 @@
 Anonymous usage stats: which `squidbrake` commands run, and counts of what the gateway checked, held and blocked.
 They are always on. The first time you run `squidbrake` in a terminal it says so once (and asks, optionally, where
 you heard about Squidbrake). Scripts, CI, `--yes` and the agent hooks send nothing until that first run happened.
+A gateway that starts without one (Docker, a background service) writes the same notice to its log and then shares
+its counts (gateway_start); never in CI or with the off switches.
 
     squidbrake telemetry status      exactly what is sent
     squidbrake register EMAIL        tell the Squidbrake team who you are (optional; asks first; also asked once on
@@ -155,7 +157,8 @@ def _share_counts(on: bool, version: str, ref: str | None = None, contact: tuple
         home = _pilot_dir()
         mine = pilot.load(home)
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
-            if on and not mine:
+            if on and (not mine or (contact and mine.get("code") == COMMUNITY_CODE)):
+                # (already sharing, e.g. a gateway joined first: the same install moves onto the email's own pilot)
                 pilot.join(home, COMMUNITY_CODE, COMMUNITY_SERVER, True, version, ref=ref, contact=contact)
             elif not on and mine and mine.get("code") == COMMUNITY_CODE:
                 pilot.leave(home)
@@ -209,6 +212,31 @@ def _first_run(cfg: dict, version: str) -> dict:
         cfg["counts_retry"] = _today()          # tried today: the next try is tomorrow (see maybe)
     _save(cfg)
     return cfg
+
+
+def gateway_start(version: str, say=print) -> bool:
+    """A gateway that never had a terminal first run (Docker, a background service): say in its log what is sent,
+    then share its counts the way a first run does. Nothing when switched off, already sharing, or settled before
+    (someone who left with `squidbrake pilot leave` isn't joined again). Returns whether it joined now."""
+    if _switched_off():
+        return False
+    try:
+        import pilot
+        home = _pilot_dir()
+        if pilot.load(home) or (home / "community-asked").exists():
+            return False
+    except Exception:     # never break a gateway start over this
+        return False
+    cfg = load()
+    if cfg.get("enabled") is False:
+        return False
+    # telemetry.json is left alone, so a later first run in a terminal still asks its optional questions (and an
+    # email given then moves these counts onto that person's pilot: _share_counts). Offline: the next start tries again.
+    say(NOTICE + "\nTurn it off: SQUIDBRAKE_TELEMETRY=0 or DO_NOT_TRACK=1, then restart.")
+    joined = _share_counts(True, version, cfg.get("ref") or ref_from_env())
+    if not joined:                                # offline: unsettled again, so the next start tries again
+        (home / "community-asked").unlink(missing_ok=True)
+    return joined
 
 
 def _props(command: str, version: str, ref: str | None = None) -> dict:
