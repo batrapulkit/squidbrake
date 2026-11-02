@@ -260,6 +260,21 @@ def replace_all(rules_path: Path, text: str) -> Path:
     return backup
 
 
+def set_mode(rules_path: Path, mode: str) -> Path:
+    """Switch the top-level `mode:` (enforce | shadow) in the rules file, keeping its comment and a backup."""
+    rules_path = Path(rules_path)
+    text = rules_path.read_text(encoding="utf-8")
+    new, n = re.subn(r"^mode:[ \t]*[\w\"']*", f"mode: {mode}", text, count=1, flags=re.M)
+    if not n:     # no top-level mode yet: put it right before `rules:`
+        new, n = re.subn(r"^rules:[ \t]*$", f"mode: {mode}\n\nrules:", text, count=1, flags=re.M)
+    if not n:
+        raise ValueError("couldn't find `mode:` or `rules:` in the rules file")
+    backup = rules_path.with_name(f"{rules_path.name}.bak-{time.strftime('%Y%m%d-%H%M%S')}")
+    shutil.copy2(rules_path, backup)
+    rules_path.write_text(new, encoding="utf-8")
+    return backup
+
+
 def insert(rules_path: Path, block: str, before_id: str | None, loads) -> Path:
     """Add `block` (rule items, indented for `rules:`) to the rules file: right before rule `before_id` if given, else
     right after allow-reads (so reads still run, and block rules above stay first), else at the top of `rules:`.
