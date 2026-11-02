@@ -409,6 +409,11 @@ def test_stale_oss_numbers_dont_wait_on_github(insights, monkeypatch):
     insights_app._oss_mem.clear()
     assert insights_app.oss_numbers()["stars"] == 1          # the old numbers at once, while GitHub is still answering
     release.set()
+    for _ in range(100):                                     # let the refresh finish, or its late write leaks into the next test
+        if not insights_app._oss_refreshing.is_set():
+            break
+        threading.Event().wait(0.05)
+    assert not insights_app._oss_refreshing.is_set()
 
 
 def test_traction_metrics(insights, tmp_path, monkeypatch):
