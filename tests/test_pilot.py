@@ -744,3 +744,45 @@ def test_register_moves_an_anonymous_install_onto_its_own_row(insights, tmp_path
     assert telemetry.register(["late@firm.io", "--yes"], "1.0") == 0
     after = pilot.load(tmp_path)
     assert after["code"] != insights_app.COMMUNITY_CODE and after["install_id"] == before   # same install, its history kept
+
+
+def test_retention_cohorts_and_weekly_accounting(insights):
+    """Retention reads the days table: active = a day with an action; weeks start Monday; read-only, admin only."""
+    import app as insights_app
+    from datetime import datetime, timedelta, timezone
+    admin = {"X-Admin-Key": "admin-test-key"}
+    assert insights.get("/v1/admin/retention").status_code == 401
+    assert insights.get("/v1/admin/retention?unit=bogus", headers=admin).status_code == 422
+    today = datetime.now(timezone.utc).date()
+    monday = today - timedelta(days=today.weekday())
+    wk = lambda n, d=0: (monday - timedelta(weeks=n) + timedelta(days=d)).isoformat()
+    a = insights.post("/v1/admin/pilots", headers=admin, json={"company": "Retained Co"}).json()["code"]
+    b = insights.post("/v1/admin/pilots", headers=admin, json={"company": "Gone Co"}).json()["code"]
+    import uuid
+    R, G, C = (uuid.uuid4().hex for _ in range(3))
+    with insights_app.db() as c:
+        for iid, code in ((R, a), (G, b), (C, insights_app.COMMUNITY_CODE)):
+            c.execute("INSERT INTO installs (install_id, code, joined_at) VALUES (?,?,?)", (iid, code, wk(30)))
+        rows = [(R, wk(20), 3), (R, wk(20, 2), 1), (R, wk(19), 4), (R, wk(17), 2),
+                (G, wk(20), 5), (G, wk(19, 1), 0),          # a day with no actions is not active
+                (C, wk(20), 9)]
+        for iid, day, n in rows:
+            c.execute("INSERT OR REPLACE INTO days (install_id, day, counts) VALUES (?,?,?)", (iid, day, json.dumps({"events": n})))
+    before = insights.get("/v1/admin/overview", headers=admin).json()
+
+    r = insights.get("/v1/admin/retention", headers=admin).json()
+    assert r["summary"]["ever_active"] >= 2
+    cohort = next(c for c in r["cohorts"] if c["week"] == wk(20))
+    assert cohort["size"] == 2 and cohort["active"][:4] == [2, 1, 0, 1]
+    acc = {x["week"]: x for x in r["accounting"]}
+    assert acc[wk(20)]["new"] >= 2 and acc[wk(20)]["days_per_active"] > 0
+    assert acc[wk(19)]["retained"] >= 1 and acc[wk(19)]["churned"] >= 1
+    assert acc[wk(17)]["resurrected"] >= 1
+    assert r["weeks"][-1] == monday.isoformat()
+    pilot_row = next(u for u in r["units"] if u["name"] == "Retained Co")
+    assert pilot_row["active_days"] == 4 and len(pilot_row["weeks"]) == len(r["units_weeks"]) <= 12
+    assert not any(u["name"] == "Community (opted in)" for u in r["units"])      # individuals are never pilots here
+
+    ind = insights.get("/v1/admin/retention?unit=individuals", headers=admin).json()
+    assert ind["units"] == [] and any(c["week"] == wk(20) for c in ind["cohorts"])   # anonymous: counts only, no rows
+    assert insights.get("/v1/admin/overview", headers=admin).json()["scorecard"] == before["scorecard"]   # read-only
