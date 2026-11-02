@@ -1115,6 +1115,50 @@ def test_slack_example_policy():
         assert decide(name)[0] == "deny", name
 
 
+def test_kubernetes_example_policy():
+    rules = Path(__file__).resolve().parents[1] / "examples" / "rules" / "kubernetes.yaml"
+    p = server.Policy(rules)
+
+    def decide(name, inp=None):
+        return p.evaluate(kind="mcp", name=name, source=None, client="test", session_id=None, input=inp or {})
+
+    # Read-only operations are allowed
+    for name in (
+        "kubernetes.get_pods",
+        "kubernetes.list_namespaces",
+        "kubernetes.describe_deployment",
+        "kubernetes.get_logs",
+        "k8s.k8s_get_resources",
+        "k8s.k8s_list_resources",
+        "k8s.k8s_describe_resource",
+        "k8s.k8s_get_pod_logs",
+    ):
+        assert decide(name)[0] == "allow", name
+
+    # Critical deletions are denied
+    assert decide("kubernetes.delete", {"kind": "Namespace", "name": "staging"})[0] == "deny"
+    assert decide("k8s.k8s_delete_resource", {"kind": "PersistentVolumeClaim", "name": "data-pvc"})[0] == "deny"
+    assert decide("kubernetes.delete", {"namespace": "kube-system", "kind": "Pod", "name": "coredns"})[0] == "deny"
+    assert decide("k8s.k8s_delete_resource", {"kind": "ClusterRole", "name": "admin"})[0] == "deny"
+
+    # High-impact operations require review
+    assert decide("kubernetes.exec_pod", {"pod": "web-1"})[0] == "review"
+    assert decide("k8s.k8s_exec_in_pod", {"pod_name": "api"})[0] == "review"
+    assert decide("kubernetes.scale_deployment", {"replicas": 0})[0] == "review"
+    assert decide("k8s.k8s_scale_resource", {"replicas": 3})[0] == "review"
+    assert decide("kubernetes.delete_deployment", {"kind": "Deployment", "name": "frontend"})[0] == "review"
+    assert decide("kubernetes.apply", {"context": "prod-cluster", "kind": "ConfigMap"})[0] == "review"
+    assert decide("kubernetes.apply", {"yaml": "kind: ClusterRoleBinding\nroleRef: cluster-admin"})[0] == "review"
+
+    # Reading a Secret shows credentials, however it's asked for
+    assert decide("kubernetes.get_secret", {"name": "db-password"})[0] == "review"
+    assert decide("k8s.k8s_get_resources", {"kind": "Secret", "name": "db-password"})[0] == "review"
+    assert decide("kubernetes.list_resources", {"resource": "secrets"})[0] == "review"
+    # The pack only covers Kubernetes: another app's tools aren't allowed or blocked by it
+    assert decide("stripe.get_balance")[0] == "review"
+    assert decide("github.delete_repo", {"kind": "Namespace"})[0] == "review"
+
+
 def test_atlassian_example_policy():
     rules = Path(__file__).resolve().parents[1] / "examples" / "rules" / "atlassian.yaml"
     p = server.Policy(rules)
