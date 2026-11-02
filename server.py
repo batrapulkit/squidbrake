@@ -4819,6 +4819,33 @@ def _add_rules(block: str, before: str | None, who: str, what: str) -> dict:
     return {"ok": True, "backup": backup.name, "rules": len(policy.rules)}
 
 
+class ModeIn(BaseModel):
+    mode: str
+
+
+@app.put("/v1/policy/mode")
+def policy_mode_set(body: ModeIn, who: str = Depends(admin)):
+    """The dashboard's enforce / observe switch: rewrites the top-level `mode:` in rules.yaml (a backup is kept)."""
+    mode = body.mode.lower().replace("observe", "shadow")
+    if mode not in ("enforce", "shadow"):
+        raise HTTPException(400, "mode must be enforce or observe")
+    if mode != policy.mode:
+        try:
+            backup = policy_edit.set_mode(policy.path, mode)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except OSError as e:
+            raise HTTPException(500, f"couldn't write the rules file: {e}")
+        policy._maybe_reload()
+        if policy.mode != mode:           # didn't load: put the old file back
+            policy_edit.replace_all(policy.path, backup.read_text(encoding="utf-8"))
+            policy._maybe_reload()
+            raise HTTPException(500, "the rules file didn't load with the new mode; left it as it was")
+        with audited_tx() as conn:
+            audit(conn, who, "policy.mode", mode, backup=backup.name)
+    return {"ok": True, "mode": policy.mode}
+
+
 # ---- rules history: every version that decided something, a diff against today's, and putting one back
 
 @app.get("/v1/policy/versions")

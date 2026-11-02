@@ -533,6 +533,8 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     <button class="btn" id="phoneBtn" title="Approve from your phone">📱 Phone</button>
     <button class="btn" id="notifyBtn" aria-pressed="false">🔔 <span id="notifyText">Alerts off</span></button>
     <button class="btn" id="keyBtn" title="Sign in with a different key">⚿ <span id="meName">Key</span></button>
+    <button class="btn" id="modeBtn" data-admin hidden aria-pressed="false"
+      title="Observe: nothing is blocked or held, only recorded for a report later. Enforce: rules block and hold.">👁 <span id="modeText">Observe off</span></button>
     <button class="btn danger" id="stopBtn" title="Block every agent action right now" hidden>⏹ Stop agents</button>
   </header>
 
@@ -1773,9 +1775,11 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     if (me.can_approve) loadDevices();
     $("#stopBtn").hidden = !(me.can_approve || me.is_admin);
     const shadowAll = me.mode === "shadow", shadowSome = (me.shadow_agents || []).length > 0;
+    $("#modeBtn").setAttribute("aria-pressed", String(shadowAll));
+    $("#modeText").textContent = shadowAll ? "Observe on" : "Observe off";
     $("#shadowBanner").hidden = !(shadowAll || shadowSome);
     $("#shadowBanner").replaceChildren(el("b", { text: "👁 Shadow mode" }), " ", el("span", { text: shadowAll
-      ? "is on: nothing is blocked or held. Squidbrake records what it would have done (see Reports). Set mode: enforce in rules.yaml to switch it on for real."
+      ? "is on: nothing is blocked or held. Squidbrake records what it would have done (see Reports). Click 👁 Observe on (top right) to enforce again."
       : `for ${me.shadow_agents.join(", ")}: their actions aren't blocked or held, only recorded. Everyone else is enforced.` }));
     if (me.plan === "free") {
       const left = Math.max(0, Math.ceil((new Date(me.trial_ends) - Date.now()) / 86400000));
@@ -2397,6 +2401,16 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     $("#stopReason").focus();
   }
   $("#stopBtn").addEventListener("click", () => askStop(null));
+  $("#modeBtn").addEventListener("click", async () => {
+    const observe = me.mode !== "shadow";
+    if (!observe && !confirm("Switch back to enforce? Risky actions will be blocked or wait for approval again.")) return;
+    try {
+      await apiSend("PUT", "/v1/policy/mode", { mode: observe ? "observe" : "enforce" });
+      toast(observe ? "Observe mode on: nothing is blocked or held, see Reports for what would have been."
+                    : "Enforce mode on: rules block and hold again.");
+      await loadMe();
+    } catch (e) { toast(`Couldn't switch mode: ${e.message}`); }
+  });
   $("#stopCancel").addEventListener("click", () => $("#stopDlg").close());
   $("#stopForm").addEventListener("submit", async () => {
     try {
