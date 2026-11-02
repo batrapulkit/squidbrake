@@ -1,5 +1,6 @@
 """Pilot usage sharing: nothing without joining, only counts when joined, and the insights service guards its doors."""
 import json
+from datetime import datetime, timedelta, timezone
 import os
 import sys
 import tempfile
@@ -786,3 +787,23 @@ def test_retention_cohorts_and_weekly_accounting(insights):
     ind = insights.get("/v1/admin/retention?unit=individuals", headers=admin).json()
     assert ind["units"] == [] and any(c["week"] == wk(20) for c in ind["cohorts"])   # anonymous: counts only, no rows
     assert insights.get("/v1/admin/overview", headers=admin).json()["scorecard"] == before["scorecard"]   # read-only
+
+
+def test_auto_update_waits_for_a_quiet_moment(monkeypatch, tmp_path):
+    """The background gateway restarts after an update only when nobody waits on it (server._quiet_for_update)."""
+    import server
+    from sqlalchemy import create_engine
+    engine = create_engine(f"sqlite:///{(tmp_path / 'quiet.db').as_posix()}")     # its own, so other tests' rows stay
+    server.metadata.create_all(engine)
+    monkeypatch.setattr(server, "engine", engine)
+    ago = lambda **d: (datetime.now(timezone.utc) - timedelta(**d)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    assert server._quiet_for_update()
+    with engine.begin() as conn:
+        conn.execute(server.events.insert().values(id="e1", name="Read", status="completed", created_at=ago(minutes=2)))
+    assert not server._quiet_for_update()                      # an agent acted in the last 10 minutes
+    with engine.begin() as conn:
+        conn.execute(server.events.update().values(created_at=ago(hours=1)))
+    assert server._quiet_for_update()
+    with engine.begin() as conn:
+        conn.execute(server.events.update().values(status="awaiting_approval"))
+    assert not server._quiet_for_update()                      # a person is still deciding one

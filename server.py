@@ -3088,6 +3088,37 @@ async def _integrity_loop():
         await asyncio.sleep(15)          # keys.json changed behind Squidbrake's back: said within seconds
 
 
+def _quiet_for_update() -> bool:
+    """Nothing waiting for a person and no agent action in the last 10 minutes: a restart now interrupts nobody."""
+    since = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    with engine.connect() as conn:
+        return not conn.execute(select(func.count()).select_from(events).where(
+            (events.c.created_at >= since) | (events.c.status == "awaiting_approval"))).scalar()
+
+
+async def _auto_update_loop():
+    """Only in the background service (service.py sets SQUIDBRAKE_SERVICE): it restarts the gateway after an update.
+    Every hour, at a quiet moment, service.self_update looks (at most daily at PyPI) and installs a newer version."""
+    import service
+    await asyncio.sleep(600)             # not during a start: the agents are reconnecting
+    while True:
+        try:
+            if await run_in_threadpool(_quiet_for_update) and await run_in_threadpool(service.self_update, VERSION):
+                log.warning("Squidbrake was updated; restarting on the new version")
+                _exit_for_restart()
+                return
+        except Exception:
+            log.exception("auto-update failed; this version keeps running")
+        await asyncio.sleep(3600)
+
+
+def _exit_for_restart() -> None:
+    if sys.platform == "win32":
+        os._exit(0)                      # the supervisor (service.py supervise) starts it again
+    import signal
+    os.kill(os.getpid(), signal.SIGTERM)  # uvicorn stops cleanly; launchd (KeepAlive) / systemd (Restart=always) start it
+
+
 CAUGHT_ORDER = {"blocked": 0, "rejected": 1, "would have been blocked": 2, "would have waited for a person": 3}
 
 
@@ -3238,6 +3269,8 @@ async def lifespan(app: FastAPI):
             os.getenv("SQUIDBRAKE_AUTO_CONNECT", "1").strip().lower() not in ("0", "no", "false", "off"):
         tasks.append(asyncio.create_task(_auto_connect_loop()))
     # usage counts for the pilot programme: does nothing unless this install joined one (squidbrake pilot join)
+    if os.getenv("SQUIDBRAKE_SERVICE") == "1" and not IN_DOCKER:
+        tasks.append(asyncio.create_task(_auto_update_loop()))
     tasks.append(asyncio.create_task(pilot.loop(PILOT_DIR, lambda: pilot.usage(
         engine, events, policy.mode, len(policy.rules), VERSION,
         reasons={r["id"]: r.get("reason", "") for r in policy.rules + policy.sequences},
@@ -5268,6 +5301,9 @@ def _cli_run(args) -> int:
     if created and not IN_DOCKER and not args.no_browser and can_open_browser():
         threading.Timer(2.0, webbrowser.open, [f"{url}/dashboard"]).start()
     os.environ["SQUIDBRAKE_LISTEN_PORT"] = str(args.port)    # where the MCP proxies (mcp_hub.py) reach this gateway
+    if not IN_DOCKER:
+        import service
+        service.record_running(VERSION)                     # which install and version runs: `setup` checks it
     uvicorn.run("server:app", host=args.host, port=args.port, workers=args.workers,
                 proxy_headers=True, forwarded_allow_ips=os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1"),
                 log_level=LOG_LEVEL.lower())

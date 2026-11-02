@@ -1,11 +1,11 @@
 """
 The `squidbrake` command (installed with pip):
 
-  squidbrake                         start the gateway; the first time it asks once whether to keep it running in
-                                     the background and at every login (Enter means no; see service.py)
+  squidbrake                         start the gateway in the background: at every login, again if it stops, and
+                                     updated to new versions on its own (see service.py)
   squidbrake setup                   everything at once: runs in the background, connects every agent here, checks
                                      them, and opens the dashboard signed in (the installers run this at the end)
-  squidbrake start --background      install the background service and start it, without asking
+  squidbrake start --foreground      run it in this window instead (debugging; nothing restarts it)
   squidbrake service status | stop   is the background service running / stop it and take it out
   squidbrake run                     run the gateway in this window (same as: python server.py)
   squidbrake connect all             connect every AI agent on this computer (same as: python connect.py ...)
@@ -88,7 +88,7 @@ def update_notice(argv: list[str], version: str) -> str | None:
             import httpx
             latest = httpx.get("https://pypi.org/pypi/squidbrake/json", timeout=5).json()["info"]["version"]
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps({"checked": time.time(), "latest": latest}), encoding="utf-8")
+            path.write_text(json.dumps({**cached, "checked": time.time(), "latest": latest}), encoding="utf-8")
         except Exception:
             pass
     if time.time() - cached.get("checked", 0) > 86400:
