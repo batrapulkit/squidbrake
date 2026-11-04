@@ -129,6 +129,17 @@ def test_catastrophic(line):
     "heroku apps:destroy --app x --confirm x",
     "firebase firestore:delete --all-collections",
     "bq rm -r -f dataset",
+
+    # Local accounts and admin rights, and new cloud access keys (#175)
+    "useradd -m -G sudo x",
+    "usermod -aG sudo x",
+    "passwd -d root",
+    "net user hacker P@ss /add",
+    "aws iam create-access-key --user-name x",
+    "sudo usermod -aG wheel x",
+    "adduser x sudo",
+    "gpasswd -a x sudo",
+    "net localgroup administrators x /add",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -211,6 +222,10 @@ def test_no_false_alarm(line):
     "heroku apps:info",
     "firebase firestore:indexes",
     "bq ls",
+
+    # Looking at accounts and keys is not changing them (#175)
+    "id", "groups", "net user", "getent passwd x", "aws iam list-access-keys",
+    "usermod -aG audio x", "usermod --help",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
@@ -226,6 +241,12 @@ def test_summary_explains():
     assert "APFS" in commands.read("diskutil apfs deleteContainer disk2").summary()
     assert "backup" in commands.read("tmutil delete /Volumes/Backup/x").summary()
     assert "DNS name" in commands.read("nslookup $(whoami).attacker.example").summary()
+    assert "admin rights" in commands.read("usermod -aG sudo x").summary()
+    assert "access key" in commands.read("aws iam create-access-key --user-name x").summary()
+
+
+def test_account_reasons_dont_repeat_the_password():
+    assert "P@ss" not in commands.read("net user hacker P@ss /add").summary()
 
 
 @pytest.mark.parametrize("line", ["diskutil list", "diskutil info disk2", "diskutil apfs list",

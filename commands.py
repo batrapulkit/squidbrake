@@ -622,6 +622,50 @@ def _starts_automatically(prog: str, lower: list[str]) -> str | None:
     return None
 
 
+LOCAL_ADMIN_GROUPS = {"sudo", "wheel", "admin", "root"}
+
+
+def _groups_given(lower: list[str]) -> set[str]:
+    """Group names given to -g / -G / -aG / --groups (comma-separated), as useradd and usermod take them."""
+    names: list[str] = []
+    for i, w in enumerate(lower[1:], 1):
+        if w.startswith("--groups=") or w.startswith("--gid="):
+            names.append(w.split("=", 1)[1])
+        elif w in ("--groups", "--gid") or re.fullmatch(r"-[a-z]*g", w):    # lowercased: -G arrives as -g
+            if i + 1 < len(lower):
+                names.append(lower[i + 1])
+    return {g for n in names for g in n.split(",") if g}
+
+
+def _local_account_change(prog: str, lower: list[str]) -> str | None:
+    """Adding a local account or giving one admin rights: it outlasts the session. The reason names the program and
+    the group, never the rest of the line (it can hold a password)."""
+    if any(w in ("-h", "--help") for w in lower[1:]):
+        return None
+    admin = _groups_given(lower) & LOCAL_ADMIN_GROUPS
+    if prog == "adduser":                                    # adduser USER GROUP
+        pos = _positional(lower)
+        if len(pos) >= 2 and pos[1] in LOCAL_ADMIN_GROUPS:
+            admin = {pos[1]}
+    if prog in ("useradd", "adduser"):
+        if admin:
+            return f"adds a local account and gives it admin rights on this machine ({prog}: {', '.join(sorted(admin))})"
+        return f"adds a local user account ({prog})"
+    if prog == "usermod" and admin:
+        return f"gives an account admin rights on this machine ({prog}: {', '.join(sorted(admin))})"
+    if prog == "gpasswd" and any(w in ("-a", "--add") for w in lower[1:]):
+        if group := next((w for w in lower[1:] if w in LOCAL_ADMIN_GROUPS), None):
+            return f"gives an account admin rights on this machine ({prog}: {group})"
+    if prog == "passwd" and ("--delete" in lower[1:] or any(re.fullmatch(r"-[a-z]*d[a-z]*", w) for w in lower[1:])):
+        return "removes an account's password, so anyone can log in to it (passwd -d)"
+    if prog in ("net", "net1") and "/add" in lower[1:]:
+        if lower[1:2] in (["user"], ["users"]):
+            return "adds a local user account (net user ... /add)"
+        if lower[1:3] == ["localgroup", "administrators"]:
+            return "gives an account admin rights on this machine (net localgroup administrators ... /add)"
+    return None
+
+
 def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Command], list[str]]:
     """One simple command (already split into words). -> (commands, hidden-reasons)."""
     words = words[1:] if words[:1] == ["{"] else words       # a group, `{ curl URL > x.sh; } && bash x.sh`
@@ -809,6 +853,8 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
             verbs.append(w); i += 1
         if any(DESTRUCTIVE_WORDS.match(v) for v in verbs) or (prog == "aws" and verbs[:2] == ["s3", "rm"]):
             cmd.kind, cmd.why = "irreversible", f"deletes cloud resources ({' '.join(words[:4])})"
+        elif prog == "aws" and verbs[:2] == ["iam", "create-access-key"]:
+            cmd.kind, cmd.why = "irreversible", "creates a new long-lived AWS access key that keeps working after this session"
         elif verbs[1:2] == ["mv"] and verbs[:1] in (["s3"], ["storage"]) or (prog == "gsutil" and verbs[:1] == ["mv"]):
             cmd.kind, cmd.why = "rename", f"moves cloud files, deleting them where they were ({' '.join(words[:4])})"
         elif any(v in ("sync", "rsync") for v in verbs[:3]) and any(
@@ -913,6 +959,9 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         cmd.kind, cmd.why = "irreversible", "deletes every scheduled job (crontab -r)"
         return [cmd], []
     if (why := _starts_automatically(prog, lower)):
+        cmd.kind, cmd.why = "irreversible", why
+        return [cmd], []
+    if (why := _local_account_change(prog, lower)):
         cmd.kind, cmd.why = "irreversible", why
         return [cmd], []
     if prog == "truncate" or prog in ("clear-content", "clc") or (prog == "mv" and any(w in ("/dev/null", "nul") for w in lower[1:])) \
