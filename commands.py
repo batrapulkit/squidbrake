@@ -206,7 +206,7 @@ PS_REMOVE = {"remove-item", "ri", "rm", "del", "erase", "rmdir", "rd"}
 PS_SESSION_REMOVE = {"remove-variable", "remove-module", "remove-job", "remove-psdrive", "remove-pssession",
                      "remove-event", "remove-psbreakpoint", "remove-typedata", "remove-alias"}
 CLOUD = {"aws", "gcloud", "gsutil", "az", "doctl", "flyctl", "fly", "heroku", "vercel", "netlify", "railway",
-         "supabase", "firebase", "wrangler", "oci", "linode-cli", "hcloud"}
+         "supabase", "firebase", "wrangler", "oci", "linode-cli", "hcloud", "bq"}
 # Global options that take a value, given before the verbs (an unknown one just adds a word to the verbs read)
 CLOUD_VALUE_OPTIONS = {"--profile", "--region", "--project", "--output", "-o", "--endpoint-url", "--subscription",
                        "--account", "--configuration", "--zone", "--app", "-a", "--remote", "-r", "--org", "--team",
