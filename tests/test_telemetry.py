@@ -242,3 +242,26 @@ def test_an_email_given_after_the_gateway_joined_moves_its_counts_to_that_person
     answers(monkeypatch, "", "ana@acme.dev", "Ana")                      # terminal first run: where-from, email, name
     telemetry.maybe(["doctor"], "1")
     assert told[-1]["email"] == "ana@acme.dev" and told[-1]["install_id"] == told[0]["install_id"]
+
+
+def test_the_off_switches_stop_the_counts_of_an_install_that_already_joined(sent, monkeypatch, tmp_path):
+    """Joined the community counts, then DO_NOT_TRACK or SQUIDBRAKE_TELEMETRY=0 is set: nothing more is sent."""
+    telemetry.gateway_start("1", lambda s: None)
+    pings = []
+    monkeypatch.setattr(pilot, "_post", lambda server, path, body, timeout=15: pings.append(path) or {})
+    assert pilot.send(tmp_path / "data", {"days": {}}) is True and pings == ["/v1/ping"]
+    for var, val in (("DO_NOT_TRACK", "1"), ("SQUIDBRAKE_TELEMETRY", "0")):
+        monkeypatch.setenv(var, val)
+        assert pilot.send(tmp_path / "data", {"days": {}}) is False and pings == ["/v1/ping"]
+        monkeypatch.delenv(var)
+
+
+def test_a_named_pilot_keeps_its_own_consent(sent, monkeypatch, tmp_path):
+    """A pilot joined with its own code (it asked "Share these counts?") is left with `squidbrake pilot leave`."""
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "pilot.json").write_text(json.dumps({"code": "acme-123abc", "server": "https://x",
+                                                              "install_id": "a" * 32}), encoding="utf-8")
+    pings = []
+    monkeypatch.setattr(pilot, "_post", lambda server, path, body, timeout=15: pings.append(path) or {})
+    monkeypatch.setenv("DO_NOT_TRACK", "1")
+    assert pilot.send(tmp_path / "data", {"days": {}}) is True and pings == ["/v1/ping"]

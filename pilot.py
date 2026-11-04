@@ -199,6 +199,9 @@ def send(home: Path, payload: dict, timeout: float = 15) -> bool:
     cfg = load(home)
     if not cfg:
         return False
+    import telemetry
+    if cfg.get("code") == telemetry.COMMUNITY_CODE and telemetry._switched_off():
+        return False     # the anonymous counts stop with SQUIDBRAKE_TELEMETRY=0 / DO_NOT_TRACK=1, even after joining
     body = {"code": cfg["code"], "install_id": cfg["install_id"], "usage": payload}
     try:
         try:
