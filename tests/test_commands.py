@@ -166,6 +166,12 @@ def test_catastrophic(line):
     "wevtutil cl Security",
     "journalctl --vacuum-time=1s",
     "tmutil disable",
+
+    # Making something public or granting admin (#29)
+    "aws s3api put-bucket-acl --bucket b --acl public-read",
+    "aws iam attach-user-policy --user-name bot --policy-arn arn:aws:iam::aws:policy/AdministratorAccess",
+    "gsutil iam ch allUsers:objectViewer gs://bucket",
+    "chmod -R 777 .",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -289,6 +295,11 @@ def test_no_false_alarm(line):
     "journalctl -u nginx --since today",
     "wevtutil qe Security /c:5",
     "tmutil status",
+
+    # Safe permissions and read-only checks (#29)
+    "aws s3api get-bucket-acl --bucket b",
+    "aws iam list-attached-user-policies --user-name bot",
+    "chmod 644 file.txt",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
@@ -311,6 +322,10 @@ def test_summary_explains():
     assert "erases the record of what ran" in commands.read("history -c").summary()
     assert "admin rights" in commands.read("usermod -aG sudo x").summary()
     assert "access key" in commands.read("aws iam create-access-key --user-name x").summary()
+    assert "publicly readable" in commands.read("aws s3api put-bucket-acl --bucket b --acl public-read").summary()
+    assert "administrator access" in commands.read("aws iam attach-user-policy --user-name bot --policy-arn arn:aws:iam::aws:policy/AdministratorAccess").summary()
+    assert "accessible to the public" in commands.read("gsutil iam ch allUsers:objectViewer gs://bucket").summary()
+    assert "world-writable" in commands.read("chmod -R 777 .").summary()
 
 
 def test_account_reasons_dont_repeat_the_password():
