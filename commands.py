@@ -971,6 +971,23 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
                      or ("--visibility" in lower and "public" in lower))):
         cmd.kind, cmd.why = "irreversible", f"publishes or deletes something public ({' '.join(words[:3])})"
         return [cmd], []
+    if prog == "ufw" and lower[1:2] == ["disable"]:
+        cmd.kind, cmd.why = "irreversible", "switches off the firewall (ufw disable)"
+        return [cmd], []
+    # -F (capital) flushes; a lowercase -f is a fragment match, and `nft -f FILE` loads rules
+    if (prog in ("iptables", "ip6tables") and any(w in ("-F", "--flush") for w in words[1:])) or \
+            (prog == "nft" and lower[1:3] == ["flush", "ruleset"]):
+        cmd.kind, cmd.why = "irreversible", f"flushes firewall rules ({' '.join(words[:2])})"
+        return [cmd], []
+    if prog == "netsh" and "advfirewall" in lower[1:] and any("off" in w for w in lower[1:]):
+        cmd.kind, cmd.why = "irreversible", "switches off the Windows firewall (netsh advfirewall)"
+        return [cmd], []
+    if prog == "setenforce" and lower[1:2] in (["0"], ["permissive"]):
+        cmd.kind, cmd.why = "irreversible", f"switches off SELinux enforcement ({' '.join(words[:2])})"
+        return [cmd], []
+    if prog == "set-mppreference" and any("disablerealtimemonitoring" in w for w in lower[1:]) and any(v in lower for v in ("$true", "1", "true")):
+        cmd.kind, cmd.why = "irreversible", "switches off Windows Defender real-time monitoring (Set-MpPreference)"
+        return [cmd], []
     if prog in ("shutdown", "reboot", "halt", "poweroff", "stop-computer", "restart-computer") \
             or (prog == "init" and lower[1:2] in (["0"], ["6"])):
         cmd.kind, cmd.why = "irreversible", f"shuts down or restarts the machine ({' '.join(words[:2])})"
