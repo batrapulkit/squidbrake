@@ -224,6 +224,11 @@ def test_no_false_alarm(line):
     "firebase firestore:indexes",
     "bq ls",
 
+    # Startup inspection commands (#170)
+    "launchctl list",
+    "launchctl print system/com.example",
+    "systemctl status nginx",
+
     # Secret listing is everyday work; reading secret values waits for an approver (#174)
     "aws secretsmanager list-secrets",
     "gcloud secrets list",
@@ -250,6 +255,7 @@ def test_summary_explains():
     assert "home folder" in commands.read("rm -rf ~/").summary()
     assert "whole drive" in commands.read("rmdir /s /q d:\\").summary()
     assert "remote" in commands.read("git push --force").summary()
+    assert "launch agent" in commands.read("launchctl bootstrap gui/501 ~/Library/LaunchAgents/x.plist").summary()
     assert "disk" in commands.read("diskutil eraseDisk APFS X disk2").summary()
     assert "disk" in commands.read("diskutil zeroDisk disk2").summary()
     assert "repartition" in commands.read("diskutil partitionDisk disk2 1 GPT APFS X 100%").summary()
@@ -478,6 +484,9 @@ def test_gh_irreversible_reasons_describe_the_operation(line, reason):
     "sudo systemctl --user enable example.service",
     "systemctl --host example.invalid enable example.service",
     "launchctl load -w ~/Library/LaunchAgents/com.example.plist",
+    "launchctl bootstrap gui/501 ~/Library/LaunchAgents/x.plist",
+    "launchctl enable gui/501/com.x",
+    "systemctl --user link /tmp/x.service",
     "crontab -",
     "crontab schedule.txt",
     "crontab -e",
