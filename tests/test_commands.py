@@ -48,6 +48,7 @@ def test_catastrophic(line):
     "git push --force origin main", "git push -f", "git push origin +main", "git push origin :old-branch",
     "git reset --hard HEAD~3", "git clean -fdx", "git branch -D feature", "git checkout -- .", "git stash drop",
     "git reflog expire --expire=now --all", "git reflog delete HEAD@{1}",
+    "git commit --no-verify -m x", "git push --no-verify", "git config core.hooksPath /dev/null",
     "terraform destroy -auto-approve", "terraform apply -auto-approve", "tofu state rm aws_db.main",
     "kubectl delete ns prod", "kubectl -n prod delete deployment api", "helm uninstall api",
     "aws rds delete-db-snapshot --db-snapshot-identifier x", "aws ec2 terminate-instances --instance-ids i-1",
@@ -211,6 +212,11 @@ def test_no_false_alarm(line):
     "heroku apps:info",
     "firebase firestore:indexes",
     "bq ls",
+
+    # Everyday git work (#172)
+    "git commit -m fix",
+    "git push origin main",
+    "git config user.name x",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
@@ -220,6 +226,7 @@ def test_summary_explains():
     assert "home folder" in commands.read("rm -rf ~/").summary()
     assert "whole drive" in commands.read("rmdir /s /q d:\\").summary()
     assert "remote" in commands.read("git push --force").summary()
+    assert "git hooks" in commands.read("git commit --no-verify -m x").summary()
     assert "disk" in commands.read("diskutil eraseDisk APFS X disk2").summary()
     assert "disk" in commands.read("diskutil zeroDisk disk2").summary()
     assert "repartition" in commands.read("diskutil partitionDisk disk2 1 GPT APFS X 100%").summary()

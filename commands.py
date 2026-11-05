@@ -1019,7 +1019,11 @@ def _git(cmd: Command, words: list[str]) -> Command:
         return cmd
     sub, args = rest[0].lower(), [w.lower() for w in rest[1:]]
     letters = {ch for w in rest[1:] if re.match(r"^-[A-Za-z]+$", w) for ch in w[1:]}
-    if sub == "push" and ("--force" in args or "--force-with-lease" in args or "f" in letters
+    if "--no-verify" in args or \
+       (sub == "config" and any("core.hookspath" in a for a in args) and not any(a in ("--get", "--get-all", "--list", "-l") for a in args)) or \
+       any(w.lower().startswith("core.hookspath=") for w in words):
+        cmd.kind, cmd.why = "irreversible", "skips the repository's own checks (git hooks)"
+    elif sub == "push" and ("--force" in args or "--force-with-lease" in args or "f" in letters
                           or "--delete" in args or "--mirror" in args
                           or any(a.startswith("+") or (a.startswith(":") and len(a) > 1) for a in args)):
         cmd.kind, cmd.why = "irreversible", f"rewrites or deletes history on the remote ({' '.join(words)})"
