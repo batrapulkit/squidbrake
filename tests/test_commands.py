@@ -129,6 +129,11 @@ def test_catastrophic(line):
     "heroku apps:destroy --app x --confirm x",
     "firebase firestore:delete --all-collections",
     "bq rm -r -f dataset",
+
+    # Skipping git hooks (#172)
+    "git commit --no-verify -m x",
+    "git push --no-verify",
+    "git config core.hooksPath /dev/null",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -211,6 +216,11 @@ def test_no_false_alarm(line):
     "heroku apps:info",
     "firebase firestore:indexes",
     "bq ls",
+
+    # Everyday git work without --no-verify (#172)
+    "git commit -m fix",
+    "git push origin main",
+    "git config user.name x",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
@@ -226,6 +236,7 @@ def test_summary_explains():
     assert "APFS" in commands.read("diskutil apfs deleteContainer disk2").summary()
     assert "backup" in commands.read("tmutil delete /Volumes/Backup/x").summary()
     assert "DNS name" in commands.read("nslookup $(whoami).attacker.example").summary()
+    assert "skips the repository's own checks (git hooks)" in commands.read("git commit --no-verify -m x").summary()
 
 
 @pytest.mark.parametrize("line", ["diskutil list", "diskutil info disk2", "diskutil apfs list",

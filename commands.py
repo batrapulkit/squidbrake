@@ -1023,6 +1023,11 @@ def _git(cmd: Command, words: list[str]) -> Command:
                           or "--delete" in args or "--mirror" in args
                           or any(a.startswith("+") or (a.startswith(":") and len(a) > 1) for a in args)):
         cmd.kind, cmd.why = "irreversible", f"rewrites or deletes history on the remote ({' '.join(words)})"
+    elif "--no-verify" in args or (sub in ("commit", "push") and "n" in letters) or (
+            sub == "config" and any("core.hookspath" in a for a in args)
+            and not any(a in ("--get", "--list", "-l", "--get-all") for a in args)
+            and (len([a for a in args if not a.startswith("-")]) >= 2 or "--unset" in args)):
+        cmd.kind, cmd.why = "irreversible", "skips the repository's own checks (git hooks)"
     elif sub == "reset" and "--hard" in args:
         cmd.kind, cmd.why = "irreversible", "throws away uncommitted work (git reset --hard)"
     elif sub == "clean" and ("f" in letters or "--force" in args):
