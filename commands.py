@@ -689,8 +689,17 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         if lower[1:2] == ["apfs"] and lower[2:3] in (["deletecontainer"], ["deletevolume"]):
             cmd.kind, cmd.why = "catastrophic", f"deletes an APFS container or volume ({' '.join(words[:3])})"
             return [cmd], []
-    if prog == "tmutil" and lower[1:2] == ["delete"]:
-        cmd.kind, cmd.why = "irreversible", f"deletes Time Machine backups ({' '.join(words[:3])})"
+    if prog == "tmutil" and lower[1:2] in (["delete"], ["disable"]):
+        cmd.kind, cmd.why = "irreversible", f"deletes Time Machine backups ({' '.join(words[:3])})" if lower[1:2] == ["delete"] else "turns Time Machine backups off (tmutil disable)"
+        return [cmd], []
+    if (prog == "history" and any(a in ("-c", "-cw") or a.startswith("-c") for a in lower[1:])) or prog == "clear-history":
+        cmd.kind, cmd.why = "irreversible", "erases the record of what ran on this machine"
+        return [cmd], []
+    if prog == "wevtutil" and lower[1:2] == ["cl"]:
+        cmd.kind, cmd.why = "irreversible", "erases the record of what ran on this machine"
+        return [cmd], []
+    if prog == "journalctl" and any(a.startswith("--vacuum") for a in lower[1:]):
+        cmd.kind, cmd.why = "irreversible", "erases the record of what ran on this machine"
         return [cmd], []
     if prog == "vssadmin" and lower[1:2] == ["delete"]:
         cmd.kind, cmd.why = "irreversible", f"deletes Volume Shadow Copy restore points ({' '.join(words[:3])})"
@@ -889,6 +898,8 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
     why = None
     if prog in ("npm", "pnpm", "yarn") and "unpublish" in lower[1:3]:
         why = "removes a published package from the npm registry; others' installs can break and the version can't be reused"
+    elif (prog == "cargo" and lower[1:2] == ["yank"]) or (prog == "gem" and lower[1:2] == ["yank"]) or (prog in ("npm", "pnpm", "yarn") and lower[1:2] == ["deprecate"]):
+        why = "takes a published version away from everyone who installs it"
     elif prog in ("bun", "poetry", "uv") and lower[1:2] == ["publish"]:
         why = f"publishes a package to a public registry; a released version can't be replaced ({' '.join(words[:2])})"
     elif prog in ("python", "python3", "py") and lower[1:4] == ["-m", "twine", "upload"]:
