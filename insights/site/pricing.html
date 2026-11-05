@@ -132,6 +132,32 @@ body{overflow-x:clip}
 .trust{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:10px 28px;margin-top:36px;color:var(--muted);font-size:.92rem}
 .trust .ef-row{display:inline-flex;align-items:center;gap:8px;color:var(--ink);text-decoration:none}
 .trust .ef-row img{border-radius:5px}
+/* live feed: what Squidbrake does, in three log lines */
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.feed-wrap{max-width:560px;margin:-12px auto 36px}
+.feed{list-style:none;margin:0;padding:6px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line),0 24px 50px -30px rgba(30,42,35,.45);text-align:left;font:400 .8rem/1.3 var(--mono);height:130px;overflow:hidden}
+.feed li{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:12px;padding:9px 12px;border-radius:9px;animation:feed-in .45s cubic-bezier(.2,.8,.2,1)}
+.feed li:first-child{background:var(--bg)}
+.feed li:nth-child(2){opacity:.75}
+.feed li:nth-child(3){opacity:.45}
+.feed .who{color:var(--muted)}
+.feed .cmd{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.feed .v{padding:3px 9px;border-radius:999px;font-size:.7rem;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap}
+.feed .v.allow{color:var(--go);background:color-mix(in srgb,var(--go) 14%,transparent)}
+.feed .v.hold{color:var(--hold);background:color-mix(in srgb,var(--hold) 16%,transparent)}
+.feed .v.block{color:var(--stop);background:color-mix(in srgb,var(--stop) 14%,transparent)}
+@keyframes feed-in{from{transform:translateY(-10px)}}
+@media (max-width:560px){ .feed .who{display:none} .feed li{grid-template-columns:minmax(0,1fr) auto} .feed{height:130px} }
+/* calculator */
+.calc{max-width:520px;margin:0 auto 40px}
+.calc label{display:block;margin-bottom:10px;font-size:.95rem;color:var(--muted)}
+.calc input{width:100%;height:28px;margin:0;accent-color:var(--accent);cursor:pointer}
+.calc-out{margin:10px 0 0;font-size:1rem;min-height:1.6em}
+.calc-out b{font-weight:500}
+.calc-out .n{font-family:var(--mono);font-size:.9rem;color:var(--muted)}
+.calc-out button{border:0;background:none;padding:0;color:inherit;font:inherit;text-decoration:underline;text-decoration-color:var(--accent);text-underline-offset:3px;cursor:pointer}
+.plan.match{outline:2px solid var(--accent);outline-offset:4px}
+@media (prefers-reduced-motion: reduce){ .feed li{animation:none} }
 .extra{margin:-8px 0 0;color:var(--muted);font-size:.92rem;text-align:center}
 .extra b{color:var(--ink);font-weight:500}
 .soon{font:400 .72rem var(--mono);color:var(--hold);text-transform:uppercase;letter-spacing:.05em}
@@ -154,13 +180,24 @@ body{overflow-x:clip}
     <h1>Watching your agents is free. Controlling them starts at $9.</h1>
     <p class="lead">Pick a plan for yourself or for your team. You pay for actions and people, never per agent. Prices are in US dollars, before tax. Pay yearly and get 2 months free.</p>
 
+    <div class="feed-wrap">
+      <p class="sr">Squidbrake lets everyday agent actions run, holds risky ones for a person, and blocks the dangerous ones.</p>
+      <ol class="feed" aria-hidden="true"></ol>
+    </div>
+
     <div class="switch" role="tablist" aria-label="Plans for">
       <button type="button" role="tab" id="tab-individuals" aria-controls="individuals" aria-selected="true">Individuals</button>
       <button type="button" role="tab" id="tab-teams" aria-controls="teams" aria-selected="false" tabindex="-1">Teams</button>
     </div>
+
+    <div class="calc">
+      <label for="calc-range">How many actions do your agents take a day?</label>
+      <input id="calc-range" type="range" min="0" max="9" step="1" value="2" aria-describedby="calc-out">
+      <p id="calc-out" class="calc-out" aria-live="polite"></p>
+    </div>
     <div id="individuals" role="tabpanel" aria-labelledby="tab-individuals">
     <div class="plans">
-      <section class="plan">
+      <section class="plan" data-plan="free">
         <h3>Free</h3>
         <p class="for">See what your agents do.</p>
         <p class="price">$0</p><p class="per">2,000 actions a month</p>
@@ -172,7 +209,7 @@ body{overflow-x:clip}
         </ul>
         <a class="cta" href="/signup">Sign up free</a>
       </section>
-      <section class="plan pick">
+      <section class="plan pick" data-plan="starter">
         <h3>Starter</h3>
         <p class="for">Stop risky actions before they run.</p>
         <p class="price">$9<span>/mo</span></p><p class="per">5,000 actions a month</p>
@@ -184,7 +221,7 @@ body{overflow-x:clip}
         </ul>
         <a class="cta" href="/signup?plan=starter&amp;from=pricing">Get started</a>
       </section>
-      <section class="plan">
+      <section class="plan" data-plan="pro">
         <h3>Pro</h3>
         <p class="for">For agents with production access.</p>
         <p class="price">$19<span>/mo</span></p><p class="per">10,000 actions a month</p>
@@ -202,7 +239,7 @@ body{overflow-x:clip}
 
     <div id="teams" role="tabpanel" aria-labelledby="tab-teams" hidden>
     <div class="plans">
-      <section class="plan">
+      <section class="plan" data-plan="team">
         <h3>Team</h3>
         <p class="for">Shared approvals for up to 10 people.</p>
         <p class="price">$299<span>/mo</span></p><p class="per">100,000 actions a month</p>
@@ -216,7 +253,7 @@ body{overflow-x:clip}
         </ul>
         <a class="cta" href="/signup?plan=team&amp;from=pricing">Start a 14-day trial</a>
       </section>
-      <section class="plan pick">
+      <section class="plan pick" data-plan="scale">
         <h3>Scale</h3>
         <p class="for">Compliance reports for up to 50 people.</p>
         <p class="price">$499<span>/mo</span></p><p class="per">500,000 actions a month</p>
@@ -228,7 +265,7 @@ body{overflow-x:clip}
         </ul>
         <a class="cta" href="/signup?plan=team&amp;tier=scale&amp;from=pricing">Start a 14-day trial</a>
       </section>
-      <section class="plan">
+      <section class="plan" data-plan="enterprise">
         <h3>Enterprise</h3>
         <p class="for">Every team, in your own cloud.</p>
         <p class="price">Custom</p><p class="per">yearly, 50+ people</p>
@@ -318,6 +355,67 @@ body{overflow-x:clip}
     });
   });
   if (location.hash === '#teams') show('teams');
+})();
+</script>
+<script>
+// Live feed and the actions calculator: extras on top of plain plan cards
+(() => {
+  const feed = document.querySelector('.feed');
+  const events = [
+    ['deploy-agent', 'git push origin feature/login', 'allow'],
+    ['infra-agent', 'terraform destroy -target=prod_db', 'hold'],
+    ['payments-agent', 'read invoices, last 30 days', 'allow'],
+    ['care-agent', 'refund $499 to customer #4821', 'hold'],
+    ['cloud-agent', 'aws s3 rb s3://backups --force', 'block'],
+    ['deploy-agent', 'npm test', 'allow'],
+    ['cloud-agent', 'gcloud projects add-iam-policy-binding owner', 'hold'],
+    ['data-agent', 'DROP TABLE customers;', 'block'],
+  ];
+  const label = {allow: 'Allowed', hold: 'Held for you', block: 'Blocked'};
+  const row = ([who, cmd, v]) => {
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="who"></span><span class="cmd"></span><span class="v"></span>';
+    li.children[0].textContent = who;
+    li.children[1].textContent = cmd;
+    li.children[2].textContent = label[v];
+    li.children[2].className = 'v ' + v;
+    return li;
+  };
+  let i = 0;
+  const push = () => { feed.prepend(row(events[i++ % events.length])); while (feed.children.length > 3) feed.lastChild.remove(); };
+  push(); push(); push();
+  if (!matchMedia('(prefers-reduced-motion: reduce)').matches) setInterval(push, 2600);
+
+  const range = document.getElementById('calc-range'), out = document.getElementById('calc-out');
+  const perDay = [50, 100, 150, 300, 600, 1500, 3000, 8000, 16000, 50000];
+  const fmt = n => n.toLocaleString('en-US');
+  const teams = () => !document.getElementById('teams').hidden;
+  const pick = n => {
+    if (!teams()) {
+      if (n > 100000) return {key: '', text: 'That is team-sized.', toTeams: true};
+      if (n <= 2000) return {key: 'free', text: '<b>Free</b>, $0, to watch. <b>Starter</b>, $9, to approve.'};
+      if (n <= 5000) return {key: 'starter', text: '<b>Starter</b>, $9 a month'};
+      const extra = Math.ceil(Math.max(0, n - 10000) / 10000);
+      return {key: 'pro', text: extra ? `<b>Pro</b> + ${fmt(extra * 10000)} extra actions, $${19 + extra * 5} a month` : '<b>Pro</b>, $19 a month'};
+    }
+    if (n <= 100000) return {key: 'team', text: '<b>Team</b>, $299 a month'};
+    if (n <= 500000) return {key: 'scale', text: '<b>Scale</b>, $499 a month'};
+    if (n <= 1000000) {
+      const extra = Math.ceil((n - 500000) / 100000);
+      return {key: 'scale', text: `<b>Scale</b> + ${fmt(extra * 100000)} extra actions, $${499 + extra * 50} a month`};
+    }
+    return {key: 'enterprise', text: '<b>Enterprise</b>, priced with you'};
+  };
+  const update = () => {
+    const day = perDay.at(Number(range.value)), month = day * 30, r = pick(month);
+    range.setAttribute('aria-valuetext', `${fmt(day)} actions a day`);
+    out.innerHTML = `<span class="n">${fmt(day)}/day ≈ ${fmt(month)}/month</span> &rarr; ${r.text}` + (r.toTeams ? ' <button type="button">See Team plans</button>' : '');
+    out.querySelector('button')?.addEventListener('click', () => document.getElementById('tab-teams').click());
+    document.querySelectorAll('.plan').forEach(p => p.classList.toggle('match', p.dataset.plan === r.key));
+  };
+  range.addEventListener('input', update);
+  document.querySelectorAll('.switch [role="tab"]').forEach(t => t.addEventListener('click', update));
+  update();
 })();
 </script>
 <script src="assets/booking.js" defer></script>
