@@ -816,6 +816,10 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
             cmd.kind, cmd.why = "irreversible", f"deletes whatever the destination has that the source doesn't ({' '.join(words[:4])})"
         elif off := BACKUPS_OFF.search(" ".join(lower[1:])):
             cmd.kind, cmd.why = "irreversible", f"switches off backups or deletion protection ({off.group(0)})"
+        elif (prog == "aws" and verbs[:2] == ["secretsmanager", "get-secret-value"]) or \
+             (prog == "gcloud" and verbs[:3] == ["secrets", "versions", "access"]) or \
+             (prog == "az" and verbs[:3] == ["keyvault", "secret", "show"]):
+            cmd.kind, cmd.why = "secret", f"shows the value of a stored secret ({prog} {' '.join(verbs[:2 if prog == 'aws' else 3])})"
         return [cmd], []
     if prog in ("docker", "podman", "nerdctl"):
         sub = [w for w in lower[1:] if not w.startswith("-")][:2]
