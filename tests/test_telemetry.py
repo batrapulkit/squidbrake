@@ -66,12 +66,16 @@ def test_first_run_says_what_is_sent_once_and_only_the_command_name_goes(sent, m
     assert len(sent) == 2
 
 
-def test_there_is_no_yes_no_question_and_no_off_switch(sent, monkeypatch, capsys):
+def test_reporting_can_be_disabled_and_enabled_without_a_request(sent, monkeypatch, capsys):
     answers(monkeypatch, "n")                                             # "n" to the where-from question: skipped
     telemetry.maybe(["doctor"], "1")
     assert telemetry.load()["enabled"] is True and len(sent) == 1
-    assert telemetry.main(["off"], "1") == 2 and telemetry.load()["enabled"] is True
-    assert "usage: squidbrake telemetry status" in capsys.readouterr().out
+    before = len(sent), len(joins)
+    assert telemetry.main(["off"], "1") == 0 and telemetry.load()["enabled"] is False
+    telemetry.maybe(["doctor"], "1")
+    assert (len(sent), len(joins)) == before
+    assert telemetry.main(["on"], "1") == 0
+    assert (len(sent), len(joins)) == before
     assert telemetry.main(["status"], "1") == 0
     assert "Anonymous usage stats: on" in capsys.readouterr().out
 

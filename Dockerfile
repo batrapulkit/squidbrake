@@ -12,7 +12,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt "psycopg[binary]>=3.1"
 
 # Every module server.py imports (tests/test_packaging.py checks this list), plus the shipped-rules fingerprints
-COPY server.py service.py onboard.py shell_guard.py runs.py selfguard.py weekly.py integrity.py connect.py flow.py hooklog.py commands.py risk.py taint.py verify.py signing.py offline.py proof.py brief.py passkeys.py sso.py pilot.py telemetry.py evidence.py lockdown.py license.py mcp_catalog.py mcp_hub.py mcp_oauth.py outbound.py policy_edit.py siem.py gateway_proxy.py gw_async.py rules.yaml rules.shipped dashboard.html approve.html ./
+COPY server.py service.py onboard.py shell_guard.py runs.py selfguard.py weekly.py integrity.py connect.py flow.py hooklog.py commands.py risk.py taint.py verify.py signing.py offline.py proof.py brief.py passkeys.py sso.py pilot.py telemetry.py reporting.py evidence.py lockdown.py license.py mcp_catalog.py mcp_hub.py mcp_oauth.py outbound.py policy_edit.py siem.py gateway_proxy.py gw_async.py rules.yaml rules.shipped dashboard.html approve.html ./
 COPY squidbrake/__init__.py squidbrake/__init__.py
 RUN useradd -r -u 10001 gateway && mkdir -p /app/data && chown -R gateway /app/data
 USER gateway
