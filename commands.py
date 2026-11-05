@@ -689,8 +689,18 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         if lower[1:2] == ["apfs"] and lower[2:3] in (["deletecontainer"], ["deletevolume"]):
             cmd.kind, cmd.why = "catastrophic", f"deletes an APFS container or volume ({' '.join(words[:3])})"
             return [cmd], []
-    if prog == "tmutil" and lower[1:2] == ["delete"]:
-        cmd.kind, cmd.why = "irreversible", f"deletes Time Machine backups ({' '.join(words[:3])})"
+    if prog == "tmutil" and lower[1:2] in (["delete"], ["disable"]):
+        action = "deletes" if lower[1:2] == ["delete"] else "switches off"
+        cmd.kind, cmd.why = "irreversible", f"{action} Time Machine backups ({' '.join(words[:3])})"
+        return [cmd], []
+    if (prog == "history" and "-c" in lower[1:]) or prog in ("clear-history", "clhy"):
+        cmd.kind, cmd.why = "irreversible", f"erases the record of what ran on this machine ({' '.join(words[:2])})"
+        return [cmd], []
+    if prog == "wevtutil" and lower[1:2] in (["cl"], ["clear-log"]):
+        cmd.kind, cmd.why = "irreversible", f"erases the record of what ran on this machine ({' '.join(words[:3])})"
+        return [cmd], []
+    if prog == "journalctl" and any(w.startswith(("--vacuum-", "--vacuum=")) or w == "--vacuum" for w in lower[1:]):
+        cmd.kind, cmd.why = "irreversible", f"erases the record of what ran on this machine ({' '.join(words[:2])})"
         return [cmd], []
     if prog == "vssadmin" and lower[1:2] == ["delete"]:
         cmd.kind, cmd.why = "irreversible", f"deletes Volume Shadow Copy restore points ({' '.join(words[:3])})"
@@ -1236,6 +1246,7 @@ KNOWN = READ_ONLY | SHELLS | POWERSHELLS | {
     "sqlite3", "redis-cli", "mongosh", "brew", "apt", "apt-get", "dnf", "yum", "pacman", "choco", "winget", "scoop",
     "set-location", "sl", "new-item", "ni", "copy-item", "cp", "move-item", "mi", "set-content", "sc", "add-content",
     "out-file", "remove-item", "invoke-webrequest", "iwr", "invoke-restmethod", "irm", "start-process", "saps",
+    "tmutil", "wevtutil", "journalctl", "clear-history",
 }
 
 
