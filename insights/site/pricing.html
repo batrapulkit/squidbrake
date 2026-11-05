@@ -116,6 +116,22 @@ h2.plain{display:block;margin:44px 0 6px}
 .oss-list{columns:2;column-gap:28px;font-size:.92rem;list-style:none;padding:0;margin:0}
 .oss-list li{break-inside:avoid;position:relative;padding-left:24px;margin:0 0 10px}
 @media (max-width:760px){ .oss{grid-template-columns:1fr;gap:16px;padding:20px 16px} .oss-list{columns:1} }
+/* hero band: the homepage's sage spotlight and grain, full width behind the plans */
+body{overflow-x:clip}
+.price-hero{position:relative;isolation:isolate;padding:24px 0 56px;text-align:center}
+.price-hero::before,.price-hero::after{content:"";position:absolute;z-index:-1;top:-56px;bottom:0;left:calc(50% - 50vw);right:calc(50% - 50vw);pointer-events:none}
+.price-hero::before{background:radial-gradient(ellipse at 50% 38%,#F4F7F1 0,#DCE3D8 72%);border-bottom:1px solid var(--line)}
+.price-hero::after{opacity:.07;mix-blend-mode:multiply;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) .price-hero::before{background:radial-gradient(ellipse at 50% 38%,#1F2B24 0,#121A15 72%)} :root:not([data-theme="light"]) .price-hero::after{mix-blend-mode:screen;opacity:.05} }
+:root[data-theme="dark"] .price-hero::before{background:radial-gradient(ellipse at 50% 38%,#1F2B24 0,#121A15 72%)}
+.price-hero h1,.price-hero .lead{margin-inline:auto}
+.price-hero .plans,.price-hero .extra{text-align:left}
+.price-hero .extra{text-align:center}
+.kicker .dot{display:inline-block;width:7px;height:7px;margin-right:8px;border-radius:50%;background:var(--accent);vertical-align:1px}
+@media (min-width:761px){ .plan.pick{transform:translateY(-14px)} }
+.trust{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:10px 28px;margin-top:36px;color:var(--muted);font-size:.92rem}
+.trust .ef-row{display:inline-flex;align-items:center;gap:8px;color:var(--ink);text-decoration:none}
+.trust .ef-row img{border-radius:5px}
 .extra{margin:-8px 0 0;color:var(--muted);font-size:.92rem;text-align:center}
 .extra b{color:var(--ink);font-weight:500}
 .soon{font:400 .72rem var(--mono);color:var(--hold);text-transform:uppercase;letter-spacing:.05em}
@@ -133,7 +149,8 @@ h2.plain{display:block;margin:44px 0 6px}
   </header>
 
   <main>
-    <p class="kicker">Pricing</p>
+    <section class="price-hero">
+    <p class="kicker"><span class="dot" aria-hidden="true"></span>Pricing</p>
     <h1>Watching your agents is free. Controlling them starts at $9.</h1>
     <p class="lead">Pick a plan for yourself or for your team. You pay for actions and people, never per agent. Prices are in US dollars, before tax. Pay yearly and get 2 months free.</p>
 
@@ -229,6 +246,13 @@ h2.plain{display:block;margin:44px 0 6px}
     </div>
     <p class="extra"><b>Need more actions?</b> 100,000 more for $50, added automatically so your rules never stop. You can set a monthly cap.</p>
     </div>
+
+    <div class="trust">
+      <a class="ef-row" href="https://www.joinef.com" target="_blank" rel="noopener"><img src="assets/ef-mark.png" alt="" width="24" height="24">Backed by Entrepreneur First</a>
+      <span>Open source, Apache 2.0</span>
+      <span>5,000+ PyPI downloads</span>
+    </div>
+    </section>
 
     <section class="oss" aria-labelledby="oss-h">
       <div>
