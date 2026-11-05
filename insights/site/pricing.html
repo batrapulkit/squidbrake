@@ -100,8 +100,10 @@ h2.plain{display:block;margin:44px 0 6px}
 .plan .price{font-size:2.6rem;line-height:1;font-weight:500;letter-spacing:-0.05em;margin:0}
 .plan .price span{margin-left:3px;font-size:1rem;font-weight:400;letter-spacing:0;color:var(--muted)}
 .plan .per{font:400 .78rem var(--mono);color:var(--muted);margin:8px 0 18px}
-.plan ul{font-size:.92rem;padding-left:1.1em;flex:1}
-.plan .cta{display:block;text-align:center;margin-top:12px;padding:10px 12px;border-radius:999px;background:var(--ink);color:var(--bg);text-decoration:none;font-weight:500;font-size:.95rem}
+.plan ul{font-size:.92rem;list-style:none;padding:18px 0 0;border-top:1px solid var(--line);flex:1}
+.plan li{position:relative;padding-left:24px;margin:8px 0}
+.plan li::before{content:"";position:absolute;left:2px;top:.42em;width:10px;height:5px;border-left:2px solid var(--go);border-bottom:2px solid var(--go);transform:rotate(-45deg)}
+.plan .cta{text-align:center;margin-top:12px;padding:10px 12px;border-radius:999px;background:var(--ink);color:var(--bg);text-decoration:none;font-weight:500;font-size:.95rem}
 .plan.pick .cta{background:var(--accent);color:#fff}
 .plan .cta:hover{opacity:.9}
 .soon{font:400 .72rem var(--mono);color:var(--hold);text-transform:uppercase;letter-spacing:.05em}
