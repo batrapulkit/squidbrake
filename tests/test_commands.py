@@ -224,6 +224,12 @@ def test_no_false_alarm(line):
     "firebase firestore:indexes",
     "bq ls",
 
+    # Secret listing is everyday work; reading secret values waits for an approver (#174)
+    "aws secretsmanager list-secrets",
+    "gcloud secrets list",
+    "az keyvault secret list --vault-name v",
+    "gh secret list",
+
     # Everyday package searching and inspection (#169)
     "cargo search serde",
     "gem list",
@@ -296,6 +302,17 @@ def test_command_of():
 def test_reading_secrets_is_never_just_looking(line):
     r = commands.read(line)
     assert r.kind != "read_only" and "secrets" in r.summary()
+
+
+@pytest.mark.parametrize("line", [
+    "aws secretsmanager get-secret-value --secret-id prod",
+    "gcloud secrets versions access latest --secret=db",
+    "az keyvault secret show --name x --vault-name v",
+])
+def test_cloud_secret_managers_read_as_secret(line):
+    r = commands.read(line)
+    assert r.kind == "secret"
+    assert "shows the value of a stored secret" in r.summary()
 
 
 @pytest.mark.parametrize("line", ["cat README.md", "cat src/tokenizer.py", "cat docs/environment.md", "ls src"])
