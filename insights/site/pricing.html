@@ -90,7 +90,7 @@ h2.plain{display:block;margin:44px 0 6px}
 .plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:8px 0 28px}
 .plan{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:22px 24px;display:flex;flex-direction:column}
 .plan>ul{margin:0 0 14px}
-.plan .cta{align-self:end}
+.plan .cta{align-self:stretch;min-height:44px;display:flex;align-items:center;justify-content:center}
 @media (max-width:760px){ .plans{grid-template-columns:1fr} .plan{padding:18px 16px} }
 .plan.pick{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
 .plan.pick h3{display:flex;align-items:center;justify-content:space-between;gap:8px}
