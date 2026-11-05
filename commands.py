@@ -885,6 +885,9 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
     why = None
     if prog in ("npm", "pnpm", "yarn") and "unpublish" in lower[1:3]:
         why = "removes a published package from the npm registry; others' installs can break and the version can't be reused"
+    elif (prog in ("cargo", "gem") and "yank" in lower[1:3]) \
+            or (prog in ("npm", "pnpm", "yarn") and "deprecate" in lower[1:3]):
+        why = "takes a published version away from everyone who installs it"
     elif prog in ("bun", "poetry", "uv") and lower[1:2] == ["publish"]:
         why = f"publishes a package to a public registry; a released version can't be replaced ({' '.join(words[:2])})"
     elif prog in ("python", "python3", "py") and lower[1:4] == ["-m", "twine", "upload"]:
