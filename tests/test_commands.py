@@ -166,6 +166,14 @@ def test_catastrophic(line):
     "wevtutil cl Security",
     "journalctl --vacuum-time=1s",
     "tmutil disable",
+
+    # Sync commands that delete (#23)
+    "rsync -a --delete src/ dst/",
+    "aws s3 sync . s3://bucket --delete",
+    "robocopy empty d:\\data /MIR",
+    "rclone sync ./empty remote:bucket",
+    "rclone purge remote:bucket",
+    "gsutil rsync -d . gs://bucket",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -289,6 +297,12 @@ def test_no_false_alarm(line):
     "journalctl -u nginx --since today",
     "wevtutil qe Security /c:5",
     "tmutil status",
+
+    # Sync commands without delete (#23)
+    "rsync -a src/ dst/",
+    "aws s3 sync . s3://bucket",
+    "robocopy src dst /E",
+    "rclone ls remote:bucket",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
@@ -311,6 +325,7 @@ def test_summary_explains():
     assert "erases the record of what ran" in commands.read("history -c").summary()
     assert "admin rights" in commands.read("usermod -aG sudo x").summary()
     assert "access key" in commands.read("aws iam create-access-key --user-name x").summary()
+    assert "deletes whatever the destination has" in commands.read("rsync -a --delete src/ dst/").summary()
 
 
 def test_account_reasons_dont_repeat_the_password():
