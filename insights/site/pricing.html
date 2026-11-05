@@ -102,10 +102,17 @@ h2.plain{display:block;margin:44px 0 6px}
 .plan .per{font:400 .78rem var(--mono);color:var(--muted);margin:8px 0 18px}
 .plan ul{font-size:.92rem;list-style:none;padding:18px 0 0;border-top:1px solid var(--line);flex:1}
 .plan li{position:relative;padding-left:24px;margin:8px 0}
-.plan li::before{content:"";position:absolute;left:2px;top:.42em;width:10px;height:5px;border-left:2px solid var(--go);border-bottom:2px solid var(--go);transform:rotate(-45deg)}
+.plan li::before,.oss-list li::before{content:"";position:absolute;left:2px;top:.42em;width:10px;height:5px;border-left:2px solid var(--go);border-bottom:2px solid var(--go);transform:rotate(-45deg)}
 .plan .cta{text-align:center;margin-top:12px;padding:10px 12px;border-radius:999px;background:var(--ink);color:var(--bg);text-decoration:none;font-weight:500;font-size:.95rem}
 .plan.pick .cta{background:var(--accent);color:#fff}
 .plan .cta:hover{opacity:.9}
+.oss{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);gap:32px;margin:56px 0 0;padding:28px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.oss h2.plain{margin:0 0 10px}
+.oss .gh{display:inline-block;margin-top:4px;font-weight:500;text-decoration:none;border-bottom:2px solid var(--accent)}
+.oss .gh:hover{color:var(--accent)}
+.oss-list{columns:2;column-gap:28px;font-size:.92rem;list-style:none;padding:0;margin:0}
+.oss-list li{break-inside:avoid;position:relative;padding-left:24px;margin:0 0 10px}
+@media (max-width:760px){ .oss{grid-template-columns:1fr;gap:16px;padding:20px 16px} .oss-list{columns:1} }
 .extra{margin:-8px 0 0;color:var(--muted);font-size:.92rem;text-align:center}
 .extra b{color:var(--ink);font-weight:500}
 .soon{font:400 .72rem var(--mono);color:var(--hold);text-transform:uppercase;letter-spacing:.05em}
@@ -220,11 +227,25 @@ h2.plain{display:block;margin:44px 0 6px}
     <p class="extra"><b>Need more actions?</b> 100,000 more for $50, added automatically so your rules never stop. You can set a monthly cap.</p>
     </div>
 
-    <h2 class="plain">Open source: free to self-host</h2>
-    <p>Squidbrake is open source under Apache 2.0. Run it yourself on a laptop, Docker or your own server, with every feature, at no cost. The plans above are for the version we host for you.</p>
-
-    <h2 class="plain">What the open-source version includes</h2>
-    <p>Rules that allow, hold or block each action an agent takes; approvals from the dashboard, your phone, Slack, Teams or email, with Face ID or fingerprint if you want them signed; a stop button for one agent, one conversation or all of them; an undo copy before risky changes; a hash-chained audit trail with signed checkpoints, exported as CSV or JSON and checkable by anyone; evidence packs mapped to SOC 2, ISO/IEC 42001 and the EU AI Act; every decision streamed to your SIEM (Splunk, Datadog or an OpenTelemetry collector) as it happens; spend limits per agent; checks that what an agent says it did really happened; and, with your own Anthropic key, a short AI brief on each held action.</p>
+    <section class="oss" aria-labelledby="oss-h">
+      <div>
+        <h2 class="plain" id="oss-h">Open source: free to self-host</h2>
+        <p class="muted">Squidbrake is Apache 2.0. Run it on a laptop, Docker or your own server with every feature, at no cost. The plans above are for the version we host for you.</p>
+        <a class="gh" href="https://github.com/batrapulkit/squidbrake" target="_blank" rel="noopener">View on GitHub</a>
+      </div>
+      <ul class="oss-list" aria-label="What the open-source version includes">
+        <li>Rules that allow, hold or block each action</li>
+        <li>Approvals from the dashboard, your phone, Slack, Teams or email, signed with Face ID or fingerprint if you want</li>
+        <li>A stop button for one agent, one conversation or all of them</li>
+        <li>An undo copy before risky changes</li>
+        <li>A hash-chained audit trail with signed checkpoints, exported as CSV or JSON</li>
+        <li>Evidence packs mapped to SOC 2, ISO/IEC 42001 and the EU AI Act</li>
+        <li>Every decision streamed to your SIEM (Splunk, Datadog or an OpenTelemetry collector)</li>
+        <li>Spend limits per agent</li>
+        <li>Checks that what an agent says it did really happened</li>
+        <li>A short AI brief on each held action, with your own Anthropic key</li>
+      </ul>
+    </section>
 
     <h2 class="plain">For security and procurement teams</h2>
     <dl class="facts">
