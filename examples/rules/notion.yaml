@@ -1,0 +1,63 @@
+# Example policy for the Notion MCP server (@modelcontextprotocol/server-notion / mcp-server-notion).
+# Tool names use the `<app>.<tool>` form produced by `connect.py wrap --app notion`.
+# Reads run automatically, creating or updating pages/databases requires sign-off, and deleting/archiving is blocked.
+default: review
+default_reason: Notion changes require approval
+
+rules:
+  - id: block-destructive-notion-actions
+    action: deny
+    reason: Deleting or archiving Notion pages, blocks, or databases is not allowed
+    match:
+      name:
+        - "notion.*delete*page*"
+        - "notion.*delete*database*"
+        - "notion.*delete*block*"
+        - "notion.*archive*page*"
+        - "notion.*archive*database*"
+        - "notion.*delete*"
+        - "notion.*archive*"
+
+  - id: allow-notion-reads
+    action: allow
+    reason: Read-only Notion operation
+    match:
+      name:
+        - "notion.search"
+        - "notion.get_page"
+        - "notion.get_database"
+        - "notion.query_database"
+        - "notion.get_block_children"
+        - "notion.get_comments"
+        - "notion.get_user"
+        - "notion.list_users"
+        - "notion.notion_search"
+        - "notion.notion_get_page"
+        - "notion.notion_get_database"
+        - "notion.notion_query_database"
+        - "notion.notion_get_block_children"
+        - "notion.notion_get_comments"
+        - "notion.notion_get_user"
+        - "notion.notion_list_users"
+
+  - id: review-notion-writes
+    action: review
+    reason: Creating or updating Notion pages, databases, or comments requires approval
+    match:
+      name:
+        - "notion.create_page"
+        - "notion.update_page"
+        - "notion.create_database"
+        - "notion.update_database"
+        - "notion.append_block_children"
+        - "notion.update_block"
+        - "notion.create_comment"
+        - "notion.move_page"
+        - "notion.notion_create_page"
+        - "notion.notion_update_page"
+        - "notion.notion_create_database"
+        - "notion.notion_update_database"
+        - "notion.notion_append_block_children"
+        - "notion.notion_update_block"
+        - "notion.notion_create_comment"
+        - "notion.notion_move_page"
