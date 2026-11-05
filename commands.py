@@ -611,11 +611,16 @@ def _starts_automatically(prog: str, lower: list[str]) -> str | None:
                 continue
             if word.startswith("-"):
                 continue
-            if word == "enable":
-                return "enables a service to start automatically (systemctl enable)"
+            if word in ("enable", "link"):
+                action = "enables" if word == "enable" else "links"
+                return f"{action} a service to start automatically (systemctl {word})"
             break
-    if prog == "launchctl" and lower[1:2] == ["load"]:
-        return "loads a launch agent or daemon that can run after this session (launchctl load)"
+    if prog == "launchctl":
+        sub = next((w for w in lower[1:] if not w.startswith("-")), None)
+        if sub in ("load", "bootstrap", "enable"):
+            action = "enables" if sub == "enable" else "loads"
+            daemon = " or daemon" if sub == "load" else ""
+            return f"{action} a launch agent{daemon} that can run after this session (launchctl {sub})"
     if prog == "crontab" and "-l" not in lower and "-r" not in lower:
         if "-e" in lower or "-" in lower[1:] or _positional(lower):
             return "installs or edits scheduled commands that will run later (crontab)"
