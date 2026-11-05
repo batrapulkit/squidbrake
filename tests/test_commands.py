@@ -130,6 +130,11 @@ def test_catastrophic(line):
     "firebase firestore:delete --all-collections",
     "bq rm -r -f dataset",
 
+    # Skipping git hooks (#172)
+    "git commit --no-verify -m x",
+    "git push --no-verify",
+    "git config core.hooksPath /dev/null",
+
     # Local accounts and admin rights, and new cloud access keys (#175)
     "useradd -m -G sudo x",
     "usermod -aG sudo x",
@@ -235,6 +240,12 @@ def test_no_false_alarm(line):
     "firebase firestore:indexes",
     "bq ls",
 
+    # Everyday git work without --no-verify (#172)
+    "git commit -m fix",
+    "git push origin main",
+    "git push -n origin main",          # -n on push is --dry-run, not --no-verify
+    "git config user.name x",
+
     # Looking at accounts and keys is not changing them (#175)
     "id", "groups", "net user", "getent passwd x", "aws iam list-access-keys",
     "usermod -aG audio x", "usermod --help",
@@ -277,6 +288,7 @@ def test_summary_explains():
     assert "APFS" in commands.read("diskutil apfs deleteContainer disk2").summary()
     assert "backup" in commands.read("tmutil delete /Volumes/Backup/x").summary()
     assert "DNS name" in commands.read("nslookup $(whoami).attacker.example").summary()
+    assert "skips the repository's own checks (git hooks)" in commands.read("git commit --no-verify -m x").summary()
     assert "takes a published version away" in commands.read("cargo yank --version 1.0.0").summary()
     assert "erases the record of what ran" in commands.read("history -c").summary()
     assert "admin rights" in commands.read("usermod -aG sudo x").summary()
