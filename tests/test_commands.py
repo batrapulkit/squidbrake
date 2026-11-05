@@ -49,11 +49,14 @@ def test_catastrophic(line):
     "git reset --hard HEAD~3", "git clean -fdx", "git branch -D feature", "git checkout -- .", "git stash drop",
     "git reflog expire --expire=now --all", "git reflog delete HEAD@{1}",
     "terraform destroy -auto-approve", "terraform apply -auto-approve", "tofu state rm aws_db.main",
+    "cdk destroy --force",
     "kubectl delete ns prod", "kubectl -n prod delete deployment api", "helm uninstall api",
     "aws rds delete-db-snapshot --db-snapshot-identifier x", "aws ec2 terminate-instances --instance-ids i-1",
     "aws s3 rm s3://bucket --recursive", "aws s3 rb s3://bucket --force", "gcloud compute instances delete vm-1",
     "az group delete -n rg", 'psql -c "DROP TABLE users"', 'mysql -e "TRUNCATE orders"',
+    "cqlsh -e 'DROP KEYSPACE prod'", "influx bucket delete -n prod", "etcdctl del --prefix /",
     'sqlite3 app.db "DELETE FROM users;"', "docker system prune -af", "docker volume rm data",
+    "podman system reset -f",
     "docker compose down -v", "npm publish", "gh repo delete me/repo --yes", "shutdown -h now", "crontab -r",
     "tmutil delete /Volumes/Backup/x", "tmutil delete -d /Volumes/Backup -t 2026-01-01-120000",
     f"{VSS} delete shadows /all /quiet", "reg delete HKLM\\Software\\X /f", "cipher /w:C",
@@ -289,6 +292,14 @@ def test_no_false_alarm(line):
     "journalctl -u nginx --since today",
     "wevtutil qe Security /c:5",
     "tmutil status",
+
+    # External CLI inspection (#173)
+    'cqlsh -e "SELECT * FROM ks.t LIMIT 5"',
+    "influx bucket list",
+    "etcdctl get --prefix /app",
+    "podman ps",
+    "cdk diff",
+    "cdk synth",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
@@ -311,6 +322,11 @@ def test_summary_explains():
     assert "erases the record of what ran" in commands.read("history -c").summary()
     assert "admin rights" in commands.read("usermod -aG sudo x").summary()
     assert "access key" in commands.read("aws iam create-access-key --user-name x").summary()
+    assert "DROP KEYSPACE" in commands.read("cqlsh -e 'DROP KEYSPACE prod'").summary()
+    assert "InfluxDB" in commands.read("influx bucket delete -n prod").summary()
+    assert "etcd" in commands.read("etcdctl del --prefix /").summary()
+    assert "containers" in commands.read("podman system reset -f").summary()
+    assert "infrastructure" in commands.read("cdk destroy --force").summary()
 
 
 def test_account_reasons_dont_repeat_the_password():
