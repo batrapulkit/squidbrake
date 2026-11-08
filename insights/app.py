@@ -33,6 +33,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
+import reporting_ingest
+
 HERE = Path(__file__).resolve().parent
 DB = Path(os.getenv("INSIGHTS_DB", HERE / "data" / "insights.db"))
 ADMIN_KEY = os.getenv("INSIGHTS_ADMIN_KEY", "")
@@ -307,6 +309,8 @@ def public_url(request: Request) -> str:
 
 # --------------------------------------------------------------------------- installs report in
 
+reporting_ingest.mount(app, db, admin, COMMUNITY_CODE)
+
 class JoinIn(BaseModel):
     code: str = Field(max_length=40)
     install_id: str = Field(pattern=r"^[0-9a-f]{32}$")
@@ -325,10 +329,7 @@ class PingIn(BaseModel):
 
 
 async def _ping_body(request: Request) -> bytes:
-    raw = await request.body()
-    if len(raw) > 64_000:
-        raise HTTPException(413, "too large")
-    return raw
+    return await reporting_ingest.read_body(request, 64_000)
 
 
 # A pilot code is the only secret on a start page (and, for a hosted pilot, the way to its keys once), so guessing
