@@ -582,6 +582,7 @@ def test_with_supabase_only_a_verified_sign_in_signs_up_and_signing_in_again_giv
 def test_signup_hosted_waits_for_you_to_approve_it(insights, monkeypatch):
     import app as insights_app
     insights_app._requests.clear()
+    monkeypatch.setattr(insights_app, "HOSTED_AUTO_APPROVE", False)          # HOSTED_AUTO_APPROVE=0
     told = []
     monkeypatch.setattr(insights_app, "notify", told.append)
     with insights_app.db() as c:
@@ -659,6 +660,7 @@ def test_team_plan_signup_is_a_hosted_trial_waiting_for_approval(insights, monke
     import app as insights_app
     insights_app._requests.clear()
     monkeypatch.setattr(insights_app, "notify", lambda text: None)
+    monkeypatch.setattr(insights_app, "HOSTED_AUTO_APPROVE", False)
     monkeypatch.setattr(insights_app, "CHECKOUT_URL", "https://pay.example/team")
     r = insights.post("/v1/signup", json={"name": "Ivy", "email": "ivy@trial.dev", "company": "TrialCo",
                                           "setup": "local", "plan": "team", "source": "invite"}).json()

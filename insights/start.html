@@ -223,7 +223,8 @@ function hostedPage() {
           That's what you see and approve in the dashboard, behind your keys.</li>
         <li><b>We look at counts and at what was held or blocked</b> (the program, the rule, what happened, and sizes as
           numbers, never the arguments, files or content) to learn what helps, not at what your agents worked on.</li>
-        <li><b>Working on something sensitive?</b> Use the private setup instead: everything stays on your machine.</li>
+        <li><b>Working on something sensitive?</b> Run Squidbrake on your own machine instead (see the
+          <a href="/docs">docs</a>): then everything stays there.</li>
         <li>When the pilot ends, or whenever you ask, we delete your dashboard and everything in it.</li>
       </ul>
     </section>
@@ -245,13 +246,31 @@ function hostedPage() {
   const keys = document.getElementById("keys");
   const big = "border:0;background:var(--accent);color:#fff;border-radius:10px;padding:11px 18px;font:inherit;font-weight:650;cursor:pointer;text-decoration:none;display:inline-block";
   const render = (s) => {
-    if (s.keys_shown && !s.revealed) {
+    const lost = D.self_serve_keys
+      ? `Lost them? <a href="/signup?new_keys=1">Sign in again for new keys</a> (your agents keep working).`
+      : `Lost them? <button id="newKeys" class="tabs-like" style="border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:9px;padding:5px 11px;font:inherit;cursor:pointer">Get new keys</button>
+         (your agents keep working; your old admin key stops).`;
+    if (s.rekey) {
+      keys.innerHTML = `<p>⏳ Making new keys for <b>${esc(D.dashboard)}</b>. This page updates by itself (under a minute).</p>`;
+      setTimeout(poll, 4000);
+    } else if (s.keys_shown && !s.revealed) {
       keys.innerHTML = `<p>Your keys were already shown on this page. Your dashboard: <a href="${esc(D.dashboard)}/dashboard" target="_blank" rel="noopener">${esc(D.dashboard)}</a>
-        (sign in with your <b>admin</b> key). Lost them? Reply to the message this link came in and we'll issue new ones.</p>
+        (sign in with your <b>admin</b> key). ${lost}</p>
         <p class="note">For step 2, put your <b>agent</b> key in place of <code>${keyless}</code>.</p>`;
+      const nk = document.getElementById("newKeys");
+      if (nk) nk.onclick = async () => {
+        nk.disabled = true;
+        const r = await fetch(`/v1/pilot/${encodeURIComponent(D.code)}/new-keys`, { method: "POST" });
+        if (r.ok) return render({ ...s, rekey: true });
+        nk.disabled = false;
+        nk.insertAdjacentHTML("afterend", ` <span class="note" style="color:var(--warn)">${esc((await r.json().catch(() => ({}))).detail || "Couldn't ask for new keys.")}</span>`);
+      };
     } else if (s.state === "waiting") {
-      keys.innerHTML = `<p>✓ Got it. We're setting up your dashboard at <b>${esc(D.dashboard)}</b> by hand and will email
-        you when it's ready (usually within a day). This page updates by itself, so you can also just come back to it.</p>`;
+      keys.innerHTML = D.auto_approve
+        ? `<p>✓ You're in. Every hosted dashboard is taken right now, so yours at <b>${esc(D.dashboard)}</b>
+          starts as soon as one frees up, and we'll email you. This page updates by itself, so you can also just come back to it.</p>`
+        : `<p>✓ Got it. We're setting up your dashboard at <b>${esc(D.dashboard)}</b> by hand and will email
+          you when it's ready (usually within a day). This page updates by itself, so you can also just come back to it.</p>`;
       setTimeout(poll, 30000);
     } else if (!s.keys_ready) {
       keys.innerHTML = `<p>⏳ Setting up your dashboard at <b>${esc(D.dashboard)}</b>. This page updates by itself (under a minute).</p>`;
@@ -284,7 +303,7 @@ function hostedPage() {
     current = cmds(k.agent_key); show(box.dataset.os);
     document.getElementById("keyNote").textContent = "Your agent key is filled in. Paste the whole line.";
   };
-  render({ state: D.state, keys_ready: D.keys_ready, keys_shown: D.keys_shown });
+  render({ state: D.state, keys_ready: D.keys_ready, keys_shown: D.keys_shown, rekey: D.rekey });
 }
 
 // the setup checklist: ticks are kept in this browser only (a convenience; nothing is sent)

@@ -26,7 +26,23 @@ one-line command that connects Claude Code to it.
 - Caddy serves `*.HOSTED_DOMAIN` with on-demand certificates, and asks `/v1/caddy/ask` first, so it only gets
   certificates for hosted pilots that exist.
 - Be clear with founders: on a hosted gateway their agents' actions (commands, tool inputs and results) are stored on
-  your server. The start page says so, and offers the private setup instead.
+  your server. The start page says so, and points to the self-hosted setup in the docs instead.
+
+### Self-serve sign-up
+
+`/signup` offers only the hosted setup (the API still accepts `setup: "local"`; the self-hosted install stays in the
+docs). A sign-up gets its gateway started at once while a slot is free (`HOSTED_AUTO_APPROVE`, on unless set to `0`);
+when all `HOSTED_MAX` slots are taken it waits, you get a message, and you approve it in the admin once one is free.
+Keys are shown once on the start page. Someone who lost theirs gets new ones from there, at most 3 times an hour
+(`INSIGHTS_NEW_KEYS_PER_HOUR`): with Supabase sign-in they sign in again first (`/signup?new_keys=1`); without it,
+the start page link is enough. provision.py then makes the new keys.
+
+### Monthly usage (for plan limits)
+
+Admin, then **Monthly usage** (`GET /v1/admin/usage/monthly?months=6`): real actions per pilot and calendar month
+(UTC). Real means something an agent did or tried: not a person's prompt, an agent's question, or the installer's
+own hook check (`pilot.is_real`), from the daily counts each install sends (a hosted gateway is one). A month from a
+gateway older than this count shows all its actions and is marked estimated.
 
 ## The database: your Supabase project
 
@@ -60,7 +76,8 @@ Only after `squidbrake pilot join CODE --server URL`, which shows the list below
 
 - Squidbrake version, OS, enforce/shadow mode, number of rules
 - agent labels (e.g. `claude-code`) and how many actions each made
-- per day, for the last 7 days: actions allowed, held, approved, rejected, blocked, timed out, failed
+- per day, for the last 7 days: actions allowed, held, approved, rejected, blocked, timed out, failed, and how many
+  were agents' actions (not prompts, questions or the install check)
 - the ids of the rules that blocked or held things
 
 **Never:** commands, code, files, prompts, tool inputs or outputs, keys, people's names. `squidbrake pilot leave` stops it.
