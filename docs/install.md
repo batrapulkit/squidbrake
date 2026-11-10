@@ -60,13 +60,19 @@ The first start installs everything, prints an **admin** key (for the dashboard)
 (shown once, so save them), and opens `http://localhost:8080/dashboard`. No configuration needed; every
 setting in `.env.example` is optional.
 
-The first start in a terminal also asks once whether to keep Squidbrake running in the background, so your agents
-(which fail closed) are never locked out because it's down. Enter means yes (type n to keep it in the window);
-scripts or CI are never asked and get no service. It adds a login item: a LaunchAgent on macOS, a systemd user service on
-Linux, a `Run` registry value on Windows (some endpoint security tools flag these, so check with IT first).
-`squidbrake start --background` installs it without asking (or set `SQUIDBRAKE_BACKGROUND=1` for unattended
-installs), `squidbrake service status` checks it, `squidbrake service stop` takes it out, and `squidbrake run`
-(or `./start.sh --foreground`) always runs in the window. Docker restarts by itself already.
+Squidbrake always runs in the background, so your agents (which fail closed) are never locked out because it's
+down: it starts at every login and again whenever it stops. It adds a login item: a LaunchAgent on macOS, a systemd
+user service on Linux, a `Run` registry value on Windows (some endpoint security tools flag these, so check with IT
+first). `squidbrake service status` checks it, `squidbrake service stop` takes it out until the next start, and
+`squidbrake run` (or `./start.sh --foreground`, or `SQUIDBRAKE_BACKGROUND=0`) runs in the window instead. Docker
+restarts by itself already. Running `squidbrake setup` again over an older install's gateway switches the service to
+the new one.
+
+It also keeps itself up to date: once a day the background gateway looks at PyPI, and a version that has been out
+for a day is installed in place, checked, and started, at a moment nothing is waiting for a person. If the new
+version doesn't start, the one before is put back. Only installs Squidbrake made are updated (the installer's
+folder, a virtualenv, uv or pipx), never a system Python, Docker or the native build. Turn it off with
+`SQUIDBRAKE_NO_AUTO_UPDATE=1`.
 
 Keys: `python server.py add-key NAME [--approver]`, `python server.py remove-key NAME`, `python server.py keys`.
 Changes apply immediately, no restart needed. (Inside Docker, prefix with `docker compose exec gateway`.)
@@ -102,7 +108,7 @@ from a clone, use the `.venv` Python that `start.bat` / `start.sh` created):
   (`data/shop.db`, created with sample customers / products / orders; set `DB_PATH` to use your own).
   Reads run immediately, `UPDATE`/`DELETE`/`INSERT`/`ALTER` wait for your approval, and `DROP`/`TRUNCATE` are blocked.
 
-Wrapping a GitHub, Stripe, Slack or Postgres / Supabase MCP server? Start with the commented example policies in
+Wrapping a GitHub, Stripe, Slack, Gmail, Atlassian (Jira/Confluence), Linear or Postgres / Supabase MCP server? Start with the commented example policies in
 [`examples/rules/`](../examples/rules/) and adjust their tool-name patterns to the server's tool list.
 Running an agent with nobody watching (a nightly loop, a cron job, a Routine)? Start from
 [`unattended-agent.yaml`](../examples/rules/unattended-agent.yaml): a step cap, an allowlist, no redoing work,

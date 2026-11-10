@@ -113,12 +113,12 @@ def test_first_start_is_step_3_and_ends_with_setup_complete(mac, monkeypatch, ca
     assert "step 3 of 3" not in capsys.readouterr().out
 
 
-def test_no_to_the_background_still_says_the_last_step(mac, monkeypatch, capsys):
-    monkeypatch.setattr("builtins.input", lambda prompt: "n")
+def test_first_start_asks_nothing_and_runs_in_the_background(mac, monkeypatch, capsys):
+    monkeypatch.setattr("builtins.input", lambda prompt: pytest.fail("asked"))
     service.start([])
     out = capsys.readouterr().out
-    assert mac["foreground"] == 1 and "step 3 of 3" in out
-    assert "quit and reopen your agents" in out and "your agents' actions are blocked" in out
+    assert mac["installed"] and mac["foreground"] == 0 and "step 3 of 3" in out
+    assert "quit and reopen your agents" in out
 
 
 def test_a_script_sees_no_header(mac, monkeypatch, capsys):

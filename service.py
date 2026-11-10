@@ -1,27 +1,35 @@
 """
-Optionally keep the gateway running in the background, started again whenever you log in and whenever it stops.
-Asked first (Enter means yes): adding a login item can trip the endpoint security tools many companies run.
+Keep the gateway running in the background: started again whenever you log in and whenever it stops, and updated
+to each new version on its own (see "Staying up to date" below). Agents' actions are blocked while the gateway is
+down, so this is how Squidbrake always runs where the computer has a service manager; nothing asks about it.
 
-  python service.py start [RUN OPTIONS]   what `squidbrake`, start.sh and start.bat do. The first time, in a terminal,
-                                          it asks once whether to run in the background (Enter means yes) and
-                                          remembers the answer. No terminal (scripts, CI) means no, and nothing is
-                                          remembered. RUN OPTIONS go to `server.py run`, e.g. --port 9000
-  python service.py start --background    install the service and start it, without asking
-  python service.py start --foreground    run in this window, without asking
-  python service.py stop                  stop it and take the service out (it no longer starts at login)
+  python service.py start [RUN OPTIONS]   what `squidbrake`, start.sh and start.bat do: install the service (or set
+                                          it up again, pointing at this install) and start it. RUN OPTIONS go to
+                                          `server.py run`, e.g. --port 9000
+  python service.py start --foreground    run in this window instead (debugging; nothing restarts it)
+  python service.py stop                  stop it and take the service out, until the next start
   python service.py status                is it installed, and is the gateway answering
 
   macOS    ~/Library/LaunchAgents/com.squidbrake.gateway.plist   (launchd)   log: ~/Library/Logs/squidbrake.log
   Linux    ~/.config/systemd/user/squidbrake.service              (systemd)   log: journalctl --user -u squidbrake
   Windows  HKCU\\...\\CurrentVersion\\Run, value Squidbrake         (at login)  log: ~/.squidbrake/squidbrake.log
 
-SQUIDBRAKE_BACKGROUND=1 or 0 answers the question for unattended installs; SQUIDBRAKE_FOREGROUND=1 is the same as
---foreground. Docker and Linux machines without a systemd user session always run in the foreground.
+SQUIDBRAKE_BACKGROUND=0 or SQUIDBRAKE_FOREGROUND=1 is the same as --foreground (e.g. where IT doesn't allow login
+items). Docker and Linux machines without a systemd user session always run in the foreground.
+
+Staying up to date: the background gateway looks at PyPI once a day. A version that has been out for a day
+(SQUIDBRAKE_AUTO_UPDATE_AFTER_HOURS) is installed in place, checked (`server.py init` must run), and the gateway
+restarts on it, at a moment nothing is waiting for a person and no agent acted in the last 10 minutes. If the check
+fails, the version before is put back. Only installs Squidbrake made are updated: the installer's own folder, a
+virtualenv, uv or pipx; never a system Python, Docker or the native build. Off: SQUIDBRAKE_NO_AUTO_UPDATE=1 (or
+SQUIDBRAKE_NO_UPDATE_CHECK=1 / DO_NOT_TRACK=1, which also stop the daily look at PyPI).
 """
 from __future__ import annotations
 
 import json
+import logging
 import os
+import re
 import plistlib
 import shutil
 import subprocess
@@ -38,6 +46,7 @@ LABEL = "com.squidbrake.gateway"
 UNIT = "squidbrake.service"
 RUN_VALUE = "Squidbrake"
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+log = logging.getLogger("gateway")
 PASS_ENV = ("SQUIDBRAKE_HOME", "SQUIDBRAKE_CLI", "DATABASE_URL", "KEYS_PATH", "RULES_PATH", "PORT", "HOST")
 
 
@@ -79,6 +88,7 @@ def _env() -> dict[str, str]:
     env = {k: os.environ[k] for k in PASS_ENV if os.getenv(k)}
     env["PATH"] = os.getenv("PATH", "/usr/local/bin:/usr/bin:/bin")
     env["PYTHONUNBUFFERED"] = "1"
+    env["SQUIDBRAKE_SERVICE"] = "1"      # the gateway knows a service restarts it (so it may update itself)
     return env
 
 
@@ -339,47 +349,12 @@ def _interactive() -> bool:
         return False
 
 
-def _ask(kind: str) -> bool | None:
-    print("\nOne question. Squidbrake can keep running in the background, so your agents are never blocked because")
-    print(f"it's down. That adds {_where(kind)},")
-    print("which starts it at every login and again if it stops. Turn it off any time: " + _cli("stop"))
-    try:
-        answer = input("Run Squidbrake in the background? [Y/n] ").strip().lower()
-    except (EOFError, KeyboardInterrupt):
-        print()
-        return None
-    if answer in ("n", "no"):   # Enter means yes: in a window that gets closed, every agent's action is blocked
-        print("\nRunning in this window. Keep it open: while Squidbrake isn't running, your agents' actions are blocked.\n"
-              f"Start it again with: {_cli('start')}   (or in the background: {_cli('start --background')})\n"
-              "Once it's running, quit and reopen your agents (Claude Code, Cursor, Codex, ...), then work as usual.\n")
-        return False
-    return True
-
-
 def wants_background(kind: str) -> bool:
-    """Only ever True after a yes: --background, SQUIDBRAKE_BACKGROUND=1, or the question asked once."""
-    env = os.getenv("SQUIDBRAKE_BACKGROUND", "").strip().lower()
-    if env in ("1", "yes", "true", "on"):
-        return True
-    if env in ("0", "no", "false", "off"):
+    """Always, unless SQUIDBRAKE_BACKGROUND=0 says otherwise (--foreground and SQUIDBRAKE_FOREGROUND=1: backend())."""
+    if os.getenv("SQUIDBRAKE_BACKGROUND", "").strip().lower() in ("0", "no", "false", "off"):
         return False
-    saved = _saved_choice()
-    if saved is not None:
-        if saved and not _installed(kind):   # taken out by hand: don't put it back without asking
-            print(f"The background service isn't installed. Running in this window; to put it back: "
-                  f"{_cli('start --background')}\n")
-            return False
-        return saved
-    if _installed(kind):                    # installed before the question existed
-        return True
-    if not _interactive():
-        return False
-    yes = _ask(kind)
-    if yes is not None:
-        _save_choice(yes)
-    if yes is None:         # Ctrl-C or no answer (a no already said this)
-        print(f"Running in this window. To run in the background later: {_cli('start --background')}\n")
-    return bool(yes)
+    _save_choice(True)
+    return True
 
 
 def is_first_start(run_args: list[str]) -> bool:
@@ -396,7 +371,7 @@ def is_first_start(run_args: list[str]) -> bool:
 def start(run_args: list[str]) -> int:
     if "--foreground" in run_args:
         return _foreground([a for a in run_args if a != "--foreground"])
-    explicit = "--background" in run_args
+    explicit = "--background" in run_args            # the same as no flag now; kept for scripts that pass it
     run_args = [a for a in run_args if a != "--background"]
     kind = backend()
     if kind is None:
@@ -407,9 +382,7 @@ def start(run_args: list[str]) -> int:
     if is_first_start(run_args):
         import flow                            # the last of the three setup commands: say so (see flow.py)
         flow.header(3)
-    if explicit:
-        _save_choice(True)
-    elif not wants_background(kind):
+    if not explicit and not wants_background(kind):
         return _foreground(run_args)
     port = _port(run_args)
     busy = _answering(port)
@@ -452,9 +425,9 @@ def stop() -> int:
     kind = backend() or ("systemd" if sys.platform.startswith("linux") else None)
     removed = {"launchd": _launchd_remove, "systemd": _systemd_remove, "windows": _win_remove}.get(kind, lambda: False)()
     _save_choice(False)
-    print("Stopped Squidbrake and took out the background service. It won't start at login any more."
-          if removed else "The background service wasn't installed; nothing to stop.")
-    print(f"Run in this window: {_cli('start')}   In the background again: {_cli('start --background')}")
+    print("Stopped Squidbrake and took out the background service, until the next start. While it's stopped, "
+          "your agents' actions are blocked." if removed else "The background service wasn't installed; nothing to stop.")
+    print(f"Start it again (in the background): {_cli('start')}")
     return 0
 
 
@@ -468,8 +441,155 @@ def status(run_args: list[str]) -> int:
     print(f"background service  {'installed' if installed else 'not installed'}  ({where})")
     print(f"gateway             {'answering' if up else 'NOT answering'} on http://localhost:{port}")
     if not installed and kind:
-        print(f"Install it with: {_cli('start --background')}")
+        print(f"Install it with: {_cli('start')}")
     return 0 if up else 1
+
+
+# --------------------------------------------------------------------------- staying up to date
+
+AUTO_UPDATE_AFTER_H = float(os.getenv("SQUIDBRAKE_AUTO_UPDATE_AFTER_HOURS", "24"))
+_on = lambda name: os.getenv(name, "").strip().lower() in ("1", "true", "yes", "on")
+_num = lambda v: tuple(int(n) for n in re.findall(r"\d+", str(v))[:3])
+
+
+def _running_path() -> Path:
+    return state_dir() / "running.json"
+
+
+def record_running(version: str) -> None:
+    """`server.py run` says which install and version is running, so `setup` can tell an old one is (stale())."""
+    try:
+        _running_path().parent.mkdir(parents=True, exist_ok=True)
+        _running_path().write_text(json.dumps({"version": version, "python": sys.executable, "server": str(SERVER),
+                                               "pid": os.getpid()}, indent=2), encoding="utf-8")
+    except OSError:
+        pass
+
+
+def stale(kind: str, version: str) -> bool:
+    """A gateway answers, but is it this install's service, at this version? If not, setup sets the service up again:
+    an older install's service would otherwise keep starting the old version at every login."""
+    if not _installed(kind):
+        return True
+    try:
+        r = json.loads(_running_path().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return True                      # gateways from before 0.14.16 don't say: they're older than this one
+    return (r.get("version"), r.get("python"), r.get("server")) != (version, sys.executable, str(SERVER))
+
+
+def auto_update_on() -> bool:
+    return not (_on("SQUIDBRAKE_NO_AUTO_UPDATE") or _on("SQUIDBRAKE_NO_UPDATE_CHECK") or _on("DO_NOT_TRACK")
+                or os.getenv("IN_DOCKER") or getattr(sys, "frozen", False))
+
+
+def install_kind() -> str | None:
+    """How this copy was installed, if it's one Squidbrake may update by itself."""
+    if not (HERE / "__init__.py").exists():        # a checkout (start.sh): git pull is how that one updates
+        return None
+    exe = sys.executable.replace("\\", "/").lower()
+    if "/uv/tools/" in exe:
+        return "uv" if _uv() else None
+    if "/pipx/" in exe:
+        return "pipx" if shutil.which("pipx") else None
+    if sys.prefix != sys.base_prefix:              # the installer's ~/.squidbrake/app, or another virtualenv
+        return "venv"
+    return None                                    # a system Python: other programs share it, so not ours to change
+
+
+def _uv() -> str | None:
+    found = shutil.which("uv")
+    for p in (Path.home() / ".local" / "bin" / "uv", Path.home() / ".cargo" / "bin" / "uv"):
+        if not found and p.exists():
+            found = str(p)
+    return found
+
+
+def _upgrade_cmd(kind: str, version: str) -> list[str]:
+    return {"venv": [sys.executable, "-m", "pip", "install", "--quiet", "--disable-pip-version-check",
+                     f"squidbrake=={version}"],
+            "uv": [_uv() or "uv", "tool", "upgrade", "squidbrake"],
+            "pipx": [shutil.which("pipx") or "pipx", "upgrade", "squidbrake"]}[kind]
+
+
+def _pypi() -> tuple[str, float]:
+    """The newest version on PyPI and when it was uploaded (seconds since the epoch)."""
+    import httpx
+    info = httpx.get("https://pypi.org/pypi/squidbrake/json", timeout=10).json()
+    latest = info["info"]["version"]
+    files = info.get("releases", {}).get(latest) or info.get("urls") or []
+    up = min((datetime.fromisoformat(f["upload_time_iso_8601"].replace("Z", "+00:00")).timestamp() for f in files
+              if f.get("upload_time_iso_8601")), default=time.time())
+    return latest, up
+
+
+def _installed_version() -> str:
+    r = subprocess.run([sys.executable, "-c", "import importlib.metadata as m; print(m.version('squidbrake'))"],
+                       capture_output=True, text=True, timeout=60)
+    return r.stdout.strip() if r.returncode == 0 else ""
+
+
+def _works() -> bool:
+    """The new code on disk loads, reads its settings and keys: `server.py init` (what every start runs first)."""
+    try:
+        return subprocess.run([sys.executable, str(SERVER), "init", "--quiet"], cwd=str(HERE), capture_output=True,
+                              timeout=180).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def self_update(current: str) -> bool:
+    """Once a day (the caller's loop): install a newer version in place. True: it's installed and works, so the
+    gateway should exit and the service starts it again on the new one. Never raises for an expected failure."""
+    path = state_dir() / "update-check.json"           # shared with the CLI's notice (squidbrake/cli.py)
+    try:
+        cache = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        cache = {}
+    kind = install_kind()
+    if not auto_update_on() or not kind:
+        return False
+    if cache.get("uploaded_for") and cache.get("uploaded_for") == cache.get("latest") and \
+            time.time() - cache.get("checked", 0) < 20 * 3600:
+        latest, uploaded = str(cache.get("latest") or ""), float(cache["uploaded"])    # looked today already
+    else:
+        try:
+            latest, uploaded = _pypi()
+        except Exception as e:
+            log.info("update check: PyPI not reachable (%s)", e)
+            return False
+        cache.update(checked=time.time(), latest=latest, uploaded=uploaded, uploaded_for=latest)
+
+    def save():
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(cache), encoding="utf-8")
+        except OSError:
+            pass
+    if _num(latest) <= _num(current) or time.time() - uploaded < AUTO_UPDATE_AFTER_H * 3600 or \
+            (cache.get("failed") == latest and time.time() - cache.get("failed_at", 0) < 86400):
+        save()
+        return False
+    log.info("updating Squidbrake %s -> %s (%s)", current, latest, kind)
+    try:
+        r = subprocess.run(_upgrade_cmd(kind, latest), capture_output=True, text=True, timeout=600)
+        ok = r.returncode == 0 and _num(_installed_version()) > _num(current) and _works()
+        why = (r.stderr or r.stdout).strip()[-300:] if r.returncode else "the new version didn't start"
+    except (OSError, subprocess.TimeoutExpired) as e:
+        ok, why = False, str(e)
+    if not ok:
+        log.warning("update to %s didn't work (%s); staying on %s", latest, why, current)
+        cache.update(failed=latest, failed_at=time.time())
+        if _installed_version() != current:            # half installed: put the one that works back
+            back = {"venv": _upgrade_cmd("venv", current),
+                    "uv": [_uv() or "uv", "tool", "install", "--force", f"squidbrake=={current}"],
+                    "pipx": [shutil.which("pipx") or "pipx", "install", "--force", f"squidbrake=={current}"]}[kind]
+            try:
+                subprocess.run(back, capture_output=True, timeout=600)
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+    save()
+    return ok
 
 
 def _cli(sub: str) -> str:

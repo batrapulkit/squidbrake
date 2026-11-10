@@ -428,6 +428,31 @@ dialog.pl-edit .nums { grid-column:1/-1; display:grid; grid-template-columns:rep
 @media (max-width:560px) { dialog.pl-edit form, dialog.pl-edit .nums { grid-template-columns:1fr 1fr; } }
 dialog.pl-edit .row { grid-column:1/-1; display:flex; gap:8px; justify-content:flex-end; align-items:center; flex-wrap:wrap; }
 dialog.pl-edit .row .err { margin:0 auto 0 0; }
+
+/* Retention view (#retention): series colors checked for color-blind separation, light and dark */
+:root { --rt-retained:#2a78d6; --rt-new:#1baf7a; --rt-back:#eda100; --rt-churn:#e34948; }
+@media (prefers-color-scheme: dark) { :root { --rt-retained:#3987e5; --rt-new:#199e70; --rt-back:#c98500; --rt-churn:#d93a3a; } }
+.ov-card h3 .btn { margin-left:auto; font:inherit; font-size:13px; font-weight:450; }
+.rt-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(min(100%, 480px), 1fr)); gap:16px; margin-top:16px; }
+.rt-grid .wide { grid-column:1 / -1; }
+.rt-chart { display:block; width:100%; height:auto; overflow:visible; }
+.rt-chart text { font:11px var(--sans); fill:var(--muted); }
+.rt-lg { display:flex; flex-wrap:wrap; gap:6px 16px; font-size:12.5px; color:var(--ink-2); margin-top:10px; }
+.rt-lg i { display:inline-block; width:10px; height:10px; border-radius:3px; background:var(--c); margin-right:6px; vertical-align:-1px; }
+.rt-table { border-collapse:separate; border-spacing:3px; font-size:12px; min-width:0; width:auto; }
+.rt-table th { background:none; font-weight:500; color:var(--muted); text-transform:none; letter-spacing:0; padding:2px 6px; text-align:center; border:0; }
+.rt-table th:first-child, .rt-table td.nm { text-align:left; white-space:nowrap; }
+.rt-table td { padding:0; border:0; vertical-align:middle; }
+.rt-table tbody > tr > td { border-top:0; } .rt-table tbody > tr:hover > td { background:none; }
+.rt-table td.nm { padding-right:10px; color:var(--ink-2); max-width:220px; overflow:hidden; text-overflow:ellipsis; }
+.rt-table td.sz { color:var(--muted); text-align:right; padding-right:6px; font-variant-numeric:tabular-nums; }
+.rt-cell { min-width:38px; height:26px; border-radius:4px; display:flex; align-items:center; justify-content:center;
+           font-variant-numeric:tabular-nums; color:var(--ink); font-size:11.5px; }
+.rt-cell.hi { color:#fff; }
+.rt-cell.part { outline:1.5px dashed var(--faint); outline-offset:-1.5px; }
+@media (prefers-color-scheme: dark) { .rt-cell.hi { color:var(--ink); } }
+.rt-tip { position:fixed; z-index:20; pointer-events:none; background:var(--ink); color:var(--bg); font-size:12px; line-height:1.4;
+          padding:6px 9px; border-radius:7px; max-width:260px; box-shadow:var(--shadow); }
 </style>
 </head>
 <body>
@@ -651,6 +676,146 @@ async function toggleAllTime() {
       <th>Active days</th><th>First → last day</th></tr></thead><tbody>${rows || `<tr><td colspan="10" class="sub">No usage yet.</td></tr>`}</tbody></table></div>`;
   } catch (e) { box.innerHTML = `<p class="err">${esc(e.message)}</p>`; }
 }
+
+// ---------- Retention: its own view (#retention), opened from the Pilots card. Read-only: /v1/admin/retention
+let retUnit = (() => { try { return localStorage.getItem("sb-ret-unit") || "pilots"; } catch { return "pilots"; } })();
+let retSeq = 0;
+const wkLabel = (s) => new Date(s + "T00:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+async function showRetention() {
+  const box = document.getElementById("retention"), seq = ++retSeq;
+  if (!box.firstChild) box.innerHTML = `<div class="sub">Loading...</div>`;
+  scrollTo({ top: 0, behavior: "instant" });
+  let r;
+  try { r = await api(`/v1/admin/retention?unit=${encodeURIComponent(retUnit)}`); }
+  catch (e) { if (e.message !== "unauthorized" && seq === retSeq) box.innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
+  if (seq !== retSeq) return;                       // a newer request (unit switch, refresh) is on its way
+  box.innerHTML = retentionView(r);
+  box.querySelectorAll("[data-unit]").forEach((b) => b.onclick = () => {
+    retUnit = b.dataset.unit;
+    try { localStorage.setItem("sb-ret-unit", retUnit); } catch {}
+    showRetention();
+  });
+  box.querySelectorAll("[data-more]").forEach(fold);
+  bindTips(box);
+}
+function bindTips(root) {                           // one tooltip for every [data-tip] mark in the view
+  let tip = document.querySelector(".rt-tip");
+  if (!tip) { tip = document.createElement("div"); tip.className = "rt-tip"; tip.hidden = true; document.body.appendChild(tip); }
+  root.onmousemove = (e) => {
+    const t = e.target.closest("[data-tip]");
+    if (!t) { tip.hidden = true; return; }
+    tip.textContent = t.dataset.tip; tip.hidden = false;
+    const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8), y = e.clientY + 16 + tip.offsetHeight > innerHeight ? e.clientY - tip.offsetHeight - 10 : e.clientY + 16;
+    tip.style.left = `${x}px`; tip.style.top = `${y}px`;
+  };
+  root.onmouseleave = () => { tip.hidden = true; };
+}
+// a line on a 0..max scale: [{label, v, tip}], with a hit target bigger than each point
+function rtLine(pts, { max, ticks, fmt = (v) => v, color = "var(--rt-retained)" }) {
+  const W = 560, H = 210, L = 38, R = 14, T = 12, B = 28, iw = W - L - R, ih = H - T - B;
+  const x = (i) => L + (pts.length < 2 ? iw / 2 : iw * i / (pts.length - 1)), y = (v) => T + ih * (1 - Math.min(v, max) / max);
+  const every = Math.max(1, Math.ceil(pts.length / 9));
+  const grid = ticks.map((t) => `<line x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}" stroke="var(--line)" ${t ? `stroke-dasharray="3 5"` : ""}/>
+    <text x="${L - 8}" y="${y(t) + 4}" text-anchor="end">${fmt(t)}</text>`).join("");
+  const line = pts.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p.v).toFixed(1)}`).join("");
+  const marks = pts.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.v)}" r="4" fill="${color}" stroke="var(--surface)" stroke-width="2"/>
+    <circle cx="${x(i)}" cy="${y(p.v)}" r="14" fill="transparent" data-tip="${esc(p.tip)}"/>`).join("");
+  const labels = pts.map((p, i) => i % every && i !== pts.length - 1 ? "" : `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${esc(p.label)}</text>`).join("");
+  return `<svg class="rt-chart" viewBox="0 0 ${W} ${H}" role="img">${grid}<path d="${line}" fill="none" stroke="${color}" stroke-width="2"
+    stroke-linejoin="round"/>${marks}${labels}</svg>`;
+}
+// each week's active pilots, stacked: back from last week, new, back after a gap; below the line: last week's that didn't return
+const RT_PARTS = [["retained", "Back from last week", "var(--rt-retained)"], ["new", "New (first week)", "var(--rt-new)"],
+                  ["resurrected", "Back after a gap", "var(--rt-back)"]];
+function rtAccounting(acc) {
+  const rows = acc.slice(-16), W = 560, H = 230, L = 30, R = 8, T = 12, B = 28, iw = W - L - R, ih = H - T - B;
+  const up = Math.max(1, ...rows.map((a) => a.retained + a.new + a.resurrected)), down = Math.max(0, ...rows.map((a) => a.churned));
+  const k = ih / (up + down), zero = T + up * k, bw = iw / rows.length, w = Math.min(26, bw * 0.62);
+  const every = Math.max(1, Math.ceil(rows.length / 8));
+  const bars = rows.map((a, i) => {
+    const cx = L + bw * i + bw / 2, partial = i === rows.length - 1;
+    let top = zero, segs = "";
+    for (const [key, , col] of RT_PARTS) {
+      if (!a[key]) continue;
+      const h = a[key] * k; top -= h;
+      segs += `<rect x="${cx - w / 2}" y="${top}" width="${w}" height="${Math.max(0, h - 2)}" rx="2" fill="${col}"/>`;
+    }
+    if (a.churned) segs += `<rect x="${cx - w / 2}" y="${zero + 2}" width="${w}" height="${Math.max(0, a.churned * k - 2)}" rx="2" fill="var(--rt-churn)"/>`;
+    const tip = `Week of ${wkLabel(a.week)}${partial ? " (still running)" : ""}: ${a.active} active. ${a.retained} back from last week, `
+      + `${a.new} new, ${a.resurrected} back after a gap; ${a.churned} of last week's didn't come back.`;
+    const label = i % every && !partial ? "" : `<text x="${cx}" y="${H - 8}" text-anchor="middle">${partial ? "now" : wkLabel(a.week)}</text>`;
+    return `<g opacity="${partial ? 0.55 : 1}">${segs}</g><rect x="${L + bw * i}" y="${T}" width="${bw}" height="${ih}" fill="transparent" data-tip="${esc(tip)}"/>${label}`;
+  }).join("");
+  const axis = `<line x1="${L}" x2="${W - R}" y1="${zero}" y2="${zero}" stroke="var(--faint)"/>
+    <text x="${L - 6}" y="${T + 4}" text-anchor="end">${up}</text><text x="${L - 6}" y="${zero + 4}" text-anchor="end">0</text>
+    ${down ? `<text x="${L - 6}" y="${T + ih}" text-anchor="end">−${down}</text>` : ""}`;
+  const legend = [...RT_PARTS, ["churned", "Didn't come back", "var(--rt-churn)"]].map(([, l, c]) => `<span><i style="--c:${c}"></i>${l}</span>`).join("");
+  const table = `<details style="margin-top:10px"><summary class="sub" style="cursor:pointer">Show as a table</summary>
+    <div style="overflow-x:auto;margin-top:8px"><table class="inner" style="width:100%"><thead><tr><th>Week of</th><th>Active</th><th>Back from last week</th>
+    <th>New</th><th>Back after a gap</th><th>Didn't come back</th><th>Days active each</th></tr></thead><tbody>${acc.slice().reverse().map((a) =>
+      `<tr><td>${wkLabel(a.week)}</td><td>${a.active}</td><td>${a.retained}</td><td>${a.new}</td><td>${a.resurrected}</td><td>${a.churned}</td><td>${a.days_per_active}</td></tr>`).join("")}
+    </tbody></table></div></details>`;
+  return `<svg class="rt-chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Active each week, by where they came from">${axis}${bars}</svg>
+    <div class="rt-lg">${legend}</div>${table}`;
+}
+const rtShade = (f) => f > 0 ? `background:color-mix(in srgb, var(--rt-retained) ${Math.round(12 + 88 * f)}%, var(--surface))` : "background:var(--line-2)";
+function rtCohorts(r) {
+  const rows = r.cohorts.slice(-12), cols = Math.min(13, Math.max(...rows.map((c) => c.active.length)));
+  const head = `<tr><th>First active week</th><th>Size</th>${Array.from({ length: cols }, (_, k) => `<th>W${k}</th>`).join("")}</tr>`;
+  const body = rows.slice().reverse().map((c) => `<tr><td class="nm">${wkLabel(c.week)}</td><td class="sz">${c.size}</td>${Array.from({ length: cols }, (_, k) => {
+    if (k >= c.active.length) return "<td></td>";
+    const a = c.active[k], f = a / c.size, part = k === c.active.length - 1;
+    const tip = `Started week of ${wkLabel(c.week)}: ${a} of ${c.size} active ${k ? `${k} week${k > 1 ? "s" : ""} later` : "in their first week"}${part ? " (this week, still running)" : ""}`;
+    return `<td><div class="rt-cell${f > 0.55 ? " hi" : ""}${part ? " part" : ""}" style="${rtShade(f)}" data-tip="${esc(tip)}">${Math.round(100 * f)}%</div></td>`;
+  }).join("")}</tr>`).join("");
+  return `<div style="overflow-x:auto"><table class="rt-table"><thead>${head}</thead><tbody>${body}</tbody></table></div>`;
+}
+function rtPilotWeeks(r) {
+  const head = `<tr><th>Pilot</th>${r.units_weeks.map((w, i) => `<th>${i === r.units_weeks.length - 1 ? "now" : wkLabel(w)}</th>`).join("")}<th>Days</th></tr>`;
+  const body = r.units.map((u) => `<tr><td class="nm" title="${esc(u.name)}">${esc(u.name)}</td>${u.weeks.map((d, i) => {
+    const part = i === u.weeks.length - 1;
+    const tip = `${u.name}, week of ${wkLabel(r.units_weeks[i])}${part ? " (still running)" : ""}: active ${d} of 7 days`;
+    return `<td><div class="rt-cell${d / 7 > 0.55 ? " hi" : ""}${part ? " part" : ""}" style="${rtShade(d / 7)}" data-tip="${esc(tip)}">${d || ""}</div></td>`;
+  }).join("")}<td class="sz">${u.active_days}</td></tr>`).join("");
+  return `<div style="overflow-x:auto"><table class="rt-table"><thead>${head}</thead><tbody data-more="15" data-key="rt-pilots">${body}</tbody></table></div>`;
+}
+function retentionView(r) {
+  const who = r.unit === "pilots" ? "pilots" : "individual installs";
+  const seg = `<div class="seg">${[["pilots", "Pilots"], ["individuals", "Individual installs"]].map(([k, l]) =>
+    `<button data-unit="${k}" class="${r.unit === k ? "on" : ""}">${l}</button>`).join("")}</div>`;
+  const head = `<div class="sec-h"><h2>Retention</h2><span class="sub">Do ${who} come back? Active means their agents did at least one action that day.
+    Weeks start on Monday (UTC).</span><div class="act">${seg}</div></div>`;
+  const s = r.summary;
+  if (!s.ever_active) return `<section>${head}<div class="surface empty">No ${who} have used it yet.</div></section>`;
+  const pct = (c) => c ? `${c.pct}%` : "–", of = (c) => c ? `${c.active} of ${c.of} came back` : "not enough finished weeks yet";
+  const stats = `<div class="stats">${stat("Ever active", s.ever_active, `since ${wkLabel(s.since)}`, false, "accent")}
+    ${stat("Active this week", s.active_this_week, `${s.active_last_week} last week (this week is still running)`)}
+    ${stat("Back the week after", pct(s.week1), of(s.week1), false, "ok")}
+    ${stat("Back 4 weeks later", pct(s.week4), of(s.week4), false, "ok")}
+    ${stat("Median weeks in use", s.median_weeks, "from first to last active week")}</div>`;
+  const curve = r.curve.length >= 2 ? rtLine(r.curve.map((c) => ({ label: `W${c.week}`, v: c.pct,
+      tip: `${c.week ? `${c.week} week${c.week > 1 ? "s" : ""} after their first` : "First week"}: ${c.active} of ${c.of} active (${c.pct}%)` })),
+      { max: 100, ticks: [0, 25, 50, 75, 100], fmt: (v) => `${v}%` })
+    : `<div class="sub">Needs at least two finished weeks of data.</div>`;
+  const done = r.accounting.slice(0, -1).slice(-16);
+  const sticky = done.length < 2 ? `<div class="sub">Needs at least two finished weeks of data.</div>` : rtLine(done.map((a) => ({ label: wkLabel(a.week), v: a.days_per_active,
+      tip: `Week of ${wkLabel(a.week)}: ${a.active} active, ${a.days_per_active} days each on average` })),
+    { max: 7, ticks: [0, 1, 3, 5, 7], fmt: (v) => `${v}d` });
+  return `<section>${head}${stats}
+    <div class="rt-grid">
+      <div class="ov-card"><h3>Retention curve</h3><span class="sub">Of the ${who} that started, the share active N weeks after their first
+        active week. Finished weeks only; later weeks rest on fewer ${who} (hover a point for how many).</span>${curve}</div>
+      <div class="ov-card"><h3>Active each week</h3><span class="sub">Who was active, by where they came from. Below the line: last week's
+        ${who} that didn't come back. The last bar is this week, still running.</span>${rtAccounting(r.accounting)}</div>
+      <div class="ov-card wide"><h3>Cohorts</h3><span class="sub">Rows: ${who} grouped by the week they first used it. W1 is the week after,
+        and so on. The dashed cell is this week, still running.</span>${rtCohorts(r)}</div>
+      ${r.unit === "pilots" ? `<div class="ov-card wide"><h3>Each pilot, week by week</h3><span class="sub">Days active per week, last 12 weeks. Most recently active first.</span>${rtPilotWeeks(r)}</div>`
+        : `<div class="ov-card"><h3>Each install</h3><span class="sub">Individual installs stay anonymous, so there is no per-install view. Switch to Pilots for one row per pilot.</span></div>`}
+      <div class="ov-card"><h3>How often, when they use it</h3><span class="sub">Average days active in the week, per active ${who === "pilots" ? "pilot" : "install"} (out of 7). Finished weeks only.</span>${sticky}</div>
+    </div>
+    <p class="foot">From the daily counts installs report (the days table). An install sends its last 7 days, so a ${who === "pilots" ? "pilot" : "install"}
+      that stops reporting shows as inactive from then on. History only goes back to when reporting started.</p></section>`;
+}
 const STAGE = { "active": ["Active", "s-active"], "installed": ["Installed, no activity yet", "s-installed"],
   "quiet": ["Installed", "s-installed"], "opened link": ["Opened the link", "s-opened"], "link sent": ["Link sent", "s-sent"],
   "left": ["Left the pilot", "s-left"], "setting up": ["Setting up", "s-installed"], "keys taken": ["Took keys, not connected yet", "s-opened"],
@@ -779,17 +944,22 @@ async function load() {
     <p class="foot">Counts, and for held or blocked actions only the program, rule, outcome and sizes as numbers. Squidbrake never sends
       command arguments, file names, code, prompts or tool inputs here.</p>
     </main>
-    <main id="crm">${pipelinePanel(pl)}</main>`;
-  // the CRM is its own view: not on the dashboard, opened with its button (#crm keeps it open across refreshes)
+    <main id="crm">${pipelinePanel(pl)}</main>
+    <main id="retention" hidden></main>`;
+  // the CRM and Retention are their own views: not on the dashboard, opened with their buttons (the hash keeps them
+  // open across refreshes). Retention is opened from the Pilots card and loads its data only when opened.
   const showView = () => {
-    const crm = location.hash === "#crm";
-    document.getElementById("general").hidden = crm;
-    document.getElementById("crm").hidden = !crm;
-    document.querySelector(".top nav").hidden = crm;
-    document.getElementById("crmBtn").textContent = crm ? "← Dashboard" : "CRM";
+    const view = location.hash === "#crm" ? "crm" : location.hash === "#retention" ? "retention" : "general";
+    document.getElementById("general").hidden = view !== "general";
+    document.getElementById("crm").hidden = view !== "crm";
+    document.getElementById("retention").hidden = view !== "retention";
+    document.querySelector(".top nav").hidden = view !== "general";
+    document.getElementById("crmBtn").textContent = view === "general" ? "CRM" : "← Dashboard";
+    if (view === "retention") showRetention();
   };
   document.getElementById("crmBtn").onclick = () => {
-    if (location.hash === "#crm") history.pushState(null, "", location.pathname); else location.hash = "crm";
+    if (location.hash === "#crm" || location.hash === "#retention") history.pushState(null, "", location.pathname);
+    else location.hash = "crm";
     showView(); scrollTo(0, 0);
   };
   window.onhashchange = window.onpopstate = showView;
@@ -1029,7 +1199,7 @@ function overview(d, inv, asks) {
           : `<div class="sub">No holds decided this week.</div>`}
         ${term}</div>
     </div>
-    <div class="ov-card"><h3>Pilots</h3><span class="sub">One row per pilot, this week, busiest first. The shaded bar in Actions is on one shared scale.</span>
+    <div class="ov-card"><h3 style="display:flex;align-items:center;gap:12px">Pilots<a class="btn" href="#retention" id="retentionBtn">Retention</a></h3><span class="sub">One row per pilot, this week, busiest first. The shaded bar in Actions is on one shared scale.</span>
       ${pilots.length ? `<div style="overflow-x:auto"><table class="ptable"><thead><tr><th>Pilot</th><th>Status</th><th>14 days</th><th class="n">Actions</th><th class="n">Held</th>
         <th class="n">Approved</th><th class="n">Rejected</th><th class="n">Timed out</th><th class="n">Emergency stops</th><th>Version</th><th>Agents (actions)</th><th></th></tr></thead>
         <tbody>${sorted.map(prow).join("")}</tbody></table></div>` : `<div class="sub">No pilots yet. Create one below.</div>`}</div>
@@ -1082,7 +1252,7 @@ function communityPanel(d) {
     </div>`;
   const catches = c.catches || [];
   return `<section id="individuals">
-    <div class="sec-h"><h2>Individual installs</h2><span class="sub">pip installs that share anonymous counts: not pilots, no names, no links. Reported every 6 hours.</span></div>
+    <div class="sec-h"><h2>Individual installs</h2><span class="sub">pip installs that share anonymous counts: not pilots, no names, no links. Reported within a few minutes.</span></div>
     <div class="ind-head"><h1>${c.installs ? `${c.used_this_week} of ${c.installs} individual installs used Squidbrake this week` : "No individual install shares stats yet"}</h1>
       ${c.installs ? `<span class="sub">${(wk.events || 0).toLocaleString()} actions went through them, ${(wk.held || 0).toLocaleString()} held, ${c.stopped} risky ${c.stopped === 1 ? "action" : "actions"} stopped</span>` : ""}</div>
     <div class="kpis">${kpis}</div>

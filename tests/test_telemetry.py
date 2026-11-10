@@ -204,3 +204,64 @@ def test_status_tells_an_earlier_no_apart(sent, monkeypatch, capsys):
     assert sent == []
     telemetry.main(["status"], "1")
     assert "off (you said no" in capsys.readouterr().out
+
+
+def test_a_gateway_with_no_terminal_first_run_says_so_in_its_log_and_shares_counts(sent, tmp_path):
+    """Docker or a background service: the notice goes to the gateway's log, then counts are shared, once."""
+    said = []
+    assert telemetry.gateway_start("1", said.append) is True
+    assert joins == [("/v1/pilot/join", telemetry.COMMUNITY_CODE)] and "SQUIDBRAKE_TELEMETRY=0" in said[0]
+    assert not (tmp_path / "telemetry.json").exists()     # a later terminal first run still asks its questions
+    assert telemetry.gateway_start("1", said.append) is False and len(joins) == 1 and len(said) == 1   # once
+
+
+def test_a_gateway_start_respects_off_switches_and_a_leave(sent, monkeypatch, tmp_path):
+    for var, val in (("SQUIDBRAKE_TELEMETRY", "0"), ("DO_NOT_TRACK", "1"), ("CI", "true")):
+        monkeypatch.setenv(var, val)
+        assert telemetry.gateway_start("1", print) is False and joins == []
+        monkeypatch.delenv(var)
+    telemetry.gateway_start("1", lambda s: None)
+    pilot.leave(tmp_path / "data")                         # they left: a restart never joins them again
+    joins.clear()
+    assert telemetry.gateway_start("1", lambda s: None) is False and joins == []
+
+
+def test_a_gateway_that_was_offline_tries_again_on_its_next_start(sent, monkeypatch, tmp_path):
+    def offline(server, path, body):
+        raise RuntimeError("offline")
+    monkeypatch.setattr(pilot, "_post", offline)
+    assert telemetry.gateway_start("1", lambda s: None) is False
+    monkeypatch.setattr(pilot, "_post", lambda server, path, body: joins.append((path, body["code"])) or {})
+    assert telemetry.gateway_start("1", lambda s: None) is True and pilot.load(tmp_path / "data")
+
+
+def test_an_email_given_after_the_gateway_joined_moves_its_counts_to_that_person(sent, monkeypatch, tmp_path):
+    told = []
+    monkeypatch.setattr(pilot, "_post", lambda server, path, body: told.append(body) or {})
+    telemetry.gateway_start("1", lambda s: None)
+    answers(monkeypatch, "", "ana@acme.dev", "Ana")                      # terminal first run: where-from, email, name
+    telemetry.maybe(["doctor"], "1")
+    assert told[-1]["email"] == "ana@acme.dev" and told[-1]["install_id"] == told[0]["install_id"]
+
+
+def test_the_off_switches_stop_the_counts_of_an_install_that_already_joined(sent, monkeypatch, tmp_path):
+    """Joined the community counts, then DO_NOT_TRACK or SQUIDBRAKE_TELEMETRY=0 is set: nothing more is sent."""
+    telemetry.gateway_start("1", lambda s: None)
+    pings = []
+    monkeypatch.setattr(pilot, "_post", lambda server, path, body, timeout=15: pings.append(path) or {})
+    assert pilot.send(tmp_path / "data", {"days": {}}) is True and pings == ["/v1/ping"]
+    for var, val in (("DO_NOT_TRACK", "1"), ("SQUIDBRAKE_TELEMETRY", "0")):
+        monkeypatch.setenv(var, val)
+        assert pilot.send(tmp_path / "data", {"days": {}}) is False and pings == ["/v1/ping"]
+        monkeypatch.delenv(var)
+
+
+def test_a_named_pilot_keeps_its_own_consent(sent, monkeypatch, tmp_path):
+    """A pilot joined with its own code (it asked "Share these counts?") is left with `squidbrake pilot leave`."""
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "pilot.json").write_text(json.dumps({"code": "acme-123abc", "server": "https://x",
+                                                              "install_id": "a" * 32}), encoding="utf-8")
+    pings = []
+    monkeypatch.setattr(pilot, "_post", lambda server, path, body, timeout=15: pings.append(path) or {})
+    monkeypatch.setenv("DO_NOT_TRACK", "1")
+    assert pilot.send(tmp_path / "data", {"days": {}}) is True and pings == ["/v1/ping"]

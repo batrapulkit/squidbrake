@@ -1115,6 +1115,84 @@ def test_slack_example_policy():
         assert decide(name)[0] == "deny", name
 
 
+def test_kubernetes_example_policy():
+    rules = Path(__file__).resolve().parents[1] / "examples" / "rules" / "kubernetes.yaml"
+    p = server.Policy(rules)
+
+    def decide(name, inp=None):
+        return p.evaluate(kind="mcp", name=name, source=None, client="test", session_id=None, input=inp or {})
+
+    # Read-only operations are allowed
+    for name in (
+        "kubernetes.get_pods",
+        "kubernetes.list_namespaces",
+        "kubernetes.describe_deployment",
+        "kubernetes.get_logs",
+        "k8s.k8s_get_resources",
+        "k8s.k8s_list_resources",
+        "k8s.k8s_describe_resource",
+        "k8s.k8s_get_pod_logs",
+    ):
+        assert decide(name)[0] == "allow", name
+
+    # Critical deletions are denied
+    assert decide("kubernetes.delete", {"kind": "Namespace", "name": "staging"})[0] == "deny"
+    assert decide("k8s.k8s_delete_resource", {"kind": "PersistentVolumeClaim", "name": "data-pvc"})[0] == "deny"
+    assert decide("kubernetes.delete", {"namespace": "kube-system", "kind": "Pod", "name": "coredns"})[0] == "deny"
+    assert decide("k8s.k8s_delete_resource", {"kind": "ClusterRole", "name": "admin"})[0] == "deny"
+
+    # High-impact operations require review
+    assert decide("kubernetes.exec_pod", {"pod": "web-1"})[0] == "review"
+    assert decide("k8s.k8s_exec_in_pod", {"pod_name": "api"})[0] == "review"
+    assert decide("kubernetes.scale_deployment", {"replicas": 0})[0] == "review"
+    assert decide("k8s.k8s_scale_resource", {"replicas": 3})[0] == "review"
+    assert decide("kubernetes.delete_deployment", {"kind": "Deployment", "name": "frontend"})[0] == "review"
+    assert decide("kubernetes.apply", {"context": "prod-cluster", "kind": "ConfigMap"})[0] == "review"
+    assert decide("kubernetes.apply", {"yaml": "kind: ClusterRoleBinding\nroleRef: cluster-admin"})[0] == "review"
+
+    # Reading a Secret shows credentials, however it's asked for
+    assert decide("kubernetes.get_secret", {"name": "db-password"})[0] == "review"
+    assert decide("k8s.k8s_get_resources", {"kind": "Secret", "name": "db-password"})[0] == "review"
+    assert decide("kubernetes.list_resources", {"resource": "secrets"})[0] == "review"
+    # The pack only covers Kubernetes: another app's tools aren't allowed or blocked by it
+    assert decide("stripe.get_balance")[0] == "review"
+    assert decide("github.delete_repo", {"kind": "Namespace"})[0] == "review"
+
+
+def test_atlassian_example_policy():
+    rules = Path(__file__).resolve().parents[1] / "examples" / "rules" / "atlassian.yaml"
+    p = server.Policy(rules)
+
+    def decide(name):
+        return p.evaluate(kind="mcp", name=name, source=None, client="test", session_id=None, input={})
+
+    for name in (
+        "atlassian.jira_get_issue",
+        "atlassian.jira_search_issues",
+        "atlassian.jira_get_all_projects",
+        "atlassian.confluence_search",
+        "atlassian.confluence_get_page",
+    ):
+        assert decide(name)[0] == "allow", name
+
+    for name in (
+        "atlassian.jira_create_issue",
+        "atlassian.jira_update_issue",
+        "atlassian.jira_add_comment",
+        "atlassian.confluence_create_page",
+        "atlassian.confluence_update_page",
+    ):
+        assert decide(name)[0] == "review", name
+
+    for name in (
+        "atlassian.jira_delete_issue",
+        "atlassian.confluence_delete_page",
+        "atlassian.jira_delete_project",
+        "atlassian.confluence_delete_space",
+    ):
+        assert decide(name)[0] == "deny", name
+
+
 def test_proxy(c):
     seen = {}
 
@@ -1646,3 +1724,126 @@ def test_setup_rule_leaves_agents_own_notes_alone():
                   "/home/a/.claude/plans/../commands/evil.md", r"C:\Users\a\.claude\plans\..\commands\evil.md",
                   r"C:\Users\a\.gemini\antigravity\mcp_config.json", r"C:\Users\a\.gemini\antigravity\brain\x\..\..\mcp_config.md"]:
         assert held(setup), setup
+
+# --------------------------------------------------------------------------- Telegram notifications (#145)
+
+def test_telegram_approval_notification(c, monkeypatch):
+    import threading
+    got, done = {}, threading.Event()
+
+    def fake_post(url, json, timeout):
+        got.update(url=url, json=json)
+        done.set()
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123456:ABC-DEF")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "987654321")
+    monkeypatch.setattr(server, "PUBLIC_URL", "https://gw.test")
+    monkeypatch.setattr(server.httpx, "post", fake_post)
+
+    eid = _held(c, "payments.refund")
+    assert done.wait(3), "Telegram notification was not sent in time"
+    assert got["url"] == "https://api.telegram.org/bot123456:ABC-DEF/sendMessage"
+    assert got["json"]["chat_id"] == "987654321"
+    assert got["json"]["parse_mode"] == "HTML"
+    text = got["json"]["text"]
+    assert "<b>" in text and "</b>" in text
+    assert "payments.refund" in text
+    keyboard = got["json"]["reply_markup"]["inline_keyboard"]
+    assert keyboard[0][0]["text"] == "Open"
+    assert "/a/" in keyboard[0][0]["url"]
+    token = keyboard[0][0]["url"].rsplit("/", 1)[1]
+    assert server.read_link_token(token) == (eid, "admin")
+
+
+def test_telegram_escaping_and_button_behavior(monkeypatch):
+    got = {}
+
+    def fake_post(url, json, timeout):
+        got.update(url=url, json=json)
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(server.httpx, "post", fake_post)
+
+    # With link: has Open button and escapes HTML
+    ok = server.send_telegram(
+        token="tok123",
+        chat_id="chat999",
+        title="Command <script>alert(1)</script>",
+        body="Argument: <test & 'quote'>",
+        link="https://gw.test/open/link",
+    )
+    assert ok is True
+    assert got["url"] == "https://api.telegram.org/bottok123/sendMessage"
+    assert "&lt;script&gt;" in got["json"]["text"]
+    assert "&lt;test &amp; &#x27;quote&#x27;&gt;" in got["json"]["text"]
+    assert got["json"]["reply_markup"]["inline_keyboard"][0][0] == {"text": "Open", "url": "https://gw.test/open/link"}
+
+    # Without link: no reply_markup
+    got.clear()
+    ok_no_link = server.send_telegram(
+        token="tok123",
+        chat_id="chat999",
+        title="Plain title",
+        body="Plain body",
+    )
+    assert ok_no_link is True
+    assert "reply_markup" not in got["json"]
+
+
+def test_telegram_notify_text(monkeypatch):
+    got = {}
+
+    def fake_post(url, json, timeout):
+        got.update(url=url, json=json)
+        return httpx.Response(200, request=httpx.Request("POST", url))
+
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "bot_token_xyz")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", "chat_456")
+    monkeypatch.setattr(server.httpx, "post", fake_post)
+
+    server.notify_text("Daily Alert", "All agents running normally.")
+    assert got["url"] == "https://api.telegram.org/botbot_token_xyz/sendMessage"
+    assert got["json"]["chat_id"] == "chat_456"
+    assert "<b>Daily Alert</b>" in got["json"]["text"]
+    assert "All agents running normally." in got["json"]["text"]
+    assert "reply_markup" not in got["json"]
+
+
+def test_telegram_token_never_logged_on_error(monkeypatch, caplog):
+    import logging
+
+    def failing_post(url, json, timeout):
+        raise httpx.ConnectError("Connection refused")
+
+    monkeypatch.setattr(server.httpx, "post", failing_post)
+
+    with caplog.at_level(logging.ERROR):
+        ok = server.send_telegram("super_secret_bot_token_999", "123", "Title", "Body")
+    assert ok is False
+    assert "super_secret_bot_token_999" not in caplog.text
+
+
+def test_telegram_token_not_logged_when_telegram_refuses_it(monkeypatch, caplog):
+    import logging
+
+    def refused(url, json, timeout):                       # a wrong token: httpx's error text carries the URL
+        req = httpx.Request("POST", url)
+        return httpx.Response(401, request=req)
+
+    monkeypatch.setattr(server.httpx, "post", refused)
+    with caplog.at_level(logging.DEBUG):
+        ok = server.send_telegram("123456:wrong_secret_token", "123", "Title", "Body")
+    assert ok is False
+    assert "wrong_secret_token" not in caplog.text and "401" in caplog.text
+
+
+def test_telegram_long_message_fits(monkeypatch):
+    got = {}
+    monkeypatch.setattr(server.httpx, "post", lambda url, json, timeout: got.update(json=json) or
+                        httpx.Response(200, request=httpx.Request("POST", url)))
+    assert server.send_telegram("t", "1", "Title", "rm -rf <&> " * 2000)
+    import html
+    shown = html.unescape(got["json"]["text"].replace("<b>", "").replace("</b>", ""))   # Telegram counts after parsing
+    assert len(shown) <= 4096 and shown.endswith("…")
+

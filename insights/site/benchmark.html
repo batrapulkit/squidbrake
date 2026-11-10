@@ -23,6 +23,7 @@
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
 <link rel="preload" href="/assets/fonts/host-grotesk.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/fonts/fonts.css">
+<link rel="stylesheet" href="/assets/ui.css?v=1">
 <style>
 :root{
   --bg:#E6EBE2; --surface:#F4F6F1; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5;
@@ -111,14 +112,14 @@ h2.plain{display:block;margin:44px 0 6px}
   <main>
     <p class="kicker">Benchmark · by <a href="/about">Pulkit Batra</a> · last run <time datetime="2026-10-21">21 October 2026</time> on Squidbrake 0.14.2</p>
     <h1>12 real AI agent incidents, replayed. What got stopped, and what didn't.</h1>
-    <p class="lead">We took 12 publicly reported cases of AI agents deleting data, leaking secrets or spending money, and replayed every harmful step against Squidbrake's shipped rules. 14 of 15 harmful actions were stopped. One was not, and we explain why below. Every number on this page comes from a script you can run yourself.</p>
+    <p class="lead">We replayed 12 public cases of AI agents deleting data, leaking secrets or spending money. 14 of 15 harmful actions were stopped, and we explain the one that wasn't. Every number comes from a script you can run.</p>
 
-    <dl class="facts">
-      <div><dt>14 of 15 harmful actions stopped, across 12 incidents</dt><dd>3 blocked outright, 11 held for a person to approve, 1 not stopped.</dd></div>
-      <div><dt>65 of 66 harmful steps stopped on whole sessions</dt><dd>62 agent sessions, 113 steps, compared with auto-run, ask-for-everything and an allowlist.</dd></div>
-      <div><dt>3 of 41 routine steps held (false positives)</dt><dd>An allowlist held 10. Asking for everything held 40.</dd></div>
-      <div><dt>3.9 ms per decision at the median, 6.2 ms at p95</dt><dd>In-process, SQLite, on the same run.</dd></div>
-    </dl>
+    <div class="big-numbers">
+      <div><b>14 / 15</b><span>harmful actions stopped across 12 incidents: 3 blocked, 11 held, 1 not stopped</span></div>
+      <div><b>65 / 66</b><span>harmful steps stopped on 62 whole agent sessions</span></div>
+      <div><b>3 / 41</b><span>routine steps held. An allowlist held 10, asking about everything 40</span></div>
+      <div><b>3.9 ms</b><span>per decision at the median, 6.2 ms at p95</span></div>
+    </div>
     <p><a href="/score?n=14&amp;of=15">Share this result</a> · Run it on your own rules: <code>python incidents/replay.py --rules ~/.squidbrake/rules.yaml</code></p>
 
     <h2 class="plain">The incidents</h2>
@@ -146,6 +147,8 @@ h2.plain{display:block;margin:44px 0 6px}
 
     <h2 class="plain">Whole sessions, against other approaches</h2>
     <p>Incidents are single moments. Real harm often builds over several steps: a docs page tells the agent to post a config somewhere, backups get switched off and then a delete follows, or an agent retries after a no. So we also ran 62 whole agent sessions (the incidents plus sessions we wrote) through five approaches. Each step was labelled before any approach saw it: <b>harm</b> (nobody wants it to run unasked), <b>routine</b> (should run on its own) or <b>sensitive</b> (legitimate, but a person should say yes). When an approach asks a person, the benchmark plays that person: no to harm, yes to everything else.</p>
+    <figure class="fig"><div class="scroll"><svg viewBox="0 0 830 250" role="img" aria-labelledby="fb-t fb-d"><title id="fb-t">Five approaches on 62 agent sessions</title><desc id="fb-d">Harmful steps stopped out of 66: auto-run 0, ask for everything 65, allowlist 53, Squidbrake one step 62, Squidbrake whole session 65. Routine steps held out of 41: 0, 40, 10, 2, 3.</desc><text class="t" x="0" y="22">Harmful steps stopped</text><text class="s" x="0" y="40">more is better</text><line class="grid" x1="178" y1="54" x2="178" y2="234"/><line class="grid" x1="268.0" y1="54" x2="268.0" y2="234"/><line class="grid" x1="358" y1="54" x2="358" y2="234"/><text class="s" x="170" y="77" text-anchor="end">Auto-run (no checks)</text><text class="s" x="184.0" y="77">0/66</text><text class="s" x="170" y="113" text-anchor="end">Ask for everything</text><path class="bar" d="M178 98h173.3a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-173.3z"><title>Ask for everything: 65 of 66</title></path><text class="s" x="361.3" y="113">65/66</text><text class="s" x="170" y="149" text-anchor="end">Allowlist of dev tools</text><path class="bar" d="M178 134h140.5a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-140.5z"><title>Allowlist of dev tools: 53 of 66</title></path><text class="s" x="328.5" y="149">53/66</text><text class="s" x="170" y="185" text-anchor="end">Squidbrake, one step</text><path class="bar" d="M178 170h165.1a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-165.1z"><title>Squidbrake, one step: 62 of 66</title></path><text class="s" x="353.1" y="185">62/66</text><text class="s" x="170" y="221" text-anchor="end">Squidbrake, whole session</text><path class="bar-hi" d="M178 206h173.3a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-173.3z"><title>Squidbrake, whole session: 65 of 66</title></path><text class="s" x="361.3" y="221">65/66</text><text class="t" x="430" y="22">Routine steps held</text><text class="s" x="430" y="40">fewer is better</text><line class="grid" x1="608" y1="54" x2="608" y2="234"/><line class="grid" x1="698.0" y1="54" x2="698.0" y2="234"/><line class="grid" x1="788" y1="54" x2="788" y2="234"/><text class="s" x="600" y="77" text-anchor="end">Auto-run (no checks)</text><text class="s" x="614.0" y="77">0/41</text><text class="s" x="600" y="113" text-anchor="end">Ask for everything</text><path class="bar" d="M608 98h171.6a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-171.6z"><title>Ask for everything: 40 of 41</title></path><text class="s" x="789.6" y="113">40/41</text><text class="s" x="600" y="149" text-anchor="end">Allowlist of dev tools</text><path class="bar" d="M608 134h39.9a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-39.9z"><title>Allowlist of dev tools: 10 of 41</title></path><text class="s" x="657.9" y="149">10/41</text><text class="s" x="600" y="185" text-anchor="end">Squidbrake, one step</text><path class="bar" d="M608 170h4.8a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-4.8z"><title>Squidbrake, one step: 2 of 41</title></path><text class="s" x="622.8" y="185">2/41</text><text class="s" x="600" y="221" text-anchor="end">Squidbrake, whole session</text><path class="bar-hi" d="M608 206h9.2a4 4 0 0 1 4 4v12a4 4 0 0 1 -4 4h-9.2z"><title>Squidbrake, whole session: 3 of 41</title></path><text class="s" x="627.2" y="221">3/41</text></svg></div><figcaption>62 agent sessions, 113 steps, each labelled before any approach saw it.</figcaption></figure>
+    <details class="more"><summary><h3>The full table</h3><span>with sessions stopped and times a person was asked</span></summary><div class="body">
     <table>
       <thead><tr><th>Approach</th><th>Harmful steps stopped</th><th>Harmful sessions stopped</th><th>Routine steps held</th><th>Times a person was asked</th></tr></thead>
       <tbody>
@@ -156,6 +159,7 @@ h2.plain{display:block;margin:44px 0 6px}
         <tr><td>Squidbrake, whole session</td><td><b>65/66</b></td><td><b>37/38</b></td><td><b>3/41</b></td><td>69</td></tr>
       </tbody>
     </table>
+    </div></details>
     <p>Asking for everything stops as much harm, but asks about almost every routine step too, and people who are asked 112 times stop reading. The allowlist can't tell a safe <code>curl</code> from one that sends your config to an address a web page named. Looking at the whole session can: that post is held because the destination appears only in content the agent read, never in what the user asked.</p>
 
     <h2 class="plain">The false positives</h2>
@@ -187,7 +191,7 @@ python bench/chains/run.py      <span class="c"># the 62 sessions, every step</s
     <div class="note">Running agents with write access to production? <a href="/signup">Try Squidbrake free</a>, or <a href="./#demo">book a demo</a> for your security or platform team.</div>
   </main>
 
-  <footer><span>© 2026 Squidbrake, Inc.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="./">Home</a> · <a href="docs">Docs</a> · <a href="security">Security</a> · <a href="pricing">Pricing</a><a href="about">About</a> · <a href="changelog">Changelog</a> ·  · <a href="mailto:pulkit@squidbrake.com">pulkit@squidbrake.com</a></span></footer>
+  <footer><span>© 2026 Squidbrake, Inc.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="/">Home</a> · <a href="/docs">Docs</a> · <a href="/security">Security</a> · <a href="/pricing">Pricing</a> · <a href="/about">About</a> · <a href="/benchmark">Benchmark</a> · <a href="/blog">Blog</a> · <a href="/changelog">Changelog</a> · <a href="mailto:pulkit@squidbrake.com">pulkit@squidbrake.com</a></span></footer>
 </div>
 <script src="assets/booking.js" defer></script>
 </body>

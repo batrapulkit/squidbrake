@@ -1,0 +1,101 @@
+# Example policy for Kubernetes MCP servers (e.g. containers/kubernetes-mcp-server,
+# Flux159/mcp-server-kubernetes, or wrapped with connect.py wrap --app kubernetes).
+# Tool names support both kubernetes.<tool> and *.k8s_<tool> patterns. Every pattern names Kubernetes, so copying
+# this file next to other apps' rules doesn't change what their tools do.
+#
+# Tested against:
+#   - containers/kubernetes-mcp-server (k8s_list_resources, k8s_get_resources,
+#     k8s_describe_resource, k8s_get_pod_logs, k8s_create_resource,
+#     k8s_apply_resource, k8s_delete_resource, k8s_scale_resource, k8s_exec_in_pod)
+#   - Flux159/mcp-server-kubernetes
+#
+default: review
+default_reason: Kubernetes changes require approval
+
+rules:
+  # ---- Absolute Denials (destructive or system-critical operations) ----
+
+  # Deleting a namespace, a PersistentVolumeClaim, or anything in the kube-system namespace
+  - id: block-k8s-delete-critical
+    action: deny
+    reason: Deleting namespaces, PVCs, or resources in kube-system is strictly prohibited
+    match:
+      name: ["kubernetes.delete*", "*.k8s_delete*"]
+      input_regex: '(?i)"(?:kind|resource)"\s*:\s*"(?:Namespace|PersistentVolumeClaim|PVC)"|"(?:namespace|ns)"\s*:\s*"kube-system"'
+
+  # Deleting custom resource definitions or cluster roles
+  - id: block-k8s-delete-cluster-infra
+    action: deny
+    reason: Deleting CRDs or ClusterRoles is not allowed
+    match:
+      name: ["kubernetes.delete*", "*.k8s_delete*"]
+      input_regex: '(?i)"(?:kind|resource)"\s*:\s*"(?:CustomResourceDefinition|CRD|ClusterRole|ClusterRoleBinding)"'
+
+  # ---- Requires Review (high-impact operations) ----
+
+  # Reading Secrets shows credentials (base64 is not encryption), so a person approves it
+  - id: review-k8s-secret-reads
+    action: review
+    reason: Reading a Secret shows its credentials
+    match:
+      name: ["kubernetes.*secret*", "*.k8s_*secret*"]
+
+  - id: review-k8s-secret-kind
+    action: review
+    reason: Reading a Secret shows its credentials
+    match:
+      name: ["kubernetes.*", "*.k8s_*"]
+      input_regex: '(?i)"(?:kind|resource|type)"\s*:\s*"secrets?"'
+
+  # Any operation targeting a production context or cluster
+  - id: review-k8s-prod-context
+    action: review
+    reason: Any action targeting a production cluster/context requires human review
+    match:
+      name: ["kubernetes.*", "*.k8s_*"]
+      input_regex: '(?i)"(?:context|cluster)"\s*:\s*"[^"]*prod[^"]*"'
+
+  # Executing commands inside pods
+  - id: review-k8s-pod-exec
+    action: review
+    reason: Interactive exec into a pod requires human review
+    match:
+      name: ["kubernetes.*exec*", "*.k8s_exec*", "*.k8s_*pod_exec*"]
+
+  # Scaling workloads to 0 or modifying replica counts
+  - id: review-k8s-scale
+    action: review
+    reason: Scaling deployments or stateful sets requires human review
+    match:
+      name: ["kubernetes.*scale*", "*.k8s_scale*"]
+
+  # Deleting deployments, daemonsets, statefulsets, or services
+  - id: review-k8s-delete-workloads
+    action: review
+    reason: Deleting workloads or services requires human review
+    match:
+      name: ["kubernetes.delete*", "*.k8s_delete*"]
+      input_regex: '(?i)"(?:kind|resource)"\s*:\s*"(?:Deployment|StatefulSet|DaemonSet|Service|Ingress)"'
+
+  # Granting cluster-admin or creating role bindings
+  - id: review-k8s-rbac-grants
+    action: review
+    reason: Creating or updating RBAC role bindings requires human review
+    match:
+      name: ["kubernetes.create*", "kubernetes.apply*", "*.k8s_create*", "*.k8s_apply*"]
+      input_regex: '(?i)cluster-admin|RoleBinding|ClusterRoleBinding'
+
+  # ---- Allowed Read-only Operations ----
+
+  # Listing, getting, describing resources and reading pod logs (Secrets are held above)
+  - id: allow-k8s-read-only
+    action: allow
+    match:
+      name:
+        - "kubernetes.get*"
+        - "kubernetes.list*"
+        - "kubernetes.describe*"
+        - "kubernetes.*logs*"
+        - "*.k8s_get*"
+        - "*.k8s_list*"
+        - "*.k8s_describe*"

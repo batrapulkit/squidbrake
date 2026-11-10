@@ -1,0 +1,50 @@
+# Example policy for the popular Atlassian (Jira & Confluence) MCP server
+# (sooperset/mcp-atlassian, https://github.com/sooperset/mcp-atlassian).
+# Tool names use the <app>.<tool> form produced by `connect.py wrap --app atlassian`.
+default: review
+default_reason: Jira and Confluence changes require approval
+
+rules:
+  - id: block-destructive-atlassian-actions
+    action: deny
+    reason: Deleting Jira issues, Confluence pages, or modifying permissions is not allowed
+    match:
+      name:
+        - "atlassian.*delete*issue*"
+        - "atlassian.*delete*page*"
+        - "atlassian.*delete*project*"
+        - "atlassian.*delete*space*"
+        - "atlassian.*permission*"
+
+  - id: allow-atlassian-reads
+    action: allow
+    reason: Read-only Jira and Confluence operation
+    match:
+      name:
+        - "atlassian.jira_get_issue"
+        - "atlassian.jira_search_issues"
+        - "atlassian.jira_get_all_projects"
+        - "atlassian.jira_get_project_versions"
+        - "atlassian.jira_get_comments"
+        - "atlassian.jira_get_transitions"
+        - "atlassian.jira_get_worklog"
+        - "atlassian.confluence_search"
+        - "atlassian.confluence_get_page"
+        - "atlassian.confluence_get_page_children"
+        - "atlassian.confluence_get_space"
+        - "atlassian.confluence_get_all_spaces"
+        - "atlassian.confluence_get_comments"
+
+  - id: review-atlassian-writes
+    action: review
+    reason: Creating or updating Jira issues, comments, or Confluence pages needs approval
+    match:
+      name:
+        - "atlassian.jira_create_issue"
+        - "atlassian.jira_update_issue"
+        - "atlassian.jira_add_comment"
+        - "atlassian.jira_transition_issue"
+        - "atlassian.jira_link_issues"
+        - "atlassian.confluence_create_page"
+        - "atlassian.confluence_update_page"
+        - "atlassian.confluence_add_comment"

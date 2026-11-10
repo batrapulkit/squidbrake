@@ -7,7 +7,8 @@ install, as the anonymous usage stats that start with the first `squidbrake` com
     squidbrake pilot status                    what is shared, where, and when it was last sent
     squidbrake pilot leave                     stop sharing
 
-Nothing is sent unless you join. What is sent, at start and every 6 hours (a hosted dashboard: every 2 minutes):
+Nothing is sent unless you join. What is sent, at start, every 2 minutes while something changed (at least every
+6 hours otherwise), and once more when the gateway stops:
   - the Squidbrake version, operating system, enforce/shadow mode and number of rules
   - the agents connected, by their labels (e.g. "claude-code", "antigravity"), and which agents on this computer
     have Squidbrake's hook in their settings (so a pilot that installed but never connected an agent can be helped)
@@ -27,12 +28,14 @@ keys, names of people.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
 import platform
 import re
 import sys
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -44,7 +47,12 @@ from sqlalchemy import case, func, select
 import weekly
 
 log = logging.getLogger("gateway")
-INTERVAL = int(os.getenv("SQUIDBRAKE_PILOT_INTERVAL", str(6 * 3600)))   # hosted pilots use a shorter one
+# How often the counts are looked at; they are only sent when something changed since the last send, or HEARTBEAT
+# went by (so the dashboard still sees a running gateway that's idle). Every send is the last 7 days in full and the
+# server overwrites what it had, so sending often never counts anything twice.
+INTERVAL = int(os.getenv("SQUIDBRAKE_PILOT_INTERVAL", "120"))
+HEARTBEAT = int(os.getenv("SQUIDBRAKE_PILOT_HEARTBEAT", str(6 * 3600)))
+_last: dict[str, tuple[str, float]] = {}      # data folder -> (fingerprint of the last payload sent, when)
 WHAT_IS_SENT = __doc__.split("Nothing is sent unless you join.")[1].strip()
 
 
@@ -176,8 +184,8 @@ def usage(engine, events, mode: str, rules: int, version: str, reasons: dict | N
             "catches": held, "connected": connected, "latency_ms": weekly.percentiles(took)}
 
 
-def _post(server: str, path: str, body: dict) -> dict:
-    r = httpx.post(server.rstrip("/") + path, json=body, timeout=15)
+def _post(server: str, path: str, body: dict, timeout: float = 15) -> dict:
+    r = httpx.post(server.rstrip("/") + path, json=body, timeout=timeout)
     if r.status_code >= 400:
         try:
             detail = r.json().get("detail")
@@ -187,22 +195,25 @@ def _post(server: str, path: str, body: dict) -> dict:
     return r.json()
 
 
-def send(home: Path, payload: dict) -> bool:
+def send(home: Path, payload: dict, timeout: float = 15) -> bool:
     cfg = load(home)
     if not cfg:
         return False
+    import telemetry
+    if cfg.get("code") == telemetry.COMMUNITY_CODE and telemetry._switched_off():
+        return False     # the anonymous counts stop with SQUIDBRAKE_TELEMETRY=0 / DO_NOT_TRACK=1, even after joining
     body = {"code": cfg["code"], "install_id": cfg["install_id"], "usage": payload}
     try:
         try:
-            _post(cfg["server"], "/v1/ping", body)
+            _post(cfg["server"], "/v1/ping", body, timeout)
         except RuntimeError as e:
             # 403: the server doesn't know this install any more (e.g. its record was removed): join again, same id
             if not str(e).startswith("403") or not str(cfg["code"]).startswith("community-"):
                 raise
             _post(cfg["server"], "/v1/pilot/join", {"code": cfg["code"], "install_id": cfg["install_id"],
                                                     "version": str(payload.get("version", ""))[:40],
-                                                    "os": f"{platform.system()} {platform.release()}"[:80]})
-            _post(cfg["server"], "/v1/ping", body)
+                                                    "os": f"{platform.system()} {platform.release()}"[:80]}, timeout)
+            _post(cfg["server"], "/v1/ping", body, timeout)
     except (httpx.HTTPError, RuntimeError) as e:
         log.info("pilot: usage not sent (%s); will try again later", e)
         return False
@@ -211,16 +222,43 @@ def send(home: Path, payload: dict) -> bool:
     return True
 
 
+def _fingerprint(payload: dict) -> str:
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def send_if_changed(home: Path, make_payload, timeout: float = 15) -> bool | None:
+    """Send the counts if they changed since the last send (or HEARTBEAT went by). None: nothing needed sending."""
+    if not load(home):
+        return None
+    payload = make_payload()
+    fp, key = _fingerprint(payload), str(home)
+    sent_fp, sent_at = _last.get(key, (None, 0.0))
+    if fp == sent_fp and time.monotonic() - sent_at < HEARTBEAT:
+        return None
+    ok = send(home, payload, timeout)
+    if ok:
+        _last[key] = (fp, time.monotonic())
+    return ok
+
+
 async def loop(home: Path, make_payload) -> None:
     """Runs inside the gateway. Does nothing at all unless this install joined a pilot."""
     await asyncio.sleep(20)
     while True:
-        if load(home):
-            try:
-                await asyncio.to_thread(lambda: send(home, make_payload()))
-            except Exception as e:  # never let reporting affect the gateway
-                log.info("pilot: %s", e)
+        try:
+            await asyncio.to_thread(send_if_changed, home, make_payload)
+        except Exception as e:  # never let reporting affect the gateway
+            log.info("pilot: %s", e)
         await asyncio.sleep(INTERVAL)
+
+
+def flush(home: Path, make_payload) -> None:
+    """When the gateway stops (a laptop closing, a restart): send what changed since the last send, waiting a few
+    seconds at most, so the last minutes of work aren't held back until it starts again."""
+    try:
+        send_if_changed(home, make_payload, timeout=3)
+    except Exception as e:
+        log.info("pilot: %s", e)
 
 
 # --------------------------------------------------------------------------- command line

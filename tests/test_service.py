@@ -1,5 +1,6 @@
-"""`squidbrake` (and start.sh / start.bat) can install a background service that starts at every login,
-but only after a yes."""
+"""`squidbrake` (and start.sh / start.bat) always run the gateway as a background service that starts at every
+login and again when it stops, takes over from an older install's service, and keeps itself up to date."""
+import json
 import plistlib
 import subprocess
 import sys
@@ -32,6 +33,7 @@ def test_launchd_agent_runs_the_server_at_login_and_keeps_it_alive(fake_home, mo
     assert plist["RunAtLoad"] is True and plist["KeepAlive"] is True
     assert plist["ProgramArguments"][1:] == [str(service.SERVER), "run", "--no-browser", "--port", "9000"]
     assert plist["WorkingDirectory"] == str(service.HERE)
+    assert plist["EnvironmentVariables"]["SQUIDBRAKE_SERVICE"] == "1"     # the gateway knows a service restarts it
     assert ("launchctl", "bootstrap", "gui/501", str(home / "Library/LaunchAgents/com.squidbrake.gateway.plist")) in calls
     assert service._launchd_remove() and not service._launchd_installed()
 
@@ -99,65 +101,138 @@ def mac(tmp_path, monkeypatch):
     return did, answer
 
 
-def test_no_terminal_never_installs_or_remembers(mac, monkeypatch):
+def test_start_installs_the_service_without_asking(mac):
+    did, answer = mac
+    answer("n")                                     # nothing is asked, so an answer changes nothing
+    service.start([])
+    assert did == {"installed": True, "foreground": 0, "asked": 0} and service._saved_choice() is True
+
+
+def test_no_terminal_still_runs_in_the_background(mac, monkeypatch):
     did, _ = mac
     monkeypatch.setattr(service, "_interactive", lambda: False)
     service.start([])
-    assert did == {"installed": False, "foreground": 1, "asked": 0}
-    assert service._saved_choice() is None
+    assert did == {"installed": True, "foreground": 0, "asked": 0}
 
 
-def test_no_runs_in_the_window_and_is_asked_only_once(mac):
-    did, answer = mac
-    answer("n")
-    service.start([])
-    service.start([])
-    assert did == {"installed": False, "foreground": 2, "asked": 1}
-    assert service._saved_choice() is False
-
-
-def test_enter_means_yes(mac):
-    did, answer = mac
-    answer("")
-    service.start([])
-    assert did["installed"] and did["foreground"] == 0 and service._saved_choice() is True
-
-
-def test_yes_installs_the_service(mac):
-    did, answer = mac
-    answer("y")
-    service.start([])
-    assert did["installed"] and did["foreground"] == 0 and service._saved_choice() is True
-
-
-def test_background_flag_installs_without_asking(mac):
-    did, answer = mac
-    answer("n")
+def test_background_flag_still_works_for_scripts_that_pass_it(mac):
+    did, _ = mac
     service.start(["--background"])
     assert did == {"installed": True, "foreground": 0, "asked": 0}
 
 
-def test_env_answers_for_unattended_installs(mac, monkeypatch):
-    did, answer = mac
-    answer("y")
+def test_env_or_flag_keeps_it_in_the_window(mac, monkeypatch):
+    did, _ = mac
     monkeypatch.setenv("SQUIDBRAKE_BACKGROUND", "0")
     service.start([])
-    assert did == {"installed": False, "foreground": 1, "asked": 0}
+    monkeypatch.delenv("SQUIDBRAKE_BACKGROUND")
+    service.start(["--foreground"])
+    assert did == {"installed": False, "foreground": 2, "asked": 0}
 
 
-def test_taken_out_by_hand_is_not_put_back(mac):
-    did, answer = mac
-    service._save_choice(True)
-    answer("y")
-    service.start([])
-    assert did == {"installed": False, "foreground": 1, "asked": 0}
-
-
-def test_stop_remembers_no(mac, monkeypatch):
+def test_an_old_no_or_a_stop_doesnt_keep_it_out(mac, monkeypatch):
+    did, _ = mac
     monkeypatch.setattr(service, "_launchd_remove", lambda: True)
-    service._save_choice(True)
-    service.stop()
-    assert service._saved_choice() is False
+    service._save_choice(False)                     # said no to the question older versions asked
+    service.start([])
+    assert did["installed"] and did["foreground"] == 0
+    did["installed"] = False
+    service.stop()                                  # stopped by hand: back at the next start
+    service.start([])
+    assert did["installed"] and did["foreground"] == 0
+
+
+def test_setup_can_tell_an_older_install_or_version_is_running(mac):
+    did, _ = mac
+    assert service.stale("launchd", "1.0.0")                        # no service installed: set it up
+    did["installed"] = True
+    assert service.stale("launchd", "1.0.0")                        # an older gateway doesn't say what it is
+    service.record_running("1.0.0")
+    assert not service.stale("launchd", "1.0.0")                    # this install, this version
+    assert service.stale("launchd", "1.0.1")                        # upgraded in place, old code still running
+    r = service._running_path()
+    data = json.loads(r.read_text())
+    r.write_text(json.dumps({**data, "server": "/elsewhere/server.py"}))
+    assert service.stale("launchd", "1.0.0")                        # another install's service
+
+
+@pytest.fixture
+def updatable(tmp_path, monkeypatch):
+    """An installer-made install with PyPI, pip and the new version's check all recorded instead of done."""
+    monkeypatch.setenv("SQUIDBRAKE_HOME", str(tmp_path))
+    for var in ("SQUIDBRAKE_NO_AUTO_UPDATE", "SQUIDBRAKE_NO_UPDATE_CHECK", "DO_NOT_TRACK", "IN_DOCKER"):
+        monkeypatch.delenv(var, raising=False)
+    w = {"latest": "2.0.0", "age_h": 48, "pypi": 0, "ran": [], "installed": "1.0.0", "pip_ok": True, "works": True}
+    monkeypatch.setattr(service, "install_kind", lambda: "venv")
+
+    def pypi():
+        w["pypi"] += 1
+        return w["latest"], service.time.time() - w["age_h"] * 3600
+    monkeypatch.setattr(service, "_pypi", pypi)
+
+    def run(cmd, **k):
+        w["ran"].append(cmd)
+        pin = next((a for a in cmd if a.startswith("squidbrake==")), None)
+        if pin and (w["pip_ok"] or pin.endswith(w["current"])):
+            w["installed"] = pin.split("==")[1]
+        return subprocess.CompletedProcess(cmd, 0 if w["pip_ok"] else 1, "", "" if w["pip_ok"] else "no network")
+    monkeypatch.setattr(service.subprocess, "run", run)
+    monkeypatch.setattr(service, "_installed_version", lambda: w["installed"])
+    monkeypatch.setattr(service, "_works", lambda: w["works"])
+    w["current"] = "1.0.0"
+    return w
+
+
+def test_a_newer_version_is_installed_and_the_gateway_restarts_on_it(updatable):
+    w = updatable
+    assert service.self_update("1.0.0") is True
+    assert w["ran"][0][-1] == "squidbrake==2.0.0" and w["installed"] == "2.0.0"
+
+
+def test_nothing_happens_when_up_to_date_or_the_release_is_too_new(updatable):
+    w = updatable
+    w["latest"] = "1.0.0"
+    assert service.self_update("1.0.0") is False and w["ran"] == []
+    w["latest"], w["age_h"] = "2.0.0", 2                       # out for 2 hours: wait for a day
+    (service.state_dir() / "update-check.json").unlink()
+    assert service.self_update("1.0.0") is False and w["ran"] == []
+    assert service.self_update("1.0.0") is False and w["pypi"] == 2     # the day's answer is reused, not asked again
+
+
+def test_a_version_that_doesnt_start_is_put_back_and_not_tried_again_today(updatable):
+    w = updatable
+    w["works"] = False
+    assert service.self_update("1.0.0") is False
+    assert w["ran"][-1][-1] == "squidbrake==1.0.0" and w["installed"] == "1.0.0"      # the one that works, back
+    w["ran"].clear()
+    assert service.self_update("1.0.0") is False and w["ran"] == []
+
+
+def test_a_failed_download_keeps_this_version(updatable):
+    w = updatable
+    w["pip_ok"] = False
+    assert service.self_update("1.0.0") is False and w["installed"] == "1.0.0"
+
+
+def test_auto_update_can_be_turned_off_and_skips_installs_it_doesnt_own(updatable, monkeypatch):
+    w = updatable
+    monkeypatch.setenv("SQUIDBRAKE_NO_AUTO_UPDATE", "1")
+    assert service.self_update("1.0.0") is False and w["pypi"] == 0
+    monkeypatch.delenv("SQUIDBRAKE_NO_AUTO_UPDATE")
+    monkeypatch.setattr(service, "install_kind", lambda: None)          # a system Python, a checkout
+    assert service.self_update("1.0.0") is False and w["pypi"] == 0
+
+
+def test_only_installs_squidbrake_made_are_updated(monkeypatch, tmp_path):
+    monkeypatch.setattr(service, "HERE", tmp_path)                       # a checkout: no __init__.py
+    assert service.install_kind() is None
+    (tmp_path / "__init__.py").write_text("")
+    monkeypatch.setattr(service.sys, "prefix", "/usr")
+    monkeypatch.setattr(service.sys, "base_prefix", "/usr")
+    monkeypatch.setattr(service.sys, "executable", "/usr/bin/python3")
+    assert service.install_kind() is None                                 # a system Python: shared, not ours
+    monkeypatch.setattr(service.sys, "prefix", str(tmp_path / ".squidbrake/app"))
+    assert service.install_kind() == "venv"                               # the installer's own folder
 
 
 def test_start_scripts_go_through_the_service():
@@ -167,4 +242,4 @@ def test_start_scripts_go_through_the_service():
 
 def test_service_help_is_the_service_help(capsys):
     assert service.main(["--help"]) == 0 and service.main(["-h"]) == 0
-    assert "start --background" in capsys.readouterr().out
+    assert "start --foreground" in capsys.readouterr().out

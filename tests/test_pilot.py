@@ -1,5 +1,6 @@
 """Pilot usage sharing: nothing without joining, only counts when joined, and the insights service guards its doors."""
 import json
+from datetime import datetime, timedelta, timezone
 import os
 import sys
 import tempfile
@@ -58,6 +59,70 @@ def test_nothing_is_sent_without_joining(tmp_path, monkeypatch):
     calls = []
     monkeypatch.setattr(httpx, "post", lambda *a, **k: calls.append(a))
     assert pilot.send(tmp_path, {"days": {}}) is False and calls == []
+
+
+def _joined(home: Path) -> None:
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "pilot.json").write_text(json.dumps({"code": "community-x", "server": "https://pilots.example.com",
+                                                 "install_id": "i1"}), encoding="utf-8")
+
+
+def test_counts_are_sent_only_when_they_change_or_the_heartbeat_is_due(tmp_path, monkeypatch):
+    """Looked at every 2 minutes; an idle gateway doesn't send the same counts again until HEARTBEAT goes by."""
+    assert pilot.INTERVAL == 120
+    sent = []
+    monkeypatch.setattr(pilot, "_post", lambda server, path, body, timeout=15: sent.append((body, timeout)) or {})
+    monkeypatch.setattr(pilot, "_last", {})
+    clock = [1000.0]
+    monkeypatch.setattr(pilot.time, "monotonic", lambda: clock[0])
+    payload = {"days": {"2026-11-02": {"events": 3}}}
+    assert pilot.send_if_changed(tmp_path, lambda: payload) is None and sent == []   # not joined: nothing
+    _joined(tmp_path)
+    assert pilot.send_if_changed(tmp_path, lambda: payload) is True and len(sent) == 1
+    clock[0] += pilot.INTERVAL
+    assert pilot.send_if_changed(tmp_path, lambda: dict(payload)) is None and len(sent) == 1   # same counts
+    payload = {"days": {"2026-11-02": {"events": 4}}}
+    assert pilot.send_if_changed(tmp_path, lambda: payload) is True and len(sent) == 2       # one more action
+    clock[0] += pilot.HEARTBEAT
+    assert pilot.send_if_changed(tmp_path, lambda: payload) is True and len(sent) == 3       # idle, but alive
+    assert sent[-1][0]["usage"] == payload and sent[-1][1] == 15
+
+
+def test_a_failed_send_is_tried_again_next_time(tmp_path, monkeypatch):
+    _joined(tmp_path)
+    monkeypatch.setattr(pilot, "_last", {})
+    def down(*a, **k):
+        raise httpx.ConnectError("offline")
+    monkeypatch.setattr(pilot, "_post", down)
+    assert pilot.send_if_changed(tmp_path, lambda: {"days": {}}) is False
+    sent = []
+    monkeypatch.setattr(pilot, "_post", lambda server, path, body, timeout=15: sent.append(path) or {})
+    assert pilot.send_if_changed(tmp_path, lambda: {"days": {}}) is True and sent == ["/v1/ping"]
+
+
+def test_stopping_sends_what_changed_with_a_short_timeout_and_never_raises(tmp_path, monkeypatch):
+    _joined(tmp_path)
+    monkeypatch.setattr(pilot, "_last", {})
+    timeouts = []
+    monkeypatch.setattr(pilot, "_post", lambda server, path, body, timeout=15: timeouts.append(timeout) or {})
+    pilot.flush(tmp_path, lambda: {"days": {"d": {"events": 1}}})
+    pilot.flush(tmp_path, lambda: {"days": {"d": {"events": 1}}})          # nothing new since: not sent again
+    assert timeouts == [3]
+    pilot.flush(tmp_path, lambda: 1 / 0)                                   # a broken payload can't stop a shutdown
+
+
+def test_the_gateway_sends_its_last_counts_when_it_stops(tmp_path, monkeypatch):
+    import server
+    calls = []
+    monkeypatch.setattr(server, "PILOT_DIR", tmp_path)
+    monkeypatch.setattr(pilot, "flush", lambda home, make_payload: calls.append((home, make_payload())))
+    with TestClient(server.app):
+        assert calls == []
+    assert calls == []                                       # not joined: nothing at shutdown either
+    _joined(tmp_path)
+    with TestClient(server.app):
+        pass
+    assert len(calls) == 1 and calls[0][0] == tmp_path and "days" in calls[0][1]
 
 
 def test_link_previews_are_not_views(insights):
@@ -344,6 +409,11 @@ def test_stale_oss_numbers_dont_wait_on_github(insights, monkeypatch):
     insights_app._oss_mem.clear()
     assert insights_app.oss_numbers()["stars"] == 1          # the old numbers at once, while GitHub is still answering
     release.set()
+    for _ in range(100):                                     # let the refresh finish, or its late write leaks into the next test
+        if not insights_app._oss_refreshing.is_set():
+            break
+        threading.Event().wait(0.05)
+    assert not insights_app._oss_refreshing.is_set()
 
 
 def test_traction_metrics(insights, tmp_path, monkeypatch):
@@ -601,6 +671,24 @@ def test_team_plan_signup_is_a_hosted_trial_waiting_for_approval(insights, monke
     assert insights.post("/v1/signup", json={"name": "x", "email": "x@t.dev", "company": "x", "plan": "gold"}).status_code == 422
 
 
+def test_hosted_signup_starts_on_its_own_while_a_slot_is_free(insights, monkeypatch):
+    import app as insights_app
+    insights_app._requests.clear()
+    told = []
+    monkeypatch.setattr(insights_app, "notify", told.append)
+    monkeypatch.setattr(insights_app, "HOSTED_AUTO_APPROVE", True)
+    with insights_app.db() as c:
+        live = c.execute(f"SELECT COUNT(*) FROM pilots WHERE {insights_app.LIVE}").fetchone()[0]
+    monkeypatch.setattr(insights_app, "HOSTED_MAX", live + 1)
+    sign = lambda email: insights.post("/v1/signup", json={"name": "Ola", "email": email, "company": "Auto",
+                                                           "plan": "team"}).json()["link"].rsplit("/", 1)[1]
+    first = sign("ola@auto.dev")
+    assert insights.get(f"/v1/pilot/{first}/status").json()["state"] == "requested"   # provision.py starts it
+    assert "started on its own" in told[0]
+    second = sign("bo@auto.dev")                                                         # no slot left: it waits
+    assert insights.get(f"/v1/pilot/{second}/status").json()["state"] == "waiting" and "Approve it" in told[1]
+
+
 def test_stripe_payments_reach_the_pilot_they_were_for(insights, monkeypatch):
     import hashlib
     import hmac as _hmac
@@ -726,3 +814,65 @@ def test_register_moves_an_anonymous_install_onto_its_own_row(insights, tmp_path
     assert telemetry.register(["late@firm.io", "--yes"], "1.0") == 0
     after = pilot.load(tmp_path)
     assert after["code"] != insights_app.COMMUNITY_CODE and after["install_id"] == before   # same install, its history kept
+
+
+def test_retention_cohorts_and_weekly_accounting(insights):
+    """Retention reads the days table: active = a day with an action; weeks start Monday; read-only, admin only."""
+    import app as insights_app
+    from datetime import datetime, timedelta, timezone
+    admin = {"X-Admin-Key": "admin-test-key"}
+    assert insights.get("/v1/admin/retention").status_code == 401
+    assert insights.get("/v1/admin/retention?unit=bogus", headers=admin).status_code == 422
+    today = datetime.now(timezone.utc).date()
+    monday = today - timedelta(days=today.weekday())
+    wk = lambda n, d=0: (monday - timedelta(weeks=n) + timedelta(days=d)).isoformat()
+    a = insights.post("/v1/admin/pilots", headers=admin, json={"company": "Retained Co"}).json()["code"]
+    b = insights.post("/v1/admin/pilots", headers=admin, json={"company": "Gone Co"}).json()["code"]
+    import uuid
+    R, G, C = (uuid.uuid4().hex for _ in range(3))
+    with insights_app.db() as c:
+        for iid, code in ((R, a), (G, b), (C, insights_app.COMMUNITY_CODE)):
+            c.execute("INSERT INTO installs (install_id, code, joined_at) VALUES (?,?,?)", (iid, code, wk(30)))
+        rows = [(R, wk(20), 3), (R, wk(20, 2), 1), (R, wk(19), 4), (R, wk(17), 2),
+                (G, wk(20), 5), (G, wk(19, 1), 0),          # a day with no actions is not active
+                (C, wk(20), 9)]
+        for iid, day, n in rows:
+            c.execute("INSERT OR REPLACE INTO days (install_id, day, counts) VALUES (?,?,?)", (iid, day, json.dumps({"events": n})))
+    before = insights.get("/v1/admin/overview", headers=admin).json()
+
+    r = insights.get("/v1/admin/retention", headers=admin).json()
+    assert r["summary"]["ever_active"] >= 2
+    cohort = next(c for c in r["cohorts"] if c["week"] == wk(20))
+    assert cohort["size"] == 2 and cohort["active"][:4] == [2, 1, 0, 1]
+    acc = {x["week"]: x for x in r["accounting"]}
+    assert acc[wk(20)]["new"] >= 2 and acc[wk(20)]["days_per_active"] > 0
+    assert acc[wk(19)]["retained"] >= 1 and acc[wk(19)]["churned"] >= 1
+    assert acc[wk(17)]["resurrected"] >= 1
+    assert r["weeks"][-1] == monday.isoformat()
+    pilot_row = next(u for u in r["units"] if u["name"] == "Retained Co")
+    assert pilot_row["active_days"] == 4 and len(pilot_row["weeks"]) == len(r["units_weeks"]) <= 12
+    assert not any(u["name"] == "Community (opted in)" for u in r["units"])      # individuals are never pilots here
+
+    ind = insights.get("/v1/admin/retention?unit=individuals", headers=admin).json()
+    assert ind["units"] == [] and any(c["week"] == wk(20) for c in ind["cohorts"])   # anonymous: counts only, no rows
+    assert insights.get("/v1/admin/overview", headers=admin).json()["scorecard"] == before["scorecard"]   # read-only
+
+
+def test_auto_update_waits_for_a_quiet_moment(monkeypatch, tmp_path):
+    """The background gateway restarts after an update only when nobody waits on it (server._quiet_for_update)."""
+    import server
+    from sqlalchemy import create_engine
+    engine = create_engine(f"sqlite:///{(tmp_path / 'quiet.db').as_posix()}")     # its own, so other tests' rows stay
+    server.metadata.create_all(engine)
+    monkeypatch.setattr(server, "engine", engine)
+    ago = lambda **d: (datetime.now(timezone.utc) - timedelta(**d)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    assert server._quiet_for_update()
+    with engine.begin() as conn:
+        conn.execute(server.events.insert().values(id="e1", name="Read", status="completed", created_at=ago(minutes=2)))
+    assert not server._quiet_for_update()                      # an agent acted in the last 10 minutes
+    with engine.begin() as conn:
+        conn.execute(server.events.update().values(created_at=ago(hours=1)))
+    assert server._quiet_for_update()
+    with engine.begin() as conn:
+        conn.execute(server.events.update().values(status="awaiting_approval"))
+    assert not server._quiet_for_update()                      # a person is still deciding one

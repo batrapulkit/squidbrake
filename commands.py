@@ -206,7 +206,7 @@ PS_REMOVE = {"remove-item", "ri", "rm", "del", "erase", "rmdir", "rd"}
 PS_SESSION_REMOVE = {"remove-variable", "remove-module", "remove-job", "remove-psdrive", "remove-pssession",
                      "remove-event", "remove-psbreakpoint", "remove-typedata", "remove-alias"}
 CLOUD = {"aws", "gcloud", "gsutil", "az", "doctl", "flyctl", "fly", "heroku", "vercel", "netlify", "railway",
-         "supabase", "firebase", "wrangler", "oci", "linode-cli", "hcloud"}
+         "supabase", "firebase", "wrangler", "oci", "linode-cli", "hcloud", "bq"}
 # Global options that take a value, given before the verbs (an unknown one just adds a word to the verbs read)
 CLOUD_VALUE_OPTIONS = {"--profile", "--region", "--project", "--output", "-o", "--endpoint-url", "--subscription",
                        "--account", "--configuration", "--zone", "--app", "-a", "--remote", "-r", "--org", "--team",
@@ -222,6 +222,9 @@ SQL_RENAME = re.compile(r"\b(alter\s+(table|database|schema|view|index)\s+[\w.\"
                         r"\.renameCollection\s*\(|\brename\b\s+\S+\s+\S+\s*$)", re.I)
 REDIS_DELETE = {"del", "unlink", "hdel", "srem", "zrem", "lrem", "xdel", "getdel"}
 HTTP_CLIS = {"curl", "wget", "http", "https", "xh", "httpie", "invoke-webrequest", "iwr", "invoke-restmethod", "irm"}
+DNS_CLIS = {"ping", "ping6", "nslookup", "dig", "host", "resolve-dnsname"}
+DNS_SUBST = re.compile(r"\$\([^\)]+\)|`[^`]+`|\$env:[A-Za-z0-9_]+|\$[A-Za-z_][A-Za-z0-9_]*|\$\{[^}]+\}")
+ENCODED_DNS_LABEL = re.compile(r"^(?=.*\d)(?=.*[A-Za-z])[A-Za-z0-9_]{20,}$")   # hex/base64: letters and digits, no hyphens (long ordinary names have them)
 API_DELETE = re.compile(r"\bmutation\b[^{]*\{\s*\w*(delete|destroy|remove|drop|purge|wipe)\w*\s*\(|"
                         r"\bmutation\b[^{]*\{\s*\$\{?\w+\}?\s*\(|"      # mutation { $OP(...) }: named only at run time
                         r"\"(action|op|operation)\"\s*:\s*\"(delete|destroy|remove|drop)\w*\"", re.I)
@@ -568,6 +571,106 @@ def _gh_option(words: list[str], flag: str, short: str = "", boolean: bool = Fal
     return value.lower()
 
 
+def _suspicious_dns(prog: str, words: list[str], raw: str = "") -> bool:
+    if prog not in DNS_CLIS:
+        return False
+    text = raw if raw else " ".join(words)
+    args_text = text[len(words[0]):] if text.lower().startswith(words[0].lower()) else text
+    if DNS_SUBST.search(args_text):
+        return True
+    for w in words[1:]:
+        w_clean = w.strip("\"'")
+        if w_clean.startswith(("-", "+")) and "." not in w_clean:
+            continue
+        if "=" in w_clean and "." not in w_clean:
+            continue
+        for label in w_clean.split("."):
+            l = label.strip("\"'")
+            if ENCODED_DNS_LABEL.match(l):
+                return True
+    return False
+
+
+def _starts_automatically(prog: str, lower: list[str]) -> str | None:
+    """Changes that schedule work after this command has finished."""
+    if prog == "schtasks":
+        action = next((w for w in lower[1:] if w in
+                       ("/create", "/query", "/change", "/delete", "/run", "/end", "/showsid")), None)
+        if action == "/create":
+            return "creates a scheduled task that can run after this session (schtasks /create)"
+    if prog == "register-scheduledtask":
+        return "registers a task that can run after this session (Register-ScheduledTask)"
+    if (prog == "reg" and lower[1:2] == ["add"]) or prog in ("new-itemproperty", "set-itemproperty"):
+        if any(re.search(r"(?:^|\\)currentversion\\run(?:once)?$", w.rstrip("\\")) for w in lower[1:]):
+            return "adds a Windows Run key value that starts a program at login"
+    if prog == "systemctl":
+        args = iter(lower[1:])
+        for word in args:
+            if word in ("-h", "--host", "-m", "--machine", "--root", "--image"):
+                next(args, None)
+                continue
+            if word.startswith("-"):
+                continue
+            if word in ("enable", "link"):
+                action = "enables" if word == "enable" else "links"
+                return f"{action} a service to start automatically (systemctl {word})"
+            break
+    if prog == "launchctl":
+        sub = next((w for w in lower[1:] if not w.startswith("-")), None)
+        if sub in ("load", "bootstrap", "enable"):
+            action = "enables" if sub == "enable" else "loads"
+            daemon = " or daemon" if sub == "load" else ""
+            return f"{action} a launch agent{daemon} that can run after this session (launchctl {sub})"
+    if prog == "crontab" and "-l" not in lower and "-r" not in lower:
+        if "-e" in lower or "-" in lower[1:] or _positional(lower):
+            return "installs or edits scheduled commands that will run later (crontab)"
+    return None
+
+
+LOCAL_ADMIN_GROUPS = {"sudo", "wheel", "admin", "root"}
+
+
+def _groups_given(lower: list[str]) -> set[str]:
+    """Group names given to -g / -G / -aG / --groups (comma-separated), as useradd and usermod take them."""
+    names: list[str] = []
+    for i, w in enumerate(lower[1:], 1):
+        if w.startswith("--groups=") or w.startswith("--gid="):
+            names.append(w.split("=", 1)[1])
+        elif w in ("--groups", "--gid") or re.fullmatch(r"-[a-z]*g", w):    # lowercased: -G arrives as -g
+            if i + 1 < len(lower):
+                names.append(lower[i + 1])
+    return {g for n in names for g in n.split(",") if g}
+
+
+def _local_account_change(prog: str, lower: list[str]) -> str | None:
+    """Adding a local account or giving one admin rights: it outlasts the session. The reason names the program and
+    the group, never the rest of the line (it can hold a password)."""
+    if any(w in ("-h", "--help") for w in lower[1:]):
+        return None
+    admin = _groups_given(lower) & LOCAL_ADMIN_GROUPS
+    if prog == "adduser":                                    # adduser USER GROUP
+        pos = _positional(lower)
+        if len(pos) >= 2 and pos[1] in LOCAL_ADMIN_GROUPS:
+            admin = {pos[1]}
+    if prog in ("useradd", "adduser"):
+        if admin:
+            return f"adds a local account and gives it admin rights on this machine ({prog}: {', '.join(sorted(admin))})"
+        return f"adds a local user account ({prog})"
+    if prog == "usermod" and admin:
+        return f"gives an account admin rights on this machine ({prog}: {', '.join(sorted(admin))})"
+    if prog == "gpasswd" and any(w in ("-a", "--add") for w in lower[1:]):
+        if group := next((w for w in lower[1:] if w in LOCAL_ADMIN_GROUPS), None):
+            return f"gives an account admin rights on this machine ({prog}: {group})"
+    if prog == "passwd" and ("--delete" in lower[1:] or any(re.fullmatch(r"-[a-z]*d[a-z]*", w) for w in lower[1:])):
+        return "removes an account's password, so anyone can log in to it (passwd -d)"
+    if prog in ("net", "net1") and "/add" in lower[1:]:
+        if lower[1:2] in (["user"], ["users"]):
+            return "adds a local user account (net user ... /add)"
+        if lower[1:3] == ["localgroup", "administrators"]:
+            return "gives an account admin rights on this machine (net localgroup administrators ... /add)"
+    return None
+
+
 def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Command], list[str]]:
     """One simple command (already split into words). -> (commands, hidden-reasons)."""
     words = words[1:] if words[:1] == ["{"] else words       # a group, `{ curl URL > x.sh; } && bash x.sh`
@@ -635,8 +738,17 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         if lower[1:2] == ["apfs"] and lower[2:3] in (["deletecontainer"], ["deletevolume"]):
             cmd.kind, cmd.why = "catastrophic", f"deletes an APFS container or volume ({' '.join(words[:3])})"
             return [cmd], []
-    if prog == "tmutil" and lower[1:2] == ["delete"]:
-        cmd.kind, cmd.why = "irreversible", f"deletes Time Machine backups ({' '.join(words[:3])})"
+    if prog == "tmutil" and lower[1:2] in (["delete"], ["disable"]):
+        cmd.kind, cmd.why = "irreversible", f"deletes Time Machine backups ({' '.join(words[:3])})" if lower[1:2] == ["delete"] else "turns Time Machine backups off (tmutil disable)"
+        return [cmd], []
+    if (prog == "history" and any(a in ("-c", "-cw") or a.startswith("-c") for a in lower[1:])) or prog == "clear-history":
+        cmd.kind, cmd.why = "irreversible", "erases the record of what ran on this machine"
+        return [cmd], []
+    if prog == "wevtutil" and lower[1:2] == ["cl"]:
+        cmd.kind, cmd.why = "irreversible", "erases the record of what ran on this machine"
+        return [cmd], []
+    if prog == "journalctl" and any(a.startswith("--vacuum") for a in lower[1:]):
+        cmd.kind, cmd.why = "irreversible", "erases the record of what ran on this machine"
         return [cmd], []
     if prog == "vssadmin" and lower[1:2] == ["delete"]:
         cmd.kind, cmd.why = "irreversible", f"deletes Volume Shadow Copy restore points ({' '.join(words[:3])})"
@@ -755,6 +867,8 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
             verbs.append(w); i += 1
         if any(DESTRUCTIVE_WORDS.match(v) for v in verbs) or (prog == "aws" and verbs[:2] == ["s3", "rm"]):
             cmd.kind, cmd.why = "irreversible", f"deletes cloud resources ({' '.join(words[:4])})"
+        elif prog == "aws" and verbs[:2] == ["iam", "create-access-key"]:
+            cmd.kind, cmd.why = "irreversible", "creates a new long-lived AWS access key that keeps working after this session"
         elif verbs[1:2] == ["mv"] and verbs[:1] in (["s3"], ["storage"]) or (prog == "gsutil" and verbs[:1] == ["mv"]):
             cmd.kind, cmd.why = "rename", f"moves cloud files, deleting them where they were ({' '.join(words[:4])})"
         elif any(v in ("sync", "rsync") for v in verbs[:3]) and any(
@@ -762,6 +876,10 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
             cmd.kind, cmd.why = "irreversible", f"deletes whatever the destination has that the source doesn't ({' '.join(words[:4])})"
         elif off := BACKUPS_OFF.search(" ".join(lower[1:])):
             cmd.kind, cmd.why = "irreversible", f"switches off backups or deletion protection ({off.group(0)})"
+        elif (prog == "aws" and verbs[:2] == ["secretsmanager", "get-secret-value"]) or \
+             (prog == "gcloud" and verbs[:3] == ["secrets", "versions", "access"]) or \
+             (prog == "az" and verbs[:3] == ["keyvault", "secret", "show"]):
+            cmd.kind, cmd.why = "secret", f"shows the value of a stored secret ({prog} {' '.join(verbs[:2 if prog == 'aws' else 3])})"
         return [cmd], []
     if prog in ("docker", "podman", "nerdctl"):
         sub = [w for w in lower[1:] if not w.startswith("-")][:2]
@@ -784,6 +902,11 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         method = method or next((w[2:].upper() for w in words[1:] if re.match(r"^-X[A-Za-z]+$", w)), "")
         if method == "DELETE" or API_DELETE.search(text):
             cmd.kind, cmd.why = "irreversible", f"sends an API request that deletes something ({' '.join(words[:3])[:80]})"
+        return [cmd], []
+
+    # ---- DNS lookups that carry data out (CVE-2025-55284 DNS exfiltration)
+    if _suspicious_dns(prog, words, raw):
+        cmd.kind, cmd.why = "irreversible", "sends data out inside a DNS name"
         return [cmd], []
 
     # ---- databases
@@ -826,6 +949,8 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
     why = None
     if prog in ("npm", "pnpm", "yarn") and "unpublish" in lower[1:3]:
         why = "removes a published package from the npm registry; others' installs can break and the version can't be reused"
+    elif (prog == "cargo" and lower[1:2] == ["yank"]) or (prog == "gem" and lower[1:2] == ["yank"]) or (prog in ("npm", "pnpm", "yarn") and lower[1:2] == ["deprecate"]):
+        why = "takes a published version away from everyone who installs it"
     elif prog in ("bun", "poetry", "uv") and lower[1:2] == ["publish"]:
         why = f"publishes a package to a public registry; a released version can't be replaced ({' '.join(words[:2])})"
     elif prog in ("python", "python3", "py") and lower[1:4] == ["-m", "twine", "upload"]:
@@ -846,12 +971,35 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
                      or ("--visibility" in lower and "public" in lower))):
         cmd.kind, cmd.why = "irreversible", f"publishes or deletes something public ({' '.join(words[:3])})"
         return [cmd], []
+    if prog == "ufw" and lower[1:2] == ["disable"]:
+        cmd.kind, cmd.why = "irreversible", "switches off the firewall (ufw disable)"
+        return [cmd], []
+    # -F (capital) flushes; a lowercase -f is a fragment match, and `nft -f FILE` loads rules
+    if (prog in ("iptables", "ip6tables") and any(w in ("-F", "--flush") for w in words[1:])) or \
+            (prog == "nft" and lower[1:3] == ["flush", "ruleset"]):
+        cmd.kind, cmd.why = "irreversible", f"flushes firewall rules ({' '.join(words[:2])})"
+        return [cmd], []
+    if prog == "netsh" and "advfirewall" in lower[1:] and any("off" in w for w in lower[1:]):
+        cmd.kind, cmd.why = "irreversible", "switches off the Windows firewall (netsh advfirewall)"
+        return [cmd], []
+    if prog == "setenforce" and lower[1:2] in (["0"], ["permissive"]):
+        cmd.kind, cmd.why = "irreversible", f"switches off SELinux enforcement ({' '.join(words[:2])})"
+        return [cmd], []
+    if prog == "set-mppreference" and any("disablerealtimemonitoring" in w for w in lower[1:]) and any(v in lower for v in ("$true", "1", "true")):
+        cmd.kind, cmd.why = "irreversible", "switches off Windows Defender real-time monitoring (Set-MpPreference)"
+        return [cmd], []
     if prog in ("shutdown", "reboot", "halt", "poweroff", "stop-computer", "restart-computer") \
             or (prog == "init" and lower[1:2] in (["0"], ["6"])):
         cmd.kind, cmd.why = "irreversible", f"shuts down or restarts the machine ({' '.join(words[:2])})"
         return [cmd], []
     if prog == "crontab" and "-r" in lower:
         cmd.kind, cmd.why = "irreversible", "deletes every scheduled job (crontab -r)"
+        return [cmd], []
+    if (why := _starts_automatically(prog, lower)):
+        cmd.kind, cmd.why = "irreversible", why
+        return [cmd], []
+    if (why := _local_account_change(prog, lower)):
+        cmd.kind, cmd.why = "irreversible", why
         return [cmd], []
     if prog == "truncate" or prog in ("clear-content", "clc") or (prog == "mv" and any(w in ("/dev/null", "nul") for w in lower[1:])) \
             or (prog == "cp" and lower[1:2] == ["/dev/null"] and len(_positional(words)) == 2):
@@ -961,6 +1109,11 @@ def _git(cmd: Command, words: list[str]) -> Command:
                           or "--delete" in args or "--mirror" in args
                           or any(a.startswith("+") or (a.startswith(":") and len(a) > 1) for a in args)):
         cmd.kind, cmd.why = "irreversible", f"rewrites or deletes history on the remote ({' '.join(words)})"
+    elif "--no-verify" in args or (sub == "commit" and "n" in letters) or (
+            sub == "config" and any("core.hookspath" in a for a in args)
+            and not any(a in ("--get", "--list", "-l", "--get-all") for a in args)
+            and (len([a for a in args if not a.startswith("-")]) >= 2 or "--unset" in args)):
+        cmd.kind, cmd.why = "irreversible", "skips the repository's own checks (git hooks)"
     elif sub == "reset" and "--hard" in args:
         cmd.kind, cmd.why = "irreversible", "throws away uncommitted work (git reset --hard)"
     elif sub == "clean" and ("f" in letters or "--force" in args):
@@ -1167,6 +1320,7 @@ KNOWN = READ_ONLY | SHELLS | POWERSHELLS | {
     "java", "javac", "mvn", "gradle", "gradlew", "kotlin", "dotnet", "msbuild", "nuget", "ruby", "gem", "bundle",
     "rake", "rails", "php", "composer", "perl", "swift", "xcodebuild", "pod", "flutter", "dart", "docker", "podman",
     "kubectl", "helm", "terraform", "tofu", "pulumi", "ansible", "aws", "gcloud", "az", "curl", "wget", "ssh", "scp",
+    "ping", "ping6", "nslookup", "dig", "host", "resolve-dnsname",
     "rsync", "tar", "zip", "unzip", "gzip", "gunzip", "mkdir", "touch", "cp", "mv", "ln", "chmod", "chown", "rm",
     "rmdir", "sed", "awk", "xargs", "tee", "env", "export", "set", "unset", "source", ".", "alias", "history", "clear",
     "code", "cursor", "open", "start", "explorer", "claude", "codex", "gemini", "squidbrake", "psql", "mysql",

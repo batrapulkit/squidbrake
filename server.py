@@ -1506,6 +1506,8 @@ def notify_text(title: str, text: str) -> None:
             log.exception("notification failed: %s", title)
     if cfg.get("teams_webhook"):
         send_teams(cfg["teams_webhook"], title, text)
+    if cfg.get("telegram_bot_token") and cfg.get("telegram_chat_id"):
+        send_telegram(cfg["telegram_bot_token"], cfg["telegram_chat_id"], title, text)
     if cfg["ntfy_topic"]:
         try:
             httpx.post(cfg["ntfy_server"].rstrip("/"), timeout=10,
@@ -2437,14 +2439,14 @@ def settings() -> dict:
                 "notify_as": os.getenv("NOTIFY_APPROVER", "admin"), "weekly_digest": True,
                 "second_person": os.getenv("SECOND_PERSON_APPROVAL", "").lower() in ("1", "true", "yes"),
                 "customers": [], "slack_signing_secret": os.getenv("SLACK_SIGNING_SECRET", ""),
-                "teams_webhook": os.getenv("TEAMS_WEBHOOK_URL", ""), "email_to": os.getenv("APPROVAL_EMAIL_TO", ""),
+                "teams_webhook": os.getenv("TEAMS_WEBHOOK_URL", ""), "telegram_bot_token": os.getenv("TELEGRAM_BOT_TOKEN", ""), "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID", ""), "email_to": os.getenv("APPROVAL_EMAIL_TO", ""),
                 "smtp_host": os.getenv("SMTP_HOST", ""), "smtp_port": int(os.getenv("SMTP_PORT", "587") or 587),
                 "smtp_user": os.getenv("SMTP_USER", ""), "smtp_password": os.getenv("SMTP_PASSWORD", ""),
                 "smtp_from": os.getenv("SMTP_FROM", ""), "siem_url": os.getenv("SIEM_URL", ""),
                 "siem_token": os.getenv("SIEM_TOKEN", ""), "siem_format": os.getenv("SIEM_FORMAT", "json")}
     cfg = {**defaults, **state_get("settings", {})}
     if not license.paid(KEYS_PATH.parent):       # Team plan: Slack, Teams, email and phone push
-        cfg.update(slack_webhook="", teams_webhook="", email_to="", ntfy_topic="")
+        cfg.update(slack_webhook="", teams_webhook="", email_to="", ntfy_topic="", telegram_bot_token="", telegram_chat_id="")
     return cfg
 
 
@@ -2610,6 +2612,34 @@ def send_teams(webhook: str, title: str, body: str, link: str | None = None) -> 
         return False
 
 
+def send_telegram(token: str, chat_id: str, title: str, body: str, link: str | None = None) -> bool:
+    """Send a Telegram notification; an optional inline-keyboard button opens the approval link."""
+    import html
+    # Telegram refuses a message over 4096 characters; cut before escaping so an entity is never split
+    escaped_title = html.escape(title[:200])
+    escaped_body = html.escape(body if len(body) <= 3000 else body[:3000] + "…")
+    message_text = f"<b>{escaped_title}</b>\n\n{escaped_body}"
+    payload: dict[str, Any] = {
+        "chat_id": chat_id,
+        "text": message_text,
+        "parse_mode": "HTML",
+    }
+    if link:
+        payload["reply_markup"] = {
+            "inline_keyboard": [
+                [{"text": "Open", "url": link}]
+            ]
+        }
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        httpx.post(url, timeout=10, json=payload).raise_for_status()
+        return True
+    except Exception as e:   # the URL carries the bot token, so neither it nor the error's text is logged
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        log.warning("Telegram notification failed (%s)", status or type(e).__name__)
+        return False
+
+
 def _truncate_discord(s: str, limit: int) -> str:
     if len(s) <= limit:
         return s
@@ -2626,7 +2656,7 @@ def notify_approval_needed(row: dict, escalated_to: list[str] | None = None) -> 
     """Tell a human, wherever they are: Slack (or any incoming webhook) and/or a phone push via ntfy.
     Both carry a signed link that opens a one-tap Approve / Reject page."""
     cfg = settings()
-    if not (cfg["slack_webhook"] or cfg["ntfy_topic"] or cfg.get("teams_webhook") or email_ready(cfg)):
+    if not (cfg["slack_webhook"] or cfg["ntfy_topic"] or cfg.get("teams_webhook") or (cfg.get("telegram_bot_token") and cfg.get("telegram_chat_id")) or email_ready(cfg)):
         return
     base = (cfg["public_url"] or "http://localhost:8080").rstrip("/")
     token = make_link_token(row["id"], cfg["notify_as"])
@@ -2692,6 +2722,8 @@ def notify_approval_needed(row: dict, escalated_to: list[str] | None = None) -> 
                 log.exception("phone notification failed for event %s", row["id"])
         if cfg.get("teams_webhook"):
             send_teams(cfg["teams_webhook"], title, f"{body}\n\nExpires {expires}", link)
+        if cfg.get("telegram_bot_token") and cfg.get("telegram_chat_id"):
+            send_telegram(cfg["telegram_bot_token"], cfg["telegram_chat_id"], title, f"{body}\n\nExpires {expires}", link)
         # Only the review page's link: mail scanners open links, so nothing in an email decides by being opened.
         send_email(cfg, title, f"{body}\n\nReview and approve or reject: {link}\n(expires {expires})")
 
@@ -3057,6 +3089,37 @@ async def _integrity_loop():
         await asyncio.sleep(15)          # keys.json changed behind Squidbrake's back: said within seconds
 
 
+def _quiet_for_update() -> bool:
+    """Nothing waiting for a person and no agent action in the last 10 minutes: a restart now interrupts nobody."""
+    since = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    with engine.connect() as conn:
+        return not conn.execute(select(func.count()).select_from(events).where(
+            (events.c.created_at >= since) | (events.c.status == "awaiting_approval"))).scalar()
+
+
+async def _auto_update_loop():
+    """Only in the background service (service.py sets SQUIDBRAKE_SERVICE): it restarts the gateway after an update.
+    Every hour, at a quiet moment, service.self_update looks (at most daily at PyPI) and installs a newer version."""
+    import service
+    await asyncio.sleep(600)             # not during a start: the agents are reconnecting
+    while True:
+        try:
+            if await run_in_threadpool(_quiet_for_update) and await run_in_threadpool(service.self_update, VERSION):
+                log.warning("Squidbrake was updated; restarting on the new version")
+                _exit_for_restart()
+                return
+        except Exception:
+            log.exception("auto-update failed; this version keeps running")
+        await asyncio.sleep(3600)
+
+
+def _exit_for_restart() -> None:
+    if sys.platform == "win32":
+        os._exit(0)                      # the supervisor (service.py supervise) starts it again
+    import signal
+    os.kill(os.getpid(), signal.SIGTERM)  # uvicorn stops cleanly; launchd (KeepAlive) / systemd (Restart=always) start it
+
+
 CAUGHT_ORDER = {"blocked": 0, "rejected": 1, "would have been blocked": 2, "would have waited for a person": 3}
 
 
@@ -3207,13 +3270,23 @@ async def lifespan(app: FastAPI):
             os.getenv("SQUIDBRAKE_AUTO_CONNECT", "1").strip().lower() not in ("0", "no", "false", "off"):
         tasks.append(asyncio.create_task(_auto_connect_loop()))
     # usage counts for the pilot programme: does nothing unless this install joined one (squidbrake pilot join)
-    tasks.append(asyncio.create_task(pilot.loop(PILOT_DIR, lambda: pilot.usage(
+    if os.getenv("SQUIDBRAKE_SERVICE") == "1" and not IN_DOCKER:
+        tasks.append(asyncio.create_task(_auto_update_loop()))
+    pilot_usage = lambda: pilot.usage(
         engine, events, policy.mode, len(policy.rules), VERSION,
         reasons={r["id"]: r.get("reason", "") for r in policy.rules + policy.sequences},
-        connected=_agents_connected_here()))))
+        connected=_agents_connected_here())
+    tasks.append(asyncio.create_task(pilot.loop(PILOT_DIR, pilot_usage)))
+    # a gateway with no terminal first run (Docker, a background service) shares counts too, after saying so in its
+    # log; off with SQUIDBRAKE_TELEMETRY=0 or DO_NOT_TRACK=1 (telemetry.gateway_start). In the background: a slow
+    # network never holds up the start
+    import telemetry
+    tasks.append(asyncio.create_task(asyncio.to_thread(telemetry.gateway_start, VERSION, log.warning)))
     yield
     for t in tasks:
         t.cancel()
+    if pilot.load(PILOT_DIR):        # the last minutes of counts, before stopping (a few seconds at most)
+        await run_in_threadpool(pilot.flush, PILOT_DIR, pilot_usage)
     await app.state.http.aclose()
     await app.state.mcp_http.aclose()
     hub.stop_all()
@@ -3709,6 +3782,8 @@ class SettingsIn(BaseModel):
     customers: list[str] | None = Field(None, max_length=5000)   # names to keep out of PRs, issues, posts (data_checks)
     slack_signing_secret: str | None = Field(None, max_length=200)  # Squidbrake's Slack app: Approve / Reject buttons
     teams_webhook: str | None = Field(None, max_length=1000)     # a Teams Workflows webhook: approvals and the weekly report
+    telegram_bot_token: str | None = Field(None, max_length=200) # Telegram bot token from BotFather
+    telegram_chat_id: str | None = Field(None, max_length=200)   # Telegram chat ID for notifications
     email_to: str | None = Field(None, max_length=1000)          # comma-separated: approvals and the weekly report by email
     s3_bucket: str | None = Field(None, max_length=200)          # the audit trail archived there every day (s3_archive)
     s3_prefix: str | None = Field(None, max_length=200)
@@ -3793,12 +3868,15 @@ def siem_test(who: str = Depends(admin)):
 @app.post("/v1/settings/test")
 def test_notification(who: str = Depends(admin)):
     cfg = settings()
-    if not (cfg["slack_webhook"] or cfg["ntfy_topic"] or cfg.get("teams_webhook") or email_ready(cfg)):
-        raise HTTPException(400, "set Slack, Teams, email or a phone topic first")
+    if not (cfg["slack_webhook"] or cfg["ntfy_topic"] or cfg.get("teams_webhook") or (cfg.get("telegram_bot_token") and cfg.get("telegram_chat_id")) or email_ready(cfg)):
+        raise HTTPException(400, "set Slack, Teams, Telegram, email or a phone topic first")
     sent, errors = [], []
     if cfg.get("teams_webhook"):
         (sent.append("Teams") if send_teams(cfg["teams_webhook"], "Squidbrake", f"Test from {who}: notifications work.")
          else errors.append("Teams: the webhook didn't accept it (see the gateway log)"))
+    if cfg.get("telegram_bot_token") and cfg.get("telegram_chat_id"):
+        (sent.append("telegram") if send_telegram(cfg["telegram_bot_token"], cfg["telegram_chat_id"], "Squidbrake", f"Test from {who}: notifications work.")
+         else errors.append("Telegram: the Telegram API didn't accept it (see the gateway log)"))
     if email_ready(cfg):
         (sent.append("email") if send_email(cfg, "Squidbrake test", f"Test from {who}: approval requests will come here.")
          else errors.append("Email: the SMTP server didn't accept it (see the gateway log)"))
@@ -5259,6 +5337,9 @@ def _cli_run(args) -> int:
     if created and not IN_DOCKER and not args.no_browser and can_open_browser():
         threading.Timer(2.0, webbrowser.open, [f"{url}/dashboard"]).start()
     os.environ["SQUIDBRAKE_LISTEN_PORT"] = str(args.port)    # where the MCP proxies (mcp_hub.py) reach this gateway
+    if not IN_DOCKER:
+        import service
+        service.record_running(VERSION)                     # which install and version runs: `setup` checks it
     uvicorn.run("server:app", host=args.host, port=args.port, workers=args.workers,
                 proxy_headers=True, forwarded_allow_ips=os.getenv("FORWARDED_ALLOW_IPS", "127.0.0.1"),
                 log_level=LOG_LEVEL.lower())

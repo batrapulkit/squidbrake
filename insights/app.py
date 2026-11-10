@@ -7,7 +7,7 @@ Squidbrake Insights: see how pilot users use Squidbrake, without ever seeing wha
   /team                a form for teams that want help setting Squidbrake up (linked from `connect all` and the
                        dashboard): the only way to hear from installs that aren't pilots, since nothing is tracked
   POST /v1/pilot/join  an install joins with a code (squidbrake pilot join)
-  POST /v1/ping        an install's usage counts (every 6 hours)
+  POST /v1/ping        an install's usage counts (every 2 minutes while they change)
 
 Run:  INSIGHTS_ADMIN_KEY=... uvicorn app:app --port 8090      (data in INSIGHTS_DB, default ./data/insights.db)
 """
@@ -144,6 +144,7 @@ seed_community()
 
 HOSTED_DOMAIN = os.getenv("HOSTED_DOMAIN", "")        # e.g. app.squidbrake.com (with a *.app wildcard DNS record)
 HOSTED_MAX = int(os.getenv("HOSTED_MAX", "6"))         # each hosted gateway uses ~50-100 MB of memory
+HOSTED_AUTO_APPROVE = os.getenv("HOSTED_AUTO_APPROVE", "") == "1"   # 1: a hosted sign-up starts on its own while a slot is free
 LIVE = "hosted=1 AND state NOT IN ('deleting', 'waiting')"     # takes a hosted slot (waiting: not approved yet)
 
 # Where you hear about a hosted request or a demo request: an ntfy.sh topic URL (push to your phone), or a Slack or
@@ -795,6 +796,90 @@ def all_time():
             "since": min((r["first_day"] for r in rows if r["first_day"]), default=None)}
 
 
+def _monday(day: str) -> str:
+    d = datetime.fromisoformat(day).date()
+    return (d - timedelta(days=d.weekday())).isoformat()
+
+
+@app.get("/v1/admin/retention", dependencies=[Depends(admin)])
+def retention(unit: str = Query("pilots", pattern="^(pilots|individuals)$")):
+    """Do they come back? Read-only, from the days table: a pilot (or, for individuals, an install) is active on a day
+    its agents did at least one action. Weeks start on Monday (UTC); the current week is still running."""
+    today = datetime.now(timezone.utc).date().isoformat()
+    with db() as c:
+        names = dict(c.execute("SELECT code, company FROM pilots"))
+        code_of = dict(c.execute("SELECT install_id, code FROM installs"))
+        days = c.execute("SELECT install_id, day, counts FROM days").fetchall()
+    active: dict[str, set] = {}                  # unit -> its active days
+    for iid, day, counts in days:
+        code = code_of.get(iid)
+        if code is None or code not in names or day > today or (code == COMMUNITY_CODE) != (unit == "individuals"):
+            continue
+        try:
+            if not json.loads(counts).get("events"):
+                continue
+            _monday(day)
+        except (ValueError, AttributeError):
+            continue
+        active.setdefault(iid if unit == "individuals" else code, set()).add(day)
+    this_week = _monday(today)
+    if not active:
+        return {"unit": unit, "weeks": [], "current_week": this_week, "cohorts": [], "curve": [], "accounting": [],
+                "units": [], "summary": {"ever_active": 0}}
+    first = min(min(s) for s in active.values())
+    weeks, w = [], datetime.fromisoformat(_monday(first)).date()
+    while w.isoformat() <= this_week:
+        weeks.append(w.isoformat()); w += timedelta(days=7)
+    at = {wk: i for i, wk in enumerate(weeks)}
+    week_days = {u: {} for u in active}          # unit -> week index -> days active that week
+    for u, ds in active.items():
+        for d in ds:
+            i = at[_monday(d)]
+            week_days[u][i] = week_days[u].get(i, 0) + 1
+    start = {u: min(wd) for u, wd in week_days.items()}
+    last = len(weeks) - 1                        # the current, unfinished week
+
+    # cohorts: units by the week of their first action; then how many were active k weeks later
+    cohorts = []
+    for ci, wk in enumerate(weeks):
+        members = [u for u in active if start[u] == ci]
+        if members:
+            cohorts.append({"week": wk, "size": len(members),
+                            "active": [sum(1 for u in members if ci + k in week_days[u]) for k in range(last - ci + 1)]})
+    # the curve: across cohorts, the share active k weeks after their first, finished weeks only
+    curve = []
+    for k in range(last):
+        eligible = [u for u in active if start[u] + k < last]
+        if not eligible:
+            break
+        back = sum(1 for u in eligible if start[u] + k in week_days[u])
+        curve.append({"week": k, "pct": round(100 * back / len(eligible)), "active": back, "of": len(eligible)})
+    # each week's actives: new, back from last week, back after a gap; and last week's actives that didn't come back
+    accounting, prev = [], set()
+    for i, wk in enumerate(weeks):
+        now_on = {u for u in active if i in week_days[u]}
+        new = {u for u in now_on if start[u] == i}
+        days_on = sum(week_days[u][i] for u in now_on)
+        accounting.append({"week": wk, "active": len(now_on), "new": len(new), "retained": len(now_on & prev),
+                           "resurrected": len(now_on - prev - new), "churned": len(prev - now_on),
+                           "days_per_active": round(days_on / len(now_on), 1) if now_on else 0})
+        prev = now_on
+    lifetimes = sorted(max(wd) - min(wd) + 1 for wd in week_days.values())
+    summary = {"ever_active": len(active), "active_this_week": accounting[-1]["active"],
+               "active_last_week": accounting[-2]["active"] if len(accounting) > 1 else 0,
+               "week1": curve[1] if len(curve) > 1 else None, "week4": curve[4] if len(curve) > 4 else None,
+               "median_weeks": lifetimes[len(lifetimes) // 2], "since": first}
+    units = []                                   # per pilot only: individual installs stay anonymous (no names, no ids)
+    if unit == "pilots":
+        span = range(max(0, last - 11), last + 1)
+        for u, ds in active.items():
+            units.append({"name": names.get(u) or u, "first_day": min(ds), "last_day": max(ds), "active_days": len(ds),
+                          "weeks": [week_days[u].get(i, 0) for i in span]})
+        units.sort(key=lambda r: (r["last_day"], r["active_days"]), reverse=True)
+    return {"unit": unit, "weeks": weeks, "current_week": this_week, "cohorts": cohorts, "curve": curve,
+            "accounting": accounting, "units": units, "units_weeks": weeks[max(0, last - 11):], "summary": summary}
+
+
 @app.get("/v1/admin/overview", dependencies=[Depends(admin)])
 def overview(request: Request):
     today = datetime.now(timezone.utc).date()
@@ -1287,19 +1372,20 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
                                      "pulkit@squidbrake.com")
         if not s.name.strip() or not s.company.strip():
             raise HTTPException(422, "please add your name and company")
-        # hosted: the request waits for you to approve it in the admin (no gateway is started on its own)
+        # hosted: the request waits for you to approve it in the admin, unless HOSTED_AUTO_APPROVE and a slot is free
         setup = "hosted" if s.plan == "team" else s.setup
         sub = _subdomain(c, slug) if setup == "hosted" and HOSTED_DOMAIN else None
+        auto = bool(sub) and HOSTED_AUTO_APPROVE and c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0] < HOSTED_MAX
         trial = (datetime.now(timezone.utc).date() + timedelta(days=14)).isoformat() if s.plan == "team" else None
         c.execute("INSERT INTO pilots (code, company, contact, note, created_at, email, uses_agents, hosted, subdomain, "
                   "state, plan, trial_ends) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                   (code, s.company.strip(), f"{s.name.strip()} · {email}",
                    f"signup ({s.plan or setup})" + (f" from {s.source}" if s.source else "") + " · agents: "
                    + (", ".join(agents) or "-"), now(), email, json.dumps(agents),
-                   int(bool(sub)), sub, "waiting" if sub else None, s.plan or None, trial))
+                   int(bool(sub)), sub, ("requested" if auto else "waiting") if sub else None, s.plan or None, trial))
     if sub:
         notify(f"Squidbrake {'Team trial' if s.plan else 'hosted'} request: {s.name.strip()} ({email}), {s.company.strip()}. "
-               f"Approve it in {PUBLIC_URL}/admin")
+               + (f"It started on its own; see {PUBLIC_URL}/admin" if auto else f"Approve it in {PUBLIC_URL}/admin"))
     return {"ok": True, "link": f"{public_url(request)}/start/{code}"}
 
 

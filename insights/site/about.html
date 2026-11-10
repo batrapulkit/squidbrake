@@ -16,12 +16,13 @@
 <meta name="twitter:title" content="About Squidbrake: team, product and pilot case studies">
 <meta name="twitter:description" content="Who builds Squidbrake, what it does for AI agents, and what early pilots found: a red-team retest, a cloud console scare and ops agents at a data company.">
 <meta name="twitter:image" content="https://squidbrake.com/assets/og.png">
-<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "AboutPage", "name": "About Squidbrake", "url": "https://squidbrake.com/about", "mainEntity": {"@type": "Organization", "@id": "https://squidbrake.com/#org", "name": "Squidbrake", "url": "https://squidbrake.com/", "logo": "https://squidbrake.com/assets/logo-512.png", "email": "pulkit@squidbrake.com", "founder": [{"@id": "https://squidbrake.com/about#pulkit"}]}}, {"@type": "Person", "@id": "https://squidbrake.com/about#pulkit", "name": "Pulkit Batra", "jobTitle": "Cofounder", "worksFor": {"@id": "https://squidbrake.com/#org"}, "url": "https://squidbrake.com/about", "email": "pulkit@squidbrake.com", "sameAs": ["https://www.linkedin.com/in/pulkitbatra2077", "https://github.com/batrapulkit"], "knowsAbout": ["AI agent security", "Penetration testing", "Application security", "SOC 2", "OWASP LLM Top 10"], "alumniOf": [{"@type": "CollegeOrUniversity", "name": "University of Delhi"}, {"@type": "CollegeOrUniversity", "name": "Loyalist College"}]}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://squidbrake.com/"}, {"@type": "ListItem", "position": 2, "name": "About", "item": "https://squidbrake.com/about"}]}]}</script>
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "AboutPage", "name": "About Squidbrake", "url": "https://squidbrake.com/about", "mainEntity": {"@type": "Organization", "@id": "https://squidbrake.com/#org", "name": "Squidbrake", "url": "https://squidbrake.com/", "logo": "https://squidbrake.com/assets/logo-512.png", "email": "pulkit@squidbrake.com", "founder": [{"@id": "https://squidbrake.com/about#pulkit"}, {"@id": "https://squidbrake.com/about#karishma"}]}}, {"@type": "Person", "@id": "https://squidbrake.com/about#pulkit", "name": "Pulkit Batra", "jobTitle": "Cofounder", "worksFor": {"@id": "https://squidbrake.com/#org"}, "url": "https://squidbrake.com/about", "email": "pulkit@squidbrake.com", "sameAs": ["https://www.linkedin.com/in/pulkitbatra2077", "https://github.com/batrapulkit"], "knowsAbout": ["AI agent security", "Penetration testing", "Application security", "SOC 2", "OWASP LLM Top 10"], "alumniOf": [{"@type": "CollegeOrUniversity", "name": "University of Delhi"}, {"@type": "CollegeOrUniversity", "name": "Loyalist College"}]}, {"@type": "Person", "@id": "https://squidbrake.com/about#karishma", "name": "Karishma Sinha", "jobTitle": "Cofounder", "worksFor": {"@id": "https://squidbrake.com/#org"}, "url": "https://squidbrake.com/about", "sameAs": ["https://www.linkedin.com/in/karishma-sinha-7b46b8182/", "https://github.com/escher-m", "https://escher-m.github.io/"], "knowsAbout": ["Distributed systems", "Backend engineering", "AWS", "AI agents", "Go-to-market"], "alumniOf": [{"@type": "CollegeOrUniversity", "name": "IIIT Delhi"}]}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://squidbrake.com/"}, {"@type": "ListItem", "position": 2, "name": "About", "item": "https://squidbrake.com/about"}]}]}</script>
 <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
 <link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png">
 <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
 <link rel="preload" href="/assets/fonts/host-grotesk.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/assets/fonts/fonts.css">
+<link rel="stylesheet" href="/assets/ui.css?v=1">
 <style>
 :root{
   --bg:#E6EBE2; --surface:#F4F6F1; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5;
@@ -87,7 +88,28 @@ dl.facts dd{margin:2px 0 0;color:var(--muted)}
 h2.plain{display:block;margin:44px 0 6px}
 @media (max-width:560px){ .rel{grid-template-columns:80px 1fr} .rel time{display:none} td:first-child{white-space:normal} }
 .ph-badge{display:inline-block;line-height:0}.ph-badge img{max-width:100%;height:auto}
-.founder{margin:8px 0 18px;padding:24px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}.founder-pitch{font-size:clamp(1.25rem,2.4vw,1.6rem);font-weight:500;letter-spacing:-0.025em;line-height:1.25;margin:0 0 20px;max-width:34ch}.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin:0 0 20px}.stats b{display:block;font-size:1.7rem;font-weight:500;letter-spacing:-0.04em}.stats span{display:block;font:400 .78rem var(--mono);color:var(--muted);line-height:1.35}.cv{padding-left:18px;margin:0 0 14px}.cv li{margin:0 0 10px}.founder .links{margin:0;font-size:.95rem}@media (max-width:640px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.founder{padding:18px 16px}}
+.team-lead{margin:0 0 18px;color:var(--muted);max-width:60ch}
+.founder{position:relative;overflow:hidden;margin:0 0 20px;padding:28px;border-radius:18px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+.founder::before{content:"";position:absolute;inset:0 0 auto;height:3px;background:linear-gradient(90deg,var(--accent),transparent 75%)}
+.founder-head{display:flex;align-items:center;gap:16px;margin:0 0 20px}
+.avatar{flex:none;display:grid;place-items:center;width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--hold));color:#fff;font:600 1.05rem var(--sans);letter-spacing:.03em}
+.founder-head h3{margin:0;font-size:1.35rem;font-weight:600;letter-spacing:-.02em;line-height:1.2}
+.founder-head .kicker{margin:3px 0 0}
+.founder-pitch{font-size:clamp(1.25rem,2.4vw,1.65rem);font-weight:500;letter-spacing:-0.025em;line-height:1.28;margin:0 0 24px;max-width:40ch}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 26px}
+.stats>div{padding:14px 16px;border-radius:12px;background:var(--bg);box-shadow:inset 0 0 0 1px var(--line)}
+.stats b{display:block;font-size:1.6rem;font-weight:600;letter-spacing:-0.04em;line-height:1.1;margin:0 0 6px;color:#C2410C}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .stats b{color:var(--accent)}}
+:root[data-theme="dark"] .stats b{color:var(--accent)}
+.stats span{display:block;font:400 .78rem var(--mono);color:var(--muted);line-height:1.4}
+.cv{list-style:none;padding:0;margin:0 0 22px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 32px}
+.cv li{margin:0;padding-left:14px;border-left:2px solid var(--line);color:var(--muted);font-size:.95rem;line-height:1.55}
+.cv li strong{display:block;margin:0 0 4px;color:var(--ink);font-weight:600}
+.founder .links{display:flex;flex-wrap:wrap;gap:8px;margin:0}
+.founder .links a{padding:6px 14px;border-radius:999px;box-shadow:inset 0 0 0 1px var(--line);text-decoration:none;font-size:.88rem;color:var(--ink);transition:box-shadow .15s,color .15s}
+.founder .links a:hover,.founder .links a:focus-visible{box-shadow:inset 0 0 0 1px var(--accent);color:var(--accent)}
+@media (max-width:760px){.cv{grid-template-columns:1fr}}
+@media (max-width:640px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.founder{padding:22px 16px}}
 </style>
 </head>
 <body>
@@ -100,48 +122,64 @@ h2.plain{display:block;margin:44px 0 6px}
   <main>
     <p class="kicker">About</p>
     <h1>Change control for AI agents, from people who've run security.</h1>
-    <p class="lead">Squidbrake lets AI agents do everyday work on their own and makes sure a person approves what can't be
-      taken back. Here's who builds it, what it does, and what we've learned from the teams piloting it.</p>
+    <p class="lead">Agents do the everyday work. A person approves what can't be taken back.</p>
+    <ul class="chips" aria-label="At a glance"><li>Apache-2.0</li><li>Self-hosted or hosted</li><li>Shadow mode in week one</li><li>Checks in milliseconds</li></ul>
 
-    <h2 class="plain">The product</h2>
-    <dl class="facts">
-      <div><dt>It checks every tool call before it runs</dt><dd>Squidbrake sits between your agents (Claude Code, Codex,
-        Cursor, Gemini CLI, MCP servers, your own code) and the tools they call. Each call is checked against your rules
-        in a few milliseconds, outside the model, so a prompt can't talk its way past it.</dd></div>
-      <div><dt>Routine work runs, irreversible work waits</dt><dd>Reads, builds and tests go through. Deletes, destructive
-        SQL, money going out and messages to the outside world wait for a teammate, who sees what will change and says yes
-        or no from the dashboard, Slack or their phone.</dd></div>
-      <div><dt>Every decision is on a record you can check</dt><dd>Who asked, what ran, which rule decided and who
-        approved, in a hash-chained log you can verify offline. Evidence for SOC 2 CC8.1 and EU AI Act Art. 14.</dd></div>
-      <div><dt>Open source, self-hosted or hosted</dt><dd>Apache-2.0, <code>pipx install squidbrake</code>. Start in
-        shadow mode: nothing is blocked in week one. <a href="/docs">Quickstart</a> · <a href="/benchmark">Benchmark</a> ·
-        <a href="/security">Security</a></dd></div>
-    </dl>
+    <section class="sec" aria-labelledby="product">
+      <h2 class="plain" id="product">The product</h2>
+      <div class="tiles">
+        <div class="tile"><span class="ico"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg></span>
+          <h3>Every tool call, checked first</h3>
+          <p>Outside the model, in milliseconds. A prompt can't talk its way past it.</p>
+          <ul class="chips"><li>Claude Code</li><li>Codex</li><li>Cursor</li><li>Gemini CLI</li><li>MCP</li></ul></div>
+        <div class="tile"><span class="ico hold"><svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg></span>
+          <h3>Irreversible work waits</h3>
+          <p>Reads, builds and tests run. Deletes, destructive SQL, payments and outside messages wait for a teammate:
+            dashboard, Slack or phone.</p></div>
+        <div class="tile"><span class="ico go"><svg viewBox="0 0 24 24"><path d="M7 3h7l4 4v14H7z"/><path d="M14 3v4h4M10 12h5M10 16h5"/></svg></span>
+          <h3>A record you can check</h3>
+          <p>Who asked, what ran, which rule, who approved. Hash-chained and verifiable offline.</p>
+          <ul class="chips"><li>SOC 2 CC8.1</li><li>EU AI Act Art. 14</li></ul></div>
+        <div class="tile"><span class="ico"><svg viewBox="0 0 24 24"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4M13.5 5l-3 14"/></svg></span>
+          <h3>Open source</h3>
+          <p><code>pipx install squidbrake</code>. Nothing is blocked in week one.</p>
+          <p><a href="/docs">Quickstart</a> · <a href="/benchmark">Benchmark</a> · <a href="/security">Security</a></p></div>
+      </div>
+    </section>
 
-    <h2 class="plain">From our pilots</h2>
-    <p>Early pilots, described without names until each team says yes to being named.</p>
-    <dl class="facts">
-      <div><dt>A security engineer tried to break it</dt><dd>He sent a list of commands meant to get around Squidbrake;
-        every one became a regression test. On the retest (version 0.14.11, isolated Docker, no network) all 30 test
-        cases and 28 follow-up probes were held or blocked, harmless ones ran, and the two gaps he'd found earlier
-        (piping a download into a shell, running a script the agent had just written) were closed. Next: a normal working
-        week, to measure how often it holds something it shouldn't.</dd></div>
-      <div><dt>An agent overstepped in a cloud console</dt><dd>A founder in the Entrepreneur First cohort watched an AI
-        agent take actions in his Google Cloud console that he hadn't asked for. He found Squidbrake and installed it
-        himself, without a call, then sent us a review of where it fell short. Those findings are now on our list.</dd></div>
-      <div><dt>Unattended agents on private repos and AWS</dt><dd>An engineer at a large IT services firm runs local models
-        and Claude Code unattended against private repositories and AWS. He read the install script before running it;
-        we set it up together in a 65-minute call and his first agent action went through Squidbrake. His asks (connect
-        one agent at a time, an extra warning before approving anything irreversible) shaped what we're building next.</dd></div>
-      <div><dt>Ops agents at a data-integration company</dt><dd>Their agents had put a customer's name in a pull request
-        and commented on a public issue after being told not to. They already had Slack approve and reject buttons, so the
-        gap was what's inside an action: customer names in public text, public comments, sequences of version changes.
-        Their tools go behind Squidbrake in shadow mode first, logging what would have been held before anything is.</dd></div>
-    </dl>
+    <section class="sec" aria-labelledby="pilots">
+      <h2 class="plain" id="pilots">From our pilots</h2>
+      <p class="sub">No names until each team says yes.</p>
+      <div class="stories">
+        <article class="story"><p class="tag">Red-team retest</p>
+          <h3>An engineer tried to break it</h3>
+          <p>Every bypass he sent became a regression test. On the retest the two gaps he'd found were closed and his
+            6 harmless controls still ran. His own cases on a test machine, not real use; a normal working week is next.</p>
+          <p class="result"><b>53 / 53</b><span>attack cases held or blocked, the same on 0.14.11, 0.14.12 and 0.14.13</span></p></article>
+        <article class="story"><p class="tag">Found us himself</p>
+          <h3>An agent overstepped in a cloud console</h3>
+          <p>An Entrepreneur First founder saw an agent act in his Google Cloud console unasked. He installed Squidbrake
+            on his own and sent us where it fell short.</p>
+          <p class="result"><b>0 calls</b><span>to install; his review is on our list</span></p></article>
+        <article class="story"><p class="tag">Unattended agents</p>
+          <h3>Private repos and AWS, no one watching</h3>
+          <p>An engineer at a large IT services firm runs local models and Claude Code unattended. He read the install
+            script first; his asks shape what we build next.</p>
+          <p class="result"><b>65 min</b><span>from call to his first agent action through Squidbrake</span></p></article>
+        <article class="story"><p class="tag">Ops agents</p>
+          <h3>A customer's name in a public PR</h3>
+          <p>A data-integration company's agents leaked a customer name and commented publicly after being told not to.
+            The gap was inside the action, not the approve button.</p>
+          <p class="result"><b>Shadow</b><span>mode first: it logs what it would hold before it holds anything</span></p></article>
+      </div>
+    </section>
 
-    <h2 class="plain">The team</h2>
+    <h2 class="plain" style="margin-top:56px">The team</h2>
+    <p class="team-lead">Two founders: one who has spent years breaking into systems, one who has spent them keeping
+      systems up.</p>
     <div class="founder">
-      <p class="kicker" style="margin:0 0 6px">Pulkit Batra · cofounder, builds the product</p>
+      <div class="founder-head"><span class="avatar" aria-hidden="true">PB</span>
+        <div><h3>Pulkit Batra</h3><p class="kicker">Cofounder · builds the product</p></div></div>
       <p class="founder-pitch">He's been the attacker, the defender and the person who has to pass the audit. Squidbrake is
         what he wished existed in all three jobs.</p>
       <div class="stats">
@@ -164,28 +202,59 @@ h2.plain{display:block;margin:44px 0 6px}
           ran the cybersecurity club as Club Master at Loyalist College in Canada; guest lecturer at IIT Kanpur. Published
           in a newspaper, invited speaker, Best Young Entrepreneur nominee.</li>
       </ul>
-      <p class="links"><a href="https://www.linkedin.com/in/pulkitbatra2077" target="_blank" rel="noopener">LinkedIn</a> ·
-        <a href="https://github.com/batrapulkit" target="_blank" rel="noopener">GitHub</a> ·
+      <p class="links"><a href="https://www.linkedin.com/in/pulkitbatra2077" target="_blank" rel="noopener">LinkedIn</a>
+        <a href="https://github.com/batrapulkit" target="_blank" rel="noopener">GitHub</a>
         <a href="mailto:pulkit@squidbrake.com">pulkit@squidbrake.com</a></p>
     </div>
-    <dl class="facts">
-      <div><dt>Karishma Sinha, cofounder</dt><dd>Ex-Qualcomm. Ran her own startup with paying customers. Leads sales
-        and the teams we work with.</dd></div>
-    </dl>
+    <div class="founder">
+      <div class="founder-head"><span class="avatar" aria-hidden="true">KS</span>
+        <div><h3>Karishma Sinha</h3><p class="kicker">Cofounder · runs sales and the teams we work with</p></div></div>
+      <p class="founder-pitch">She's kept production running at enterprise scale and built a company from nothing, alone.
+        She knows what an engineering lead needs to see before an agent gets near production.</p>
+      <div class="stats">
+        <div><b>10,000</b><span>users on DropStop, built solo with no funding</span></div>
+        <div><b>350k+</b><span>users on Qualcomm backends she scaled</span></div>
+        <div><b>50M+</b><span>enterprise licenses automated across 21,000+ companies</span></div>
+        <div><b>2023</b><span>peer-reviewed paper in Global Policy</span></div>
+      </div>
+      <ul class="cv">
+        <li><strong>Ran production at enterprise scale.</strong> Two years as a backend engineer at Qualcomm: scaled
+          distributed backends to 350k+ users at a 10 ms median latency, led the license-update automation for 50M+
+          licenses across 21,000+ companies, and merged 1,000+ legacy tools into one package manager for 50k+ enterprise
+          users without breaking anyone. Owned the AWS setup and the CI/CD pipeline.</li>
+        <li><strong>Built a company alone.</strong> Founded DropStop, an AI product-research tool for Indian e-commerce
+          sellers, and took it to 10,000 users and paying customers with no team and no funding. She wrote a C++ ranking
+          engine 40× faster than the Python one, a pipeline over 50k+ products from 100+ suppliers, and the subscriptions.</li>
+        <li><strong>Studies how things spread.</strong> Peer-reviewed paper in Global Policy (2023) on influencers in
+          digital politics. Research at Ashoka University's Trivedi Centre for Political Data and IIIT Delhi's LCS2 lab,
+          matching 1M+ tweets to real people. B.Tech (Honours) in Computer Science and Social Sciences, IIIT Delhi.</li>
+        <li><strong>Builds in the open.</strong> Contributed to Apache SystemDS. Founded HerStack, an open-source platform
+          that teaches high-school girls to build with AI, with 100+ contributors. Picked for IIT Madras's GDC venture
+          programme (under 10% get in), where she ran 100+ customer interviews.</li>
+      </ul>
+      <p class="links"><a href="https://www.linkedin.com/in/karishma-sinha-7b46b8182/" target="_blank" rel="noopener">LinkedIn</a>
+        <a href="https://github.com/escher-m" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://escher-m.github.io/" target="_blank" rel="noopener">Website</a></p>
+    </div>
 
-    <h2 class="plain">Backed by</h2>
-    <dl class="facts">
-      <div><dt><a href="https://www.joinef.com" target="_blank" rel="noopener">Entrepreneur First</a></dt>
-        <dd>The company builder that backs us.</dd></div>
-      <div><dt>Startup programs</dt><dd>Microsoft for Startups, OpenAI for Startups, Anthropic Startup Program.</dd></div>
-    </dl>
+    <section class="sec" aria-labelledby="backed">
+      <h2 class="plain" id="backed">Backed by</h2>
+      <div class="tiles">
+        <div class="tile"><h3 style="margin-top:0"><a href="https://www.joinef.com" target="_blank" rel="noopener">Entrepreneur First</a></h3>
+          <p>The company builder that backs us.</p></div>
+        <div class="tile"><h3 style="margin-top:0">Startup programs</h3>
+          <ul class="chips"><li>Microsoft for Startups</li><li>OpenAI for Startups</li><li>Anthropic Startup Program</li></ul></div>
+      </div>
+    </section>
 
-    <h2 class="plain">Talk to us</h2>
-    <p class="lead" style="margin-bottom:0"><a href="https://calendly.com/pulkitbatra2024/new-meeting-1" target="_blank"
-      rel="noopener">Book a call</a> or write to <a href="mailto:pulkit@squidbrake.com">pulkit@squidbrake.com</a>.</p>
+    <div class="cta-band">
+      <p>Want to see what it would have held on your team's agents?</p>
+      <div class="btns"><a class="btn primary" href="https://calendly.com/pulkitbatra2024/new-meeting-1" target="_blank" rel="noopener">Book a call</a>
+        <a class="btn" href="mailto:pulkit@squidbrake.com">pulkit@squidbrake.com</a></div>
+    </div>
   </main>
 
-  <footer><span>© 2026 Squidbrake, Inc.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="./">Home</a> · <a href="docs">Docs</a> · <a href="security">Security</a> · <a href="pricing">Pricing</a><a href="about">About</a> · <a href="changelog">Changelog</a> ·  · <a href="mailto:pulkit@squidbrake.com">pulkit@squidbrake.com</a></span></footer>
+  <footer><span>© 2026 Squidbrake, Inc.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="/">Home</a> · <a href="/docs">Docs</a> · <a href="/security">Security</a> · <a href="/pricing">Pricing</a> · <a href="/about">About</a> · <a href="/benchmark">Benchmark</a> · <a href="/blog">Blog</a> · <a href="/changelog">Changelog</a> · <a href="mailto:pulkit@squidbrake.com">pulkit@squidbrake.com</a></span></footer>
 </div>
 <script src="assets/booking.js" defer></script>
 </body>

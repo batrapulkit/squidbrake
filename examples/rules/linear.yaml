@@ -1,0 +1,63 @@
+# Example policy for the Linear MCP server (@modelcontextprotocol/server-linear v0.6.2 / jerhadf/linear-mcp-server).
+# Tool names use the `<app>.<tool>` form produced by `connect.py wrap --app linear`.
+# Reads run automatically, issue/comment updates require sign-off, and deletions are blocked outright.
+default: review
+default_reason: Linear changes require approval
+
+rules:
+  - id: block-destructive-linear-actions
+    action: deny
+    reason: Deleting Linear issues, projects, or teams is not allowed
+    match:
+      name:
+        - "linear.*delete*issue*"
+        - "linear.*delete*project*"
+        - "linear.*delete*team*"
+        - "linear.*delete*"
+
+  - id: allow-linear-reads
+    action: allow
+    reason: Read-only Linear operation
+    match:
+      name:
+        - "linear.get_issue"
+        - "linear.list_issues"
+        - "linear.search_issues"
+        - "linear.get_project"
+        - "linear.list_projects"
+        - "linear.get_team"
+        - "linear.list_teams"
+        - "linear.list_comments"
+        - "linear.get_user"
+        - "linear.list_users"
+        - "linear.get_viewer"
+        - "linear.search_documentation"
+        - "linear.linear_get_issue"
+        - "linear.linear_list_issues"
+        - "linear.linear_search_issues"
+        - "linear.linear_get_project"
+        - "linear.linear_list_projects"
+        - "linear.linear_get_team"
+        - "linear.linear_list_teams"
+        - "linear.linear_list_comments"
+        - "linear.linear_get_user"
+        - "linear.linear_list_users"
+        - "linear.linear_get_viewer"
+
+  - id: review-linear-writes
+    action: review
+    reason: Creating or updating Linear issues, comments, or projects requires approval
+    match:
+      name:
+        - "linear.create_issue"
+        - "linear.update_issue"
+        - "linear.create_comment"
+        - "linear.create_project"
+        - "linear.update_project"
+        - "linear.assign_issue"
+        - "linear.set_issue_status"
+        - "linear.linear_create_issue"
+        - "linear.linear_update_issue"
+        - "linear.linear_create_comment"
+        - "linear.linear_create_project"
+        - "linear.linear_update_project"

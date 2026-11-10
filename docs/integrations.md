@@ -71,3 +71,19 @@ Record an action that already happened in one call by including `output`/`error`
 **HTTP proxy** - no code changes: define `upstreams` in `rules.yaml`, then point the client at
 `http://gateway:8080/proxy/<upstream>/...`. Optional headers: `X-Gateway-Source`, `X-Gateway-Session`.
 Denied requests get `403`; every response carries `X-Gateway-Event-Id`.
+
+## Notifications: Telegram Bot
+
+Approval requests and plain text notifications can be delivered directly to Telegram with an **Open** button:
+
+1. Open Telegram and talk to [@BotFather](https://t.me/BotFather).
+2. Send `/newbot` and follow the prompts to name your bot and choose a username. Copy the API token provided.
+3. Start a conversation with your new bot (or invite it to a group/channel). Send any test message to it.
+4. Obtain your numeric chat ID by querying `https://api.telegram.org/bot<YOUR_BOT_TOKEN>/getUpdates` and inspecting the `message.chat.id` field.
+5. Set the environment variables on the Squidbrake server:
+   ```bash
+   TELEGRAM_BOT_TOKEN="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ"
+   TELEGRAM_CHAT_ID="987654321"
+   ```
+   Or configure `telegram_bot_token` and `telegram_chat_id` in dashboard Settings.
+

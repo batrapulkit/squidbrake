@@ -21,6 +21,7 @@ def world(monkeypatch):
     monkeypatch.setattr(service, "_answering", lambda port: w["up"])
     monkeypatch.setattr(service, "backend", lambda: "windows")
     monkeypatch.setattr(service, "_save_choice", lambda yes: w.setdefault("choice", yes))
+    monkeypatch.setattr(service, "stale", lambda kind, version: w.get("stale", False))
 
     def start(args):
         w["started"].append(args)
@@ -53,6 +54,13 @@ def test_setup_again_doesnt_restart_it_or_show_keys(world, capsys):
     assert onboard.main([]) == 0
     assert world["started"] == [] and world["connected"] and world["opened"] == ["http://localhost:8080/dashboard"]
     assert "already running" in capsys.readouterr().out
+
+
+def test_setup_over_an_older_install_switches_the_service_to_this_one(world, capsys):
+    world["up"], world["keys"], world["stale"] = True, None, True
+    assert onboard.main([]) == 0
+    assert world["started"] == [["--background", "--port", "8080"]]
+    assert "switching to this one" in capsys.readouterr().out
 
 
 def test_a_taken_port_stops_before_any_key_is_made(world, monkeypatch, capsys):
