@@ -215,7 +215,7 @@ CLOUD_VALUE_OPTIONS = {"--profile", "--region", "--project", "--output", "-o", "
 DESTRUCTIVE_WORDS = re.compile(r"^(delete|destroy|terminate|remove|rm|rb|purge|deregister|drop|wipe|erase|"
                                r"uninstall|disable-backup|delete-.*|.*-delete|remove-.*|terminate-.*|"
                                r".*:(destroy|delete|remove|reset|wipe|purge|rm))$", re.I)   # heroku pg:reset, apps:destroy
-SQL_DESTRUCTIVE = re.compile(r"\b(drop\s+(table|database|schema|index|view|column)|truncate\b|delete\s+from\b|"
+SQL_DESTRUCTIVE = re.compile(r"\b(drop\s+(table|database|schema|index|view|column|keyspace)|truncate\b|delete\s+from\b|"
                              r"update\s+[\w.\"`]+\s+set\b(?:(?!\bwhere\b)[^;])*(;|$)|"   # UPDATE with no WHERE: every row
                              r"dropdatabase\s*\(|deletemany\s*\(\s*\{\s*\}\s*\)|\.drop\s*\(|flushall|flushdb)", re.I)
 SQL_RENAME = re.compile(r"\b(alter\s+(table|database|schema|view|index)\s+[\w.\"`]+\s+rename\b|rename\s+(table|database)\b|"
@@ -229,7 +229,7 @@ API_DELETE = re.compile(r"\bmutation\b[^{]*\{\s*\w*(delete|destroy|remove|drop|p
                         r"\bmutation\b[^{]*\{\s*\$\{?\w+\}?\s*\(|"      # mutation { $OP(...) }: named only at run time
                         r"\"(action|op|operation)\"\s*:\s*\"(delete|destroy|remove|drop)\w*\"", re.I)
 SQL_CLIS = {"psql", "mysql", "mariadb", "sqlite3", "mongosh", "mongo", "redis-cli", "sqlcmd", "clickhouse-client",
-            "cockroach", "duckdb"}
+            "cockroach", "duckdb", "cqlsh"}
 
 # Paths that hold secrets: reading them is never "only looking" (it's how keys get stolen and sent out).
 SECRET_PATH = re.compile(r"(^|[\\/~.])(\.env(\.[\w-]+)?|\.ssh|id_rsa|id_ed25519|id_ecdsa|\.pem|\.p12|\.pfx|\.key|"
@@ -833,7 +833,7 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         elif sub[:1] == ["apply"]:
             cmd.kind, cmd.why = "irreversible", f"changes real infrastructure ({' '.join(words[:3])})"
         return [cmd], []
-    if prog == "pulumi" and any(w in ("destroy", "rm") for w in lower[1:3]):
+    if prog in ("pulumi", "cdk") and any(w in ("destroy", "rm") for w in lower[1:3]):
         cmd.kind, cmd.why = "irreversible", f"destroys infrastructure ({' '.join(words[:3])})"
         return [cmd], []
     if prog == "pulumi" and any(w in ("up", "update") for w in lower[1:2]):
@@ -902,7 +902,7 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         return [cmd], []
     if prog in ("docker", "podman", "nerdctl"):
         sub = [w for w in lower[1:] if not w.startswith("-")][:2]
-        if sub in (["system", "prune"], ["volume", "rm"], ["volume", "prune"], ["image", "prune"]) \
+        if sub in (["system", "prune"], ["system", "reset"], ["volume", "rm"], ["volume", "prune"], ["image", "prune"]) \
                 or (sub[:1] == ["compose"] and "down" in lower and ("-v" in lower or "--volumes" in lower)) \
                 or (sub[:1] == ["rm"] and ("-v" in lower or "--volumes" in lower)):
             cmd.kind, cmd.why = "irreversible", f"deletes containers' data ({' '.join(words[:4])})"
@@ -941,6 +941,16 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
                 w in ("-f", "--file", "-i", "source") or w.startswith("--file=") for w in lower[1:])):
             cmd.kind, cmd.why = "irreversible", "changes a production database (an SQL file or a write)"
         return [cmd], []
+    if prog == "influx":
+        sub = [w for w in lower[1:] if not w.startswith("-")][:2]
+        if any(w in ("delete",) for w in sub):
+            cmd.kind, cmd.why = "irreversible", f"deletes InfluxDB data ({' '.join(words[:3])})"
+            return [cmd], []
+    if prog == "etcdctl":
+        sub = [w for w in lower[1:] if not w.startswith("-")][:2]
+        if sub[:1] in (["del"], ["delete"]):
+            cmd.kind, cmd.why = "irreversible", f"deletes keys from etcd ({' '.join(words[:2])})"
+            return [cmd], []
 
     # ---- GitHub operations that delete data or override protections
     if prog == "gh" and _gh_option(words[1:], "--help", "-h", boolean=True) not in ("true", "1", "t"):
@@ -1338,12 +1348,12 @@ KNOWN = READ_ONLY | SHELLS | POWERSHELLS | {
     "coverage", "make", "cmake", "ninja", "gcc", "g++", "clang", "cc", "ld", "go", "gofmt", "cargo", "rustc", "rustup",
     "java", "javac", "mvn", "gradle", "gradlew", "kotlin", "dotnet", "msbuild", "nuget", "ruby", "gem", "bundle",
     "rake", "rails", "php", "composer", "perl", "swift", "xcodebuild", "pod", "flutter", "dart", "docker", "podman",
-    "kubectl", "helm", "terraform", "tofu", "pulumi", "ansible", "aws", "gcloud", "az", "curl", "wget", "ssh", "scp",
+    "kubectl", "helm", "terraform", "tofu", "pulumi", "cdk", "ansible", "aws", "gcloud", "az", "curl", "wget", "ssh", "scp",
     "ping", "ping6", "nslookup", "dig", "host", "resolve-dnsname",
     "rsync", "tar", "zip", "unzip", "gzip", "gunzip", "mkdir", "touch", "cp", "mv", "ln", "chmod", "chown", "rm",
     "rmdir", "sed", "awk", "xargs", "tee", "env", "export", "set", "unset", "source", ".", "alias", "history", "clear",
     "code", "cursor", "open", "start", "explorer", "claude", "codex", "gemini", "squidbrake", "psql", "mysql",
-    "sqlite3", "redis-cli", "mongosh", "brew", "apt", "apt-get", "dnf", "yum", "pacman", "choco", "winget", "scoop",
+    "sqlite3", "redis-cli", "mongosh", "cqlsh", "influx", "etcdctl", "brew", "apt", "apt-get", "dnf", "yum", "pacman", "choco", "winget", "scoop",
     "set-location", "sl", "new-item", "ni", "copy-item", "cp", "move-item", "mi", "set-content", "sc", "add-content",
     "out-file", "remove-item", "invoke-webrequest", "iwr", "invoke-restmethod", "irm", "start-process", "saps",
 }
