@@ -49,11 +49,14 @@ def test_catastrophic(line):
     "git reset --hard HEAD~3", "git clean -fdx", "git branch -D feature", "git checkout -- .", "git stash drop",
     "git reflog expire --expire=now --all", "git reflog delete HEAD@{1}",
     "terraform destroy -auto-approve", "terraform apply -auto-approve", "tofu state rm aws_db.main",
+    "cdk destroy --force",
     "kubectl delete ns prod", "kubectl -n prod delete deployment api", "helm uninstall api",
     "aws rds delete-db-snapshot --db-snapshot-identifier x", "aws ec2 terminate-instances --instance-ids i-1",
     "aws s3 rm s3://bucket --recursive", "aws s3 rb s3://bucket --force", "gcloud compute instances delete vm-1",
     "az group delete -n rg", 'psql -c "DROP TABLE users"', 'mysql -e "TRUNCATE orders"',
+    "cqlsh -e 'DROP KEYSPACE prod'", "influx bucket delete -n prod", "etcdctl del --prefix /",
     'sqlite3 app.db "DELETE FROM users;"', "docker system prune -af", "docker volume rm data",
+    "podman system reset -f",
     "docker compose down -v", "npm publish", "gh repo delete me/repo --yes", "shutdown -h now", "crontab -r",
     "tmutil delete /Volumes/Backup/x", "tmutil delete -d /Volumes/Backup -t 2026-01-01-120000",
     f"{VSS} delete shadows /all /quiet", "reg delete HKLM\\Software\\X /f", "cipher /w:C",
@@ -172,6 +175,13 @@ def test_catastrophic(line):
     "aws iam attach-user-policy --user-name bot --policy-arn arn:aws:iam::aws:policy/AdministratorAccess",
     "gsutil iam ch allUsers:objectViewer gs://bucket",
     "chmod -R 777 .",
+    # Sync commands that delete (#23)
+    "rsync -a --delete src/ dst/",
+    "aws s3 sync . s3://bucket --delete",
+    "robocopy empty d:\\data /MIR",
+    "rclone sync ./empty remote:bucket",
+    "rclone purge remote:bucket",
+    "gsutil rsync -d . gs://bucket",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -300,6 +310,18 @@ def test_no_false_alarm(line):
     "aws s3api get-bucket-acl --bucket b",
     "aws iam list-attached-user-policies --user-name bot",
     "chmod 644 file.txt",
+    # Sync commands without delete (#23)
+    "rsync -a src/ dst/",
+    "aws s3 sync . s3://bucket",
+    "robocopy src dst /E",
+    "rclone ls remote:bucket",
+    # External CLI inspection (#173)
+    'cqlsh -e "SELECT * FROM ks.t LIMIT 5"',
+    "influx bucket list",
+    "etcdctl get --prefix /app",
+    "podman ps",
+    "cdk diff",
+    "cdk synth",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
@@ -326,6 +348,12 @@ def test_summary_explains():
     assert "administrator access" in commands.read("aws iam attach-user-policy --user-name bot --policy-arn arn:aws:iam::aws:policy/AdministratorAccess").summary()
     assert "accessible to the public" in commands.read("gsutil iam ch allUsers:objectViewer gs://bucket").summary()
     assert "world-writable" in commands.read("chmod -R 777 .").summary()
+    assert "deletes whatever the destination has" in commands.read("rsync -a --delete src/ dst/").summary()
+    assert "DROP KEYSPACE" in commands.read("cqlsh -e 'DROP KEYSPACE prod'").summary()
+    assert "InfluxDB" in commands.read("influx bucket delete -n prod").summary()
+    assert "etcd" in commands.read("etcdctl del --prefix /").summary()
+    assert "containers" in commands.read("podman system reset -f").summary()
+    assert "infrastructure" in commands.read("cdk destroy --force").summary()
 
 
 def test_account_reasons_dont_repeat_the_password():
