@@ -123,3 +123,30 @@ def test_ask_returns_a_persons_answer_and_notes_reach_on_note(gateway):
     httpx.post(gateway.url + "/v1/notes", headers=admin, json={"agent": "client-notes", "text": "slow down"})
     g.check("Read", {"file_path": "README.md"})
     assert [n["text"] for n in got] == ["slow down"]
+
+
+def test_openai_agents_example_runs_all_three_outcomes(gateway, capsys):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("openai_agents_demo", ROOT / "examples" / "openai-agents" / "demo.py")
+    demo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(demo)
+
+    admin = {"X-Gateway-Key": gateway.admin_key}
+
+    def approve_refund():
+        for _ in range(100):
+            rows = httpx.get(gateway.url + "/v1/events", headers=admin,
+                             params={"status": "awaiting_approval", "limit": 20}).json()["events"]
+            refund = next((e for e in rows if e["name"] == "invoice.refund"), None)
+            if refund:
+                httpx.post(f"{gateway.url}/v1/events/{refund['id']}/approve", headers=admin, json={"note": "ok"})
+                return
+            time.sleep(0.1)
+
+    threading.Thread(target=approve_refund, daemon=True).start()
+    asyncio.run(demo.run_direct(gateway))
+    out = capsys.readouterr().out
+    assert "Allowed: Release notes for v0.15 rollout" in out
+    assert "Review outcome: Refunded $42.00 on inv_demo_123." in out
+    assert "Blocked: NOT RUN: Squidbrake stopped shell.exec" in out
