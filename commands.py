@@ -839,6 +839,25 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
     if prog == "pulumi" and any(w in ("up", "update") for w in lower[1:2]):
         cmd.kind, cmd.why = "irreversible", f"changes real infrastructure ({' '.join(words[:2])})"
         return [cmd], []
+
+    # ---- sync commands that delete at the destination (#23)
+    if prog == "rsync" and any(w == "--delete" or w.startswith("--delete-") for w in lower[1:]):
+        cmd.kind, cmd.why = "irreversible", f"deletes whatever the destination has that the source doesn't ({' '.join(words[:4])})"
+        return [cmd], []
+    if prog == "robocopy" and any(w in ("/mir", "/purge", "-mir", "-purge") for w in lower[1:]):
+        cmd.kind, cmd.why = "irreversible", f"deletes whatever the destination has that the source doesn't ({' '.join(words[:4])})"
+        return [cmd], []
+    if prog == "rclone":
+        sub = [w for w in lower[1:] if not w.startswith("-")][:1]
+        if sub == ["purge"]:
+            cmd.kind, cmd.why = "irreversible", f"deletes a remote path and all of its contents ({' '.join(words[:3])})"
+            return [cmd], []
+        if sub == ["sync"]:
+            cmd.kind, cmd.why = "irreversible", f"deletes whatever the destination has that the source doesn't ({' '.join(words[:3])})"
+            return [cmd], []
+        if sub == ["delete"]:
+            cmd.kind, cmd.why = "irreversible", f"deletes files on a remote ({' '.join(words[:3])})"
+            return [cmd], []
     # ---- a command sent to another machine or container: read that command too
     if (remote := _remote_command(prog, words)) is not None and depth < 4:
         where, line = remote

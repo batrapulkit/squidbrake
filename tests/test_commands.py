@@ -169,6 +169,14 @@ def test_catastrophic(line):
     "wevtutil cl Security",
     "journalctl --vacuum-time=1s",
     "tmutil disable",
+
+    # Sync commands that delete (#23)
+    "rsync -a --delete src/ dst/",
+    "aws s3 sync . s3://bucket --delete",
+    "robocopy empty d:\\data /MIR",
+    "rclone sync ./empty remote:bucket",
+    "rclone purge remote:bucket",
+    "gsutil rsync -d . gs://bucket",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -293,6 +301,11 @@ def test_no_false_alarm(line):
     "wevtutil qe Security /c:5",
     "tmutil status",
 
+    # Sync commands without delete (#23)
+    "rsync -a src/ dst/",
+    "aws s3 sync . s3://bucket",
+    "robocopy src dst /E",
+    "rclone ls remote:bucket",
     # External CLI inspection (#173)
     'cqlsh -e "SELECT * FROM ks.t LIMIT 5"',
     "influx bucket list",
@@ -322,6 +335,7 @@ def test_summary_explains():
     assert "erases the record of what ran" in commands.read("history -c").summary()
     assert "admin rights" in commands.read("usermod -aG sudo x").summary()
     assert "access key" in commands.read("aws iam create-access-key --user-name x").summary()
+    assert "deletes whatever the destination has" in commands.read("rsync -a --delete src/ dst/").summary()
     assert "DROP KEYSPACE" in commands.read("cqlsh -e 'DROP KEYSPACE prod'").summary()
     assert "InfluxDB" in commands.read("influx bucket delete -n prod").summary()
     assert "etcd" in commands.read("etcdctl del --prefix /").summary()
