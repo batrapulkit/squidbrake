@@ -39,6 +39,13 @@ h1 { font-size:32px; line-height:1.2; margin:18px 0 8px; letter-spacing:-.02em; 
 code { background:var(--code); padding:1px 6px; border-radius:6px; font-size:.92em; }
 a { color:var(--accent); }
 .missing { text-align:center; margin-top:80px; }
+.locked { opacity:.55; }
+.n.ok { background:var(--ok); }
+.live { color:var(--ink); }
+.done-box { border-left:4px solid var(--ok); }
+details.step summary { cursor:pointer; font-weight:650; font-size:16px; }
+details.step ul { color:var(--muted); padding-left:20px; margin:10px 0 0; } details.step li { margin:4px 0; }
+details.step table { margin-top:8px; }
 table.cover { width:100%; border-collapse:collapse; font-size:14.5px; }
 table.cover td { padding:7px 6px; border-top:1px solid var(--line); vertical-align:top; color:var(--muted); }
 table.cover td:first-child { color:var(--ink); white-space:nowrap; width:1%; padding-right:14px; }
@@ -64,7 +71,8 @@ if (D.hosted && !D.missing) {
   hostedPage();
 } else if (D.missing) {
   app.innerHTML = `<div class="missing"><div class="brand">Squid<span>brake</span></div>
-    <h1>This link isn't valid</h1><p class="lead">Check the link you were sent, or ask the person who sent it.</p></div>`;
+    <h1>This link isn't valid</h1><p class="lead">Check the link you were sent, or ask the person who sent it.
+    Signed up yourself? Dashboards nobody used are freed after a while: <a href="/signup">sign up again</a>, it takes a minute.</p></div>`;
 } else {
   const win = `$env:SQUIDBRAKE_PILOT="${D.code}"; $env:SQUIDBRAKE_PILOT_SERVER="${D.server}"; irm ${D.server}/install.ps1 | iex`;
   const mac = `curl -fsSL ${D.server}/install.sh | SQUIDBRAKE_PILOT=${D.code} SQUIDBRAKE_PILOT_SERVER=${D.server} sh`;
@@ -148,7 +156,9 @@ if (D.hosted && !D.missing) {
 }
 
 function hostedPage() {
-  const keyless = "gw_YOUR_AGENT_KEY";
+  // Two steps, each unlocked by the one before, and the page sees for itself when they're done: (1) keys, (2) the
+  // install line with the agent key filled in, then the first agent action arriving (polled from /status).
+  const keyless = "gw_YOUR_AGENT_KEY", R = D.reclaim;
   const cmds = (key) => ({
     win: `$env:SQUIDBRAKE_URL="${D.dashboard}"; $env:SQUIDBRAKE_AGENT_KEY="${key}"; irm ${D.server}/install.ps1 | iex`,
     mac: `curl -fsSL ${D.server}/install.sh | SQUIDBRAKE_URL=${D.dashboard} SQUIDBRAKE_AGENT_KEY=${key} sh`,
@@ -156,67 +166,62 @@ function hostedPage() {
   });
   app.innerHTML = `
     <div class="brand">Squid<span>brake</span></div>
-    <h1>Hi ${esc(D.company)}: your agents propose, your team approves</h1>
+    <h1>Hi ${esc(D.company)}: two steps, about 2 minutes</h1>
     <p class="lead">Squidbrake checks every action your AI agent takes before it runs: reading code runs on its own,
-      changes wait for your OK (on your phone too), and dangerous commands are blocked. Your dashboard runs on our server,
-      so there's nothing to keep open on your laptop. Three steps, about 2 minutes.</p>
+      changes wait for your OK, and dangerous commands are blocked. Your dashboard runs on our server, so there's
+      nothing to keep open on your laptop.</p>
 
     ${D.plan === "team" ? `<section class="step" style="border-left:4px solid var(--ok)"><h2>Your Team trial</h2>
       <p>Free until <b>${esc(D.trial_ends || "")}</b>: shared approvals from the dashboard, your phone or Slack, for your
         whole team. Then $499 a month for one team, cancel any month.
         ${D.checkout ? `<a href="${esc(D.checkout)}" target="_blank" rel="noopener">Add a card now</a> so it keeps running.` : "We'll email you before it ends."}</p>
     </section>` : ""}
-    <section class="step"><h2><span class="n">1</span> Get your keys and open your dashboard</h2>
+    <section class="step" id="s1"><h2><span class="n">1</span> Get your keys</h2>
       <div id="keys"></div>
     </section>
 
-    <section class="step"><h2><span class="n">2</span> Connect your AI agents</h2>
-      <p>Open a terminal (Windows: <b>PowerShell</b>), paste this and press Enter. It installs what's needed, finds every
-        coding agent on this computer, connects each one to your dashboard and checks that it works.</p>
-      <div class="tabs" role="tablist">
-        <button role="tab" data-os="win">Windows</button><button role="tab" data-os="mac">macOS / Linux</button>
-        <button role="tab" data-os="manual">Manual</button></div>
-      <div class="cmd" id="installCmd"></div>
-      <p class="note" id="keyNote">Your agent key is filled in once you've done step 1.</p>
+    <section class="step locked" id="s2"><h2><span class="n">2</span> Connect your AI agent</h2>
+      <p class="note" id="lockedNote">Do step 1 first: your agent key goes into this step.</p>
+      <div id="connect" hidden>
+        <p>Open a terminal (on Windows: <b>PowerShell</b>), paste this line and press Enter. It finds the coding agents
+          on this computer and connects each one to your dashboard.</p>
+        <div class="tabs" role="tablist">
+          <button role="tab" data-os="win">Windows</button><button role="tab" data-os="mac">macOS / Linux</button>
+          <button role="tab" data-os="manual">Manual</button></div>
+        <div class="cmd" id="installCmd"></div>
+        <p class="note" id="keyNote"></p>
+        <p>Then <b>quit and reopen your agent</b> (Claude Code, Cursor, ...) and ask it anything.</p>
+        <p class="live" id="live"></p>
+      </div>
     </section>
 
-    <section class="step"><h2><span class="n">3</span> Restart your agents, and approve from your phone</h2>
-      <p>Close and reopen your agents (Claude Code, Cursor, ...). From then on their actions go through your dashboard.</p>
-      <p>In the dashboard, click <b>Phone</b> and scan the QR code: held actions then reach you with one-tap Approve / Reject.</p>
+    <section class="step done-box" id="done" hidden><h2>✓ You're set</h2>
+      <p>Your agent's actions now go through your dashboard. Try asking it to <b>print your .env file</b> (blocked, and
+        the agent is told why) or to <b>change a file</b> (it waits for your OK in the dashboard).</p>
     </section>
 
-    <section class="step"><h2>What gets checked, per agent</h2>
+    <details class="step"><summary>Next: approve from your phone, add your team</summary>
+      <ul>
+        <li>In the dashboard, click <b>Phone</b> and scan the QR code: held actions reach you with one-tap Approve / Reject.</li>
+        <li>Add teammates from the dashboard's <b>Team</b> page.</li>
+        <li>Another computer, or an agent added later? Run the step 2 line there too.</li>
+        <li>Codex CLI: approve the hook once in Codex (<code>/hooks</code>).</li>
+      </ul>
+    </details>
+
+    <details class="step"><summary>What gets checked, per agent</summary>
       <table class="cover">
         <tr><td><b>Claude Code</b></td><td>everything: commands, edits, file reads, web fetches, MCP tools</td></tr>
         <tr><td><b>Cursor</b></td><td>terminal commands, file reads, MCP tools</td></tr>
-        <tr><td><b>Codex CLI</b></td><td>shell commands, edits, MCP tools <span class="sub">(approve the hook once in Codex: <code>/hooks</code>)</span></td></tr>
+        <tr><td><b>Codex CLI</b></td><td>shell commands, edits, MCP tools</td></tr>
         <tr><td><b>Gemini CLI</b></td><td>shell commands, file reads, writes and edits, MCP tools</td></tr>
         <tr><td><b>VS Code Copilot</b></td><td>agent mode: terminal commands, reads, edits, MCP tools</td></tr>
         <tr><td><b>Antigravity</b></td><td>terminal commands, file reads and writes, MCP tools</td></tr>
         <tr><td><b>Windsurf, Kiro, Claude Desktop</b></td><td>MCP tools (GitHub, Stripe, databases...); their own terminal isn't covered yet</td></tr>
       </table>
-      <p class="note">The installer sets up whichever of these it finds. Added an agent later? Run the step 2 line again.</p>
-    </section>
+    </details>
 
-    <section class="step try"><h2>Try these</h2>
-      <ul>
-        <li>Ask your agent to <b>fix a failing test</b>: reading runs on its own; each change waits for one click.</li>
-        <li>Ask it to <b>print your .env file</b>: blocked, and the agent is told why.</li>
-        <li>Ask it to <b>force-push</b> or <b>delete a folder</b>: held for you, with a warning.</li>
-      </ul>
-    </section>
-
-    ${checklist([
-      "Got my keys and saved them in a password manager",
-      "Opened my dashboard, signed in",
-      "Ran the step 2 line on each computer that has an agent",
-      "Quit and reopened my agents",
-      "Scanned the QR code in the dashboard's <b>Phone</b> tab",
-      "Asked my agent to change a file, and approved it from my phone",
-      "Optional: added my teammates (dashboard, then <b>Team</b>)",
-    ])}
-
-    <section class="step privacy"><h2>Where your data lives</h2>
+    <details class="step privacy"><summary>Where your data lives</summary>
       <ul>
         <li><b>Your dashboard runs on a server we operate</b> (in India). Every action your agent takes is sent there to be
           checked and recorded: the command or tool, its inputs (which can include the text of an edit) and its result.
@@ -226,8 +231,10 @@ function hostedPage() {
         <li><b>Working on something sensitive?</b> Run Squidbrake on your own machine instead (see the
           <a href="/docs">docs</a>): then everything stays there.</li>
         <li>When the pilot ends, or whenever you ask, we delete your dashboard and everything in it.</li>
+        ${R ? `<li>A dashboard nobody uses is freed for the next person: keys not taken within ${R.keys_minutes} minutes,
+          or no agent connected within ${R.idle_hours} hours.</li>` : ""}
       </ul>
-    </section>
+    </details>
 
     <p class="foot">Stuck? ${D.contact ? "Reach me: " + esc(D.contact) + "." : "Reply to the message this link came in."}
       To disconnect: <code>squidbrake connect claude-code --remove</code>. Squidbrake is free.</p>`;
@@ -240,11 +247,41 @@ function hostedPage() {
   };
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => show(b.dataset.os)));
   show(/Mac|Linux|X11/.test(navigator.userAgent) && !/Windows/.test(navigator.userAgent) ? "mac" : "win");
-  document.querySelectorAll(".cmd").forEach((el) => el !== box && addCopy(el));
-  wireChecklist();
+
+  const done = (id) => { const n = document.querySelector(`#${id} .n`); n.textContent = "✓"; n.classList.add("ok"); };
+  // step 2 opens once the keys are in hand: with the agent key filled in, or (keys shown on an earlier visit) a slot for it
+  const unlock = (agentKey) => {
+    document.getElementById("s2").classList.remove("locked");
+    document.getElementById("lockedNote").hidden = true;
+    document.getElementById("connect").hidden = false;
+    if (agentKey) current = cmds(agentKey);
+    show(box.dataset.os);
+    document.getElementById("keyNote").innerHTML = agentKey ? "Your agent key is already in the line: copy the whole line."
+      : `Put your <b>agent</b> key in place of <code>${keyless}</code>.`;
+    watch();
+  };
+  let watching = false;
+  const live = document.getElementById("live");
+  const connected = () => {
+    done("s2");
+    live.innerHTML = `<span style="color:var(--ok)">✓ Connected: your agent's first action reached your dashboard.</span>`;
+    document.getElementById("done").hidden = false;
+  };
+  const watch = async () => {
+    if (watching) return;
+    watching = true;
+    while (true) {
+      let s = null;
+      try { s = await (await fetch(`/v1/pilot/${encodeURIComponent(D.code)}/status`)).json(); } catch {}
+      if (s && s.connected) return connected();
+      live.innerHTML = `⏳ Waiting for your agent's first action. This turns green by itself.` +
+        (R ? ` <span class="note">(Connect within ${R.idle_hours} hours to keep this dashboard.)</span>` : "");
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+  };
 
   const keys = document.getElementById("keys");
-  const big = "border:0;background:var(--accent);color:#fff;border-radius:10px;padding:11px 18px;font:inherit;font-weight:650;cursor:pointer;text-decoration:none;display:inline-block";
+  const big = "border:0;background:var(--accent);color:#fff;border-radius:10px;padding:12px 20px;font:inherit;font-weight:650;cursor:pointer;text-decoration:none;display:inline-block";
   const render = (s) => {
     // new keys only after signing in again with the email on file: this page's link alone isn't proof enough
     const lost = D.self_serve_keys
@@ -254,19 +291,25 @@ function hostedPage() {
       keys.innerHTML = `<p>⏳ Making new keys for <b>${esc(D.dashboard)}</b>. This page updates by itself (under a minute).</p>`;
       setTimeout(poll, 4000);
     } else if (s.keys_shown && !s.revealed) {
-      keys.innerHTML = `<p>Your keys were already shown on this page. Your dashboard: <a href="${esc(D.dashboard)}/dashboard" target="_blank" rel="noopener">${esc(D.dashboard)}</a>
-        (sign in with your <b>admin</b> key). ${lost}</p>
-        <p class="note">For step 2, put your <b>agent</b> key in place of <code>${keyless}</code>.</p>`;
+      keys.innerHTML = `<p>Your keys were shown on this page before. <a href="${esc(D.dashboard)}/dashboard" target="_blank" rel="noopener">Open your dashboard</a>
+        and sign in with your <b>admin</b> key. ${lost}</p>`;
+      done("s1"); unlock(null);
     } else if (s.state === "waiting") {
-      keys.innerHTML = `<p>✓ You're in. Every hosted dashboard is taken right now, so yours at <b>${esc(D.dashboard)}</b>
-        starts on its own as soon as one frees up. This page updates by itself: keep it open, or come back to this link.</p>`;
-      setTimeout(poll, 30000);
+      keys.innerHTML = `<p>✓ You're in line: every hosted dashboard is taken right now.
+        ${s.ahead ? `<b>${s.ahead}</b> ${s.ahead === 1 ? "person is" : "people are"} ahead of you.` : "<b>You're next.</b>"}
+        Yours starts on its own as soon as a slot frees up. Keep this page open, or come back to this link: it updates by itself.</p>`;
+      setTimeout(poll, 15000);
+    } else if (s.state === "failed") {
+      keys.innerHTML = `<p>⏳ Setting up your dashboard is taking longer than usual. We're on it and retry on our own:
+        this page updates by itself.</p>`;
+      setTimeout(poll, 10000);
     } else if (!s.keys_ready) {
-      keys.innerHTML = `<p>⏳ Setting up your dashboard at <b>${esc(D.dashboard)}</b>. This page updates by itself (under a minute).</p>`;
-      setTimeout(poll, 4000);
+      keys.innerHTML = `<p>⏳ Starting your dashboard. Usually under a minute: keep this page open, it updates by itself.</p>`;
+      setTimeout(poll, 3000);
     } else {
       keys.innerHTML = `<p>Your dashboard is ready. Your keys are shown <b>once</b>, then this page forgets them.</p>
-        <button id="reveal" style="${big}">Get my keys</button>`;
+        <button id="reveal" style="${big}">Get my keys</button>
+        ${R ? `<p class="note">Take them within ${R.keys_minutes} minutes of the start: unused dashboards are freed for the next person.</p>` : ""}`;
       document.getElementById("reveal").onclick = reveal;
     }
   };
@@ -280,17 +323,16 @@ function hostedPage() {
     const k = await r.json();
     const both = `Squidbrake dashboard: ${k.dashboard}/dashboard\nAdmin key (sign in, approve): ${k.admin_key}\nAgent key (Claude Code): ${k.agent_key}`;
     keys.innerHTML = `
-      <p><a href="${esc(k.dashboard)}/dashboard#key=${encodeURIComponent(k.admin_key)}" target="_blank" rel="noopener" style="${big}">Open my dashboard (signed in) ↗</a></p>
+      <p><button id="copyBoth" style="${big}">Copy both keys</button>
+        <span class="note" style="color:var(--warn)"> then save them in your password manager: this page won't show them again.</span></p>
       <p><b>Admin key</b>: signs you in to the dashboard and approves actions.</p><div class="cmd">${esc(k.admin_key)}</div>
-      <p><b>Agent key</b>: for Claude Code. Already filled into step 2.</p><div class="cmd">${esc(k.agent_key)}</div>
-      <p><button class="tabs-like" id="copyBoth" style="border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:9px;padding:7px 13px;font:inherit;cursor:pointer">Copy both keys</button>
-        <span class="note" style="color:var(--warn)"> Save them in your password manager now: this page won't show them again.</span></p>`;
+      <p><b>Agent key</b>: for your agents. Already filled into step 2.</p><div class="cmd">${esc(k.agent_key)}</div>
+      <p><a href="${esc(k.dashboard)}/dashboard#key=${encodeURIComponent(k.admin_key)}" target="_blank" rel="noopener">Open my dashboard (signed in) ↗</a></p>`;
     keys.querySelectorAll(".cmd").forEach(addCopy);
     document.getElementById("copyBoth").onclick = async (e) => {
-      try { await navigator.clipboard.writeText(both); e.target.textContent = "Copied"; } catch { prompt("Copy this:", both); }
+      try { await navigator.clipboard.writeText(both); e.target.textContent = "Copied ✓"; } catch { prompt("Copy this:", both); }
     };
-    current = cmds(k.agent_key); show(box.dataset.os);
-    document.getElementById("keyNote").textContent = "Your agent key is filled in. Paste the whole line.";
+    done("s1"); unlock(k.agent_key);
   };
   render({ state: D.state, keys_ready: D.keys_ready, keys_shown: D.keys_shown, rekey: D.rekey });
 }

@@ -188,7 +188,7 @@ footer a { color:var(--muted); }
         <label>Your name<input type="text" name="name" required maxlength="80" autocomplete="name"></label>
         <label>Company<input type="text" name="company" required maxlength="80" autocomplete="organization"></label>
         <label class="full">Email<input type="email" name="email" required maxlength="200" autocomplete="email"></label>
-        <fieldset class="full"><legend>Agents you use</legend>
+        <fieldset class="full"><legend>Agents you use <span style="font-weight:400;opacity:.7">(optional)</span></legend>
           <div class="chips">
             <label><input type="checkbox" name="agents" value="claude-code"><span>claude-code</span></label>
             <label><input type="checkbox" name="agents" value="cursor"><span>cursor</span></label>
@@ -221,7 +221,7 @@ footer a { color:var(--muted); }
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
 const CONFIG = __CONFIG__;   // filled in by the server: { supabase_url, supabase_key, hosted, offer_local }
-// (no supabase_url: no email sign-in, so no hosted dashboard either: hosted is only for an email proven by sign-in)
+// (no supabase_url: no email sign-in; the dashboard starts straight away and unused ones are freed again)
 const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
 let brakeFlash = () => {};
 
@@ -383,7 +383,7 @@ const state = (html) => { card.innerHTML = `<div class="state">${html}</div>`; }
 
 // signed in: a hosted gateway, started on its own (in line if every slot is taken).
 // CONFIG.offer_local (INSIGHTS_SIGNUP_LOCAL=1): they pick "On my computer" or hosted, as before.
-// No email sign-in on this server (CONFIG.hosted false): the local setup, since hosted needs a proven email.
+// No hosted dashboards on this server (CONFIG.hosted false, no HOSTED_DOMAIN): the local setup.
 // ?plan=team (pricing, or the dashboard's "invite your team"): the hosted Team plan, a 14-day trial, no choice to make
 // ?new_keys=1 (the start page's "Lost your keys?"): signed in again, so new keys are made for their dashboard
 const Q = new URLSearchParams(location.search), PLAN = Q.get("plan") === "team" ? "team" : "",
@@ -405,6 +405,10 @@ if (LOCAL_ONLY || PICK) {
     ? `<span class="n">02</span><h3>Install it</h3><p>One line on your computer, Windows or Mac.</p>`
     : `<span class="n">02</span><h3>Pick where it runs</h3><p>On your computer (one line, Windows or Mac), or on our server with a dashboard for your team.</p>`;
 }
+// signing up again with the same email gives the setup page back only when sign-in proves the email
+if (!CONFIG.supabase_url && !LOCAL_ONLY && !PICK) document.getElementById("fine").innerHTML =
+  document.getElementById("fine").innerHTML.replace(/Sign up again with the same email: you get your setup page back\./,
+    "Use your setup link from last time, or write to pulkit@squidbrake.com.");
 function choose(body, token) {
   const extra = { source: SOURCE, ...(PLAN ? { plan: PLAN } : {}), ...(NEW_KEYS ? { new_keys: true } : {}) };
   if (LOCAL_ONLY) return finish({ ...body, ...extra, setup: "local" }, token);

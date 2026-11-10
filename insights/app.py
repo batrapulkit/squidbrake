@@ -123,7 +123,11 @@ with db() as _c:
                         # Stripe (/v1/stripe/webhook): who pays, and one-time payments such as a paid pilot
                         ("stripe_customer", "TEXT"), ("paid_once", "INTEGER NOT NULL DEFAULT 0"),
                         # New keys asked for (a founder lost theirs): provision.py makes them, then this goes back to 0
-                        ("rekey", "INTEGER NOT NULL DEFAULT 0")):
+                        ("rekey", "INTEGER NOT NULL DEFAULT 0"),
+                        # when its hosted gateway was asked to start (sign-up, or its turn in line): unused ones are freed
+                        ("started_at", "TEXT"),
+                        # when it joined the line for a hosted slot, to the microsecond: first in, first out
+                        ("queued_at", "TEXT")):
         if _col not in _have:
             _c.execute(f"ALTER TABLE pilots ADD COLUMN {_col} {_type}")
 
@@ -147,6 +151,12 @@ HOSTED_MAX = int(os.getenv("HOSTED_MAX", "6"))         # each hosted gateway use
 LIVE = "hosted=1 AND state NOT IN ('deleting', 'waiting')"     # takes a hosted slot (waiting: in line for one)
 # /signup offers "On my computer" next to the hosted setup (and says what we see of a local install) when this is 1
 SIGNUP_LOCAL = os.getenv("INSIGHTS_SIGNUP_LOCAL", "") == "1"
+# A hosted dashboard from a free sign-up that nobody uses goes back to the line, so junk or abandoned sign-ups can't
+# hold the HOSTED_MAX slots: keys not taken within RECLAIM_KEYS_MINUTES of its start, or no agent action within
+# RECLAIM_IDLE_HOURS. Never one made from the admin, or one that paid. 0 turns either off.
+RECLAIM_KEYS_MINUTES = int(os.getenv("INSIGHTS_RECLAIM_KEYS_MINUTES", "30"))
+RECLAIM_IDLE_HOURS = int(os.getenv("INSIGHTS_RECLAIM_IDLE_HOURS", "24"))
+RECLAIMABLE = "note LIKE 'signup%' AND COALESCE(mrr, 0) = 0 AND COALESCE(paid_once, 0) = 0"
 
 # Where you hear about a hosted request or a demo request: an ntfy.sh topic URL (push to your phone), or a Slack or
 # Discord webhook. Unset: they only show on the admin page.
@@ -600,15 +610,35 @@ def delete_pilot(code: str):
     return {"deleted": code}
 
 
+def _connected(c, code: str) -> bool:
+    """An agent's action has reached this pilot's gateway (its counts arrive with the gateway's pings)."""
+    return bool(c.execute("SELECT 1 FROM installs WHERE code=? AND COALESCE(total_events, 0) > 0", (code,)).fetchone())
+
+
+def _reclaim_unused(c) -> None:
+    """Free the slot of a sign-up's hosted dashboard nobody used (see RECLAIM_KEYS_MINUTES): provision.py removes it."""
+    t = datetime.now(timezone.utc)
+    for p in c.execute(f"SELECT code, company, email, started_at, keys_revealed_at FROM pilots WHERE hosted=1 AND "
+                       f"state='running' AND started_at IS NOT NULL AND {RECLAIMABLE}").fetchall():
+        age = (t - datetime.fromisoformat(p["started_at"])).total_seconds()
+        why = ("its keys weren't taken" if RECLAIM_KEYS_MINUTES and not p["keys_revealed_at"]
+               and age > RECLAIM_KEYS_MINUTES * 60 else
+               "no agent connected" if RECLAIM_IDLE_HOURS and age > RECLAIM_IDLE_HOURS * 3600
+               and not _connected(c, p["code"]) else "")
+        if why:
+            c.execute("UPDATE pilots SET state='deleting', admin_key=NULL, agent_key=NULL WHERE code=?", (p["code"],))
+            notify(f"Squidbrake: freed the hosted dashboard of {p['company']} ({p['email']}): {why}.")
+
+
 def _start_waiting(c) -> None:
     """Hosted sign-ups that came in while every slot was taken: start the oldest ones as slots free up (nobody approves
-    them by hand). Run each time provision.py asks what to do, so a freed slot is used on its next round."""
+    them by hand). Run each time provision.py asks what to do, so a freed slot is used on its next round (10 s)."""
     free = HOSTED_MAX - c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0]
     if free <= 0:
         return
-    for r in c.execute("SELECT code FROM pilots WHERE hosted=1 AND state='waiting' ORDER BY created_at, code LIMIT ?",
+    for r in c.execute("SELECT code FROM pilots WHERE hosted=1 AND state='waiting' ORDER BY COALESCE(queued_at, created_at) LIMIT ?",
                        (free,)).fetchall():
-        c.execute("UPDATE pilots SET state='requested' WHERE code=? AND state='waiting'", (r["code"],))
+        c.execute("UPDATE pilots SET state='requested', started_at=? WHERE code=? AND state='waiting'", (now(), r["code"]))
 
 
 @app.post("/v1/admin/pilots/{code}/new-keys", dependencies=[Depends(admin)])
@@ -625,6 +655,7 @@ def new_keys(code: str):
 @app.get("/v1/admin/provision", dependencies=[Depends(admin)])
 def provision_queue():
     with _lock, db() as c:
+        _reclaim_unused(c)
         _start_waiting(c)
         # keys_ready: the keys arrived here (and may since have been shown to the founder and forgotten)
         rows = c.execute("SELECT code, company, subdomain, state, plan, trial_ends, mrr, rekey, "
@@ -690,13 +721,16 @@ def pilot_status(code: str, request: Request):
     """Polled by the start page while a hosted dashboard is being set up."""
     _guessing(request)
     with db() as c:
-        p = c.execute("SELECT state, admin_key, keys_revealed_at, rekey FROM pilots WHERE code=? AND hosted=1",
-                      (code,)).fetchone()
-    if not p:
-        _missed(request)
-        raise HTTPException(404)
+        p = c.execute("SELECT state, admin_key, keys_revealed_at, rekey, COALESCE(queued_at, created_at) AS q FROM pilots "
+                      "WHERE code=? AND hosted=1", (code,)).fetchone()
+        if not p:
+            _missed(request)
+            raise HTTPException(404)
+        ahead = c.execute("SELECT COUNT(*) FROM pilots WHERE hosted=1 AND state='waiting' AND "
+                          "COALESCE(queued_at, created_at) < ?", (p["q"],)).fetchone()[0] if p["state"] == "waiting" else 0
+        connected = _connected(c, code)
     return {"state": p["state"], "keys_ready": bool(p["admin_key"]), "keys_shown": bool(p["keys_revealed_at"]),
-            "rekey": bool(p["rekey"])}
+            "rekey": bool(p["rekey"]), "connected": connected, "ahead": ahead}
 
 
 PREVIEW_BOTS = re.compile(r"bot|crawl|spider|preview|facebookexternalhit|slack|whatsapp|telegram|discord|skype|"
@@ -1410,6 +1444,10 @@ class SignupIn(BaseModel):
     new_keys: bool = False     # signed in again because they lost their hosted keys: make new ones (Supabase only)
 
 
+HOSTED_PER_IP_DAY = int(os.getenv("INSIGHTS_HOSTED_PER_IP_DAY", "2"))   # hosted sign-ups a day from one address, without
+_hosted_ips: dict[str, list[float]] = {}                                 # sign-in by email
+
+
 @app.post("/v1/signup")
 def signup(s: SignupIn, request: Request, authorization: str = Header(default="")):
     """The public sign-up: a pilot code whose start page has the local install line. The install joins with it, so
@@ -1447,23 +1485,26 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
                                      "pulkit@squidbrake.com")
         if not s.name.strip() or not s.company.strip():
             raise HTTPException(422, "please add your name and company")
-        # hosted: only for an email proven by sign-in (Supabase), so junk sign-ups can't take the slots. It starts at
-        # once while a slot is free; otherwise it waits in line and starts on its own when one frees up.
-        # Without sign-in by email, a sign-up gets the local setup (and the Team trial, being hosted, isn't offered).
+        # hosted: starts at once while a slot is free, otherwise waits in line and starts on its own when one frees
+        # up (nobody approves it by hand). Unused ones are freed again (_reclaim_unused), and without sign-in by email
+        # one address gets HOSTED_PER_IP_DAY of them a day, so junk sign-ups can't hold the slots.
         setup = "hosted" if s.plan == "team" else s.setup
-        if setup == "hosted" and not SUPABASE_URL:
-            if s.plan:
-                raise HTTPException(503, "the Team trial isn't open for sign-up right now: write to pulkit@squidbrake.com")
-            setup = "local"
+        if setup == "hosted" and HOSTED_DOMAIN and not SUPABASE_URL:
+            day = [x for x in _hosted_ips.get(ip, []) if time.time() - x < 86400]
+            if len(day) >= HOSTED_PER_IP_DAY:
+                raise HTTPException(429, "too many dashboards from here today: try again tomorrow, or write to "
+                                         "pulkit@squidbrake.com")
+            _hosted_ips[ip] = day + [time.time()]
         sub = _subdomain(c, slug) if setup == "hosted" and HOSTED_DOMAIN else None
         auto = bool(sub) and c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0] < HOSTED_MAX
         trial = (datetime.now(timezone.utc).date() + timedelta(days=14)).isoformat() if s.plan == "team" else None
         c.execute("INSERT INTO pilots (code, company, contact, note, created_at, email, uses_agents, hosted, subdomain, "
-                  "state, plan, trial_ends) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                  "state, plan, trial_ends, started_at, queued_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                   (code, s.company.strip(), f"{s.name.strip()} · {email}",
                    f"signup ({s.plan or setup})" + (f" from {s.source}" if s.source else "") + " · agents: "
                    + (", ".join(agents) or "-"), now(), email, json.dumps(agents),
-                   int(bool(sub)), sub, ("requested" if auto else "waiting") if sub else None, s.plan or None, trial))
+                   int(bool(sub)), sub, ("requested" if auto else "waiting") if sub else None, s.plan or None, trial,
+                   now() if auto else None, datetime.now(timezone.utc).isoformat() if sub and not auto else None))
     if sub:
         notify(f"Squidbrake {'Team trial' if s.plan else 'hosted'} sign-up: {s.name.strip()} ({email}), {s.company.strip()}. "
                + (f"It started on its own; see {PUBLIC_URL}/admin" if auto else
@@ -1475,7 +1516,7 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
 @app.api_route("/signup", methods=["GET", "HEAD"], response_class=HTMLResponse)
 def signup_page():
     config = {"supabase_url": SUPABASE_URL, "supabase_key": SUPABASE_ANON_KEY,
-              "hosted": bool(SUPABASE_URL and HOSTED_DOMAIN), "offer_local": SIGNUP_LOCAL}
+              "hosted": bool(HOSTED_DOMAIN), "offer_local": SIGNUP_LOCAL}
     return HTMLResponse(PAGE("signup.html").replace("__CONFIG__", json.dumps(config).replace("</", "<\\/")))
 
 
@@ -1567,12 +1608,17 @@ def start_page(code: str, request: Request):
         if not p:
             _missed(request)
             return HTMLResponse(PAGE("start.html").replace("__DATA__", json.dumps({"missing": True})), status_code=404)
+        connected = _connected(c, code) if p["hosted"] else False
     # Not counted here: LinkedIn, Slack, WhatsApp and mail scanners fetch a link the moment it's pasted, to draw a
     # preview. The page counts a view itself (/seen) once it runs in a browser.
     data = {"company": p["company"], "code": code, "server": public_url(request), "contact": CONTACT,
             "hosted": bool(p["hosted"]), "dashboard": dashboard_url(p["subdomain"]), "state": p["state"],
             "keys_ready": bool(p["admin_key"]), "keys_shown": bool(p["keys_revealed_at"]), "rekey": bool(p["rekey"]),
-            "self_serve_keys": bool(SUPABASE_URL), "plan": p["plan"], "trial_ends": p["trial_ends"],
+            "self_serve_keys": bool(SUPABASE_URL),
+            "connected": connected,
+            "reclaim": {"keys_minutes": RECLAIM_KEYS_MINUTES, "idle_hours": RECLAIM_IDLE_HOURS}
+                       if p["hosted"] and (p["note"] or "").startswith("signup") and not (p["mrr"] or p["paid_once"]) else None,
+            "plan": p["plan"], "trial_ends": p["trial_ends"],
             "checkout": checkout_link(CHECKOUT_URL, code, p["email"]) if p["plan"] == "team" else ""}
     return HTMLResponse(PAGE("start.html").replace("__DATA__", json.dumps(data).replace("</", "<\\/")))
 

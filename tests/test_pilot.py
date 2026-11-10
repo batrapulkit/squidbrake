@@ -33,6 +33,7 @@ SECRET = "PLANTED-MARKER-not-a-real-secret"   # must never show up in what a pil
 @pytest.fixture(scope="module")
 def insights():
     import app as insights_app
+    insights_app._hosted_ips.clear()             # hosted sign-ups a day from one address (every test is "testclient")
     with TestClient(insights_app.app) as c:
         yield c
 
@@ -587,17 +588,58 @@ def _signed_in(monkeypatch, insights_app):
                                 "headers": {"Authorization": f"Bearer {email}"}}
 
 
-def test_without_sign_in_hosted_sign_ups_get_the_local_setup(insights, monkeypatch):
-    # an email nobody proved can't take a hosted slot: junk sign-ups would fill them all
+def test_without_sign_in_a_hosted_sign_up_starts_at_once_but_one_address_gets_two_a_day(insights, monkeypatch):
     import app as insights_app
     insights_app._requests.clear()
     monkeypatch.setattr(insights_app, "SUPABASE_URL", "")
+    monkeypatch.setattr(insights_app, "notify", lambda text: None)
+    monkeypatch.setattr(insights_app, "HOSTED_MAX", 1000)
+    sign = lambda email, **kw: insights.post("/v1/signup", json={"name": "Mo", "email": email, "company": "Fast", **kw})
+    r = sign("mo@fast.io", setup="hosted")
+    code = r.json()["link"].rsplit("/", 1)[1]
+    assert insights.get(f"/v1/pilot/{code}/status").json()["state"] == "requested"      # no email step, no approval
+    page = insights.get(f"/start/{code}").text
+    assert '"hosted": true' in page and '"reclaim": {"keys_minutes": 30, "idle_hours": 24}' in page
+    assert sign("jo@fast.io", plan="team").status_code == 200                         # the Team trial too
+    assert sign("lu@fast.io", setup="hosted").status_code == 429                      # a third from here today
+    assert sign("lu@fast.io", setup="local").status_code == 200                       # local isn't limited
+    assert '"hosted": true' in insights.get("/signup").text
+
+
+def test_an_unused_hosted_dashboard_is_freed_and_the_next_in_line_starts(insights, monkeypatch):
+    import app as insights_app
+    from datetime import datetime, timedelta, timezone
     told = []
     monkeypatch.setattr(insights_app, "notify", told.append)
-    r = insights.post("/v1/signup", json={"name": "Mo", "email": "mo@junk.io", "company": "Junk", "setup": "hosted"})
-    assert '"hosted": false' in insights.get(urlparse(r.json()["link"]).path).text and not told
-    r = insights.post("/v1/signup", json={"name": "Mo", "email": "mo2@junk.io", "company": "Junk", "plan": "team"})
-    assert r.status_code == 503                                               # the Team trial is hosted: not offered
+    admin = {"X-Admin-Key": "admin-test-key"}
+    ago = lambda **kw: (datetime.now(timezone.utc) - timedelta(**kw)).isoformat(timespec="seconds")
+    with insights_app.db() as c:
+        live = c.execute(f"SELECT COUNT(*) FROM pilots WHERE {insights_app.LIVE}").fetchone()[0]
+        add = lambda code, note, started, revealed=None, state="running", mrr=0: c.execute(
+            "INSERT INTO pilots (code, company, created_at, email, hosted, subdomain, state, note, started_at, "
+            "keys_revealed_at, mrr) VALUES (?,?,?,?,1,?,?,?,?,?,?)",
+            (code, code, started or ago(minutes=1), f"{code}@x.dev", code, state, note, started, revealed, mrr))
+        add("rc-nokeys", "signup (hosted)", ago(minutes=31))                       # keys never taken: freed
+        add("rc-fresh", "signup (hosted)", ago(minutes=5))                         # still has time
+        add("rc-idle", "signup (hosted)", ago(hours=25), revealed=ago(hours=25))   # keys taken, no agent in 24 h: freed
+        add("rc-used", "signup (hosted)", ago(hours=25), revealed=ago(hours=25))   # an agent connected: kept
+        add("rc-admin", "made by hand", ago(hours=25))                             # from the admin: never freed
+        add("rc-paid", "signup (team)", ago(hours=25), mrr=499)                    # paying: never freed
+        add("rc-next", "signup (hosted)", None, state="waiting")                   # in line
+        c.execute("INSERT INTO installs (install_id, code, joined_at, total_events) VALUES (?, 'rc-used', ?, 3)",
+                  ("5ec1a1" + "0" * 26, insights_app.now()))
+    monkeypatch.setattr(insights_app, "HOSTED_MAX", live + 6)                       # full until something is freed
+    pilots = lambda: {p["code"]: p["state"] for p in insights.get("/v1/admin/provision", headers=admin).json()["pilots"]}
+    st = pilots()
+    assert st["rc-nokeys"] == st["rc-idle"] == "deleting"
+    assert st["rc-fresh"] == st["rc-used"] == st["rc-admin"] == st["rc-paid"] == "running"
+    assert st["rc-next"] == "requested"                                             # a slot freed: it starts on its own
+    assert len(told) == 2 and "keys weren't taken" in " ".join(told) and "no agent connected" in " ".join(told)
+    assert insights.get("/v1/pilot/rc-used/status").json()["connected"] is True
+    assert insights.get("/v1/pilot/rc-fresh/status").json()["connected"] is False
+    with insights_app.db() as c:
+        for code in ("rc-nokeys", "rc-fresh", "rc-idle", "rc-used", "rc-admin", "rc-paid", "rc-next"):
+            insights_app._forget(c, code)
 
 
 def test_hosted_sign_ups_start_on_their_own_and_wait_in_line_when_full(insights, monkeypatch):
@@ -616,7 +658,8 @@ def test_hosted_sign_ups_start_on_their_own_and_wait_in_line_when_full(insights,
     assert "started on its own" in told[0] and "mei@gamma.io" in told[0]
     second, third = sign("li@gamma.io"), sign("wu@gamma.io")                           # no slot left: in line
     page = insights.get(f"/start/{second}").text
-    assert '"hosted": true' in page and '"state": "waiting"' in page and "Your checklist" in page
+    assert '"hosted": true' in page and '"state": "waiting"' in page and "two steps, about 2 minutes" in page
+    assert insights.get(f"/v1/pilot/{third}/status").json()["ahead"] == 1          # first in, first out
     assert "in line" in told[1] and "starts when one frees up" in told[1]
     assert insights.post(f"/v1/admin/pilots/{second}/approve", headers=admin).status_code in (404, 405)   # nobody approves
     state = lambda code: next(p["state"] for p in insights.get("/v1/admin/provision", headers=admin).json()["pilots"]

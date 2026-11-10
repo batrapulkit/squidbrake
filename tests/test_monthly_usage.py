@@ -145,5 +145,7 @@ def test_the_signup_page_offers_only_the_hosted_setup_unless_the_flag_is_on(insi
     monkeypatch.setattr(insights_app, "SIGNUP_LOCAL", True)                # INSIGHTS_SIGNUP_LOCAL=1
     page = insights.get("/signup").text
     assert '"offer_local": true' in page and 'data-setup="local"' in page and "Never your commands, files or prompts" in page
-    monkeypatch.setattr(insights_app, "SUPABASE_URL", "")                  # no email sign-in: no hosted
+    monkeypatch.setattr(insights_app, "SUPABASE_URL", "")                  # no email sign-in: still hosted
+    assert '"hosted": true' in insights.get("/signup").text
+    monkeypatch.setattr(insights_app, "HOSTED_DOMAIN", "")                 # no hosted dashboards on this server
     assert '"hosted": false' in insights.get("/signup").text

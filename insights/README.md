@@ -30,11 +30,20 @@ one-line command that connects Claude Code to it.
 
 ### Self-serve sign-up
 
-A hosted dashboard is only for an email proven by sign-in: set `SUPABASE_URL` and `SUPABASE_ANON_KEY` (see "One
-address" for the Supabase settings; give Supabase your own SMTP, since its built-in sender won't reach real users).
-Nobody approves a sign-up by hand: it starts at once while one of the `HOSTED_MAX` slots is free, and otherwise
-waits in line and starts on its own as soon as one frees up (provision.py's next round). You get a message either way.
-Without Supabase sign-in, `/signup` gives the local setup instead and the Team trial isn't offered.
+Nobody approves a sign-up by hand. A hosted dashboard starts at once while one of the `HOSTED_MAX` slots is free;
+otherwise the sign-up waits in line (first in, first out: `queued_at`) and starts on its own on provision.py's next
+round after a slot frees up. The start page shows the place in line. You get a message either way.
+
+So junk or abandoned sign-ups can't hold the slots, a free sign-up's dashboard that nobody uses is freed again (and you
+get a message): keys not taken within `INSIGHTS_RECLAIM_KEYS_MINUTES` (30) of its start, or no agent action within
+`INSIGHTS_RECLAIM_IDLE_HOURS` (24). Never one made from the admin or one that paid; `0` turns either off.
+
+With Supabase sign-in (`SUPABASE_URL`, `SUPABASE_ANON_KEY`; see "One address", and give Supabase your own SMTP, since
+its built-in sender won't reach real users) the email is proven before the dashboard starts. Without it the dashboard
+starts straight away, and one address gets `INSIGHTS_HOSTED_PER_IP_DAY` (2) hosted sign-ups a day.
+
+The start page has two steps: get your keys, then the install line with the agent key filled in; it turns green on its
+own when the first agent action arrives (hosted gateways send their counts every 20 s when they change).
 
 `/signup` offers only the hosted setup; `INSIGHTS_SIGNUP_LOCAL=1` brings back the "On my computer" choice and the
 line on what we see of a local install. Keys are shown once on the start page. Someone who lost theirs signs in again
