@@ -144,9 +144,9 @@ seed_community()
 
 HOSTED_DOMAIN = os.getenv("HOSTED_DOMAIN", "")        # e.g. app.squidbrake.com (with a *.app wildcard DNS record)
 HOSTED_MAX = int(os.getenv("HOSTED_MAX", "6"))         # each hosted gateway uses ~50-100 MB of memory
-# A hosted sign-up starts on its own while a slot is free (0: each waits for you to approve it in the admin)
-HOSTED_AUTO_APPROVE = os.getenv("HOSTED_AUTO_APPROVE", "1") != "0"
-LIVE = "hosted=1 AND state NOT IN ('deleting', 'waiting')"     # takes a hosted slot (waiting: not approved yet)
+LIVE = "hosted=1 AND state NOT IN ('deleting', 'waiting')"     # takes a hosted slot (waiting: in line for one)
+# /signup offers "On my computer" next to the hosted setup (and says what we see of a local install) when this is 1
+SIGNUP_LOCAL = os.getenv("INSIGHTS_SIGNUP_LOCAL", "") == "1"
 
 # Where you hear about a hosted request or a demo request: an ntfy.sh topic URL (push to your phone), or a Slack or
 # Discord webhook. Unset: they only show on the admin page.
@@ -600,16 +600,15 @@ def delete_pilot(code: str):
     return {"deleted": code}
 
 
-@app.post("/v1/admin/pilots/{code}/approve", dependencies=[Depends(admin)])
-def approve_hosted(code: str):
-    """A hosted request from sign-up waits for you: approving it lets provision.py start the gateway."""
-    with _lock, db() as c:
-        if not c.execute("SELECT 1 FROM pilots WHERE code=? AND hosted=1 AND state='waiting'", (code,)).fetchone():
-            raise HTTPException(404, "no hosted request waiting with that code")
-        if c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0] >= HOSTED_MAX:
-            raise HTTPException(409, f"all {HOSTED_MAX} hosted slots are in use: delete one, or raise HOSTED_MAX")
-        c.execute("UPDATE pilots SET state='requested' WHERE code=?", (code,))
-    return {"ok": True}
+def _start_waiting(c) -> None:
+    """Hosted sign-ups that came in while every slot was taken: start the oldest ones as slots free up (nobody approves
+    them by hand). Run each time provision.py asks what to do, so a freed slot is used on its next round."""
+    free = HOSTED_MAX - c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0]
+    if free <= 0:
+        return
+    for r in c.execute("SELECT code FROM pilots WHERE hosted=1 AND state='waiting' ORDER BY created_at, code LIMIT ?",
+                       (free,)).fetchall():
+        c.execute("UPDATE pilots SET state='requested' WHERE code=? AND state='waiting'", (r["code"],))
 
 
 @app.post("/v1/admin/pilots/{code}/new-keys", dependencies=[Depends(admin)])
@@ -625,7 +624,8 @@ def new_keys(code: str):
 
 @app.get("/v1/admin/provision", dependencies=[Depends(admin)])
 def provision_queue():
-    with db() as c:
+    with _lock, db() as c:
+        _start_waiting(c)
         # keys_ready: the keys arrived here (and may since have been shown to the founder and forgotten)
         rows = c.execute("SELECT code, company, subdomain, state, plan, trial_ends, mrr, rekey, "
                          "(admin_key IS NOT NULL OR keys_revealed_at IS NOT NULL) AS keys_ready "
@@ -714,8 +714,9 @@ def pilot_seen(code: str, request: Request):
     return {"ok": True}
 
 
-# Lost keys, asked for by the person themselves: NEW_KEYS_PER_HOUR per pilot. With Supabase sign-in they prove their
-# email first (/signup?new_keys=1); without it, the start page link is the proof (it already showed the first keys).
+# Lost keys, asked for by the person themselves: NEW_KEYS_PER_HOUR per pilot, only after signing in again with the
+# email on file (/signup?new_keys=1, Supabase). The start page link alone is never enough: anyone it was forwarded to
+# could otherwise take over the dashboard. Without Supabase sign-in, you make new keys from the admin.
 # provision.py then makes a new admin key (the old ones stop working) and adds an agent key (connected agents keep
 # working), and the start page shows them once.
 NEW_KEYS_PER_HOUR = int(os.getenv("INSIGHTS_NEW_KEYS_PER_HOUR", "3"))
@@ -732,20 +733,6 @@ def _ask_new_keys(c, code: str) -> None:
                      (code,)).rowcount:
         raise HTTPException(409, "your dashboard isn't running yet, or your keys are still waiting on your start page")
     _rekeys[code] = recent + [t]
-
-
-@app.post("/v1/pilot/{code}/new-keys")
-def pilot_new_keys(code: str, request: Request):
-    """The start page's "Get new keys", when sign-in by email isn't set up (with it, /signup?new_keys=1)."""
-    if SUPABASE_URL:
-        raise HTTPException(403, "sign in again for new keys: /signup?new_keys=1")
-    _guessing(request)
-    with _lock, db() as c:
-        if not c.execute("SELECT 1 FROM pilots WHERE code=? AND hosted=1", (code,)).fetchone():
-            _missed(request)
-            raise HTTPException(404)
-        _ask_new_keys(c, code)
-    return {"ok": True}
 
 
 @app.post("/v1/pilot/{code}/keys")
@@ -1011,7 +998,7 @@ def overview(request: Request):
             ever = sum(i["total_events"] or 0 for i in mine)
             if p["state"] != "running":
                 stage = {"requested": "setting up", "failed": "setup failed", "deleting": "deleting",
-                         "waiting": "waiting for approval"}.get(p["state"], stage)
+                         "waiting": "in line for a slot"}.get(p["state"], stage)
             elif not p["keys_revealed_at"]:
                 stage = "opened link" if p["page_views"] else "link sent"
             elif not ever:
@@ -1460,10 +1447,16 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
                                      "pulkit@squidbrake.com")
         if not s.name.strip() or not s.company.strip():
             raise HTTPException(422, "please add your name and company")
-        # hosted: the request waits for you to approve it in the admin, unless HOSTED_AUTO_APPROVE and a slot is free
+        # hosted: only for an email proven by sign-in (Supabase), so junk sign-ups can't take the slots. It starts at
+        # once while a slot is free; otherwise it waits in line and starts on its own when one frees up.
+        # Without sign-in by email, a sign-up gets the local setup (and the Team trial, being hosted, isn't offered).
         setup = "hosted" if s.plan == "team" else s.setup
+        if setup == "hosted" and not SUPABASE_URL:
+            if s.plan:
+                raise HTTPException(503, "the Team trial isn't open for sign-up right now: write to pulkit@squidbrake.com")
+            setup = "local"
         sub = _subdomain(c, slug) if setup == "hosted" and HOSTED_DOMAIN else None
-        auto = bool(sub) and HOSTED_AUTO_APPROVE and c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0] < HOSTED_MAX
+        auto = bool(sub) and c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0] < HOSTED_MAX
         trial = (datetime.now(timezone.utc).date() + timedelta(days=14)).isoformat() if s.plan == "team" else None
         c.execute("INSERT INTO pilots (code, company, contact, note, created_at, email, uses_agents, hosted, subdomain, "
                   "state, plan, trial_ends) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -1472,15 +1465,17 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
                    + (", ".join(agents) or "-"), now(), email, json.dumps(agents),
                    int(bool(sub)), sub, ("requested" if auto else "waiting") if sub else None, s.plan or None, trial))
     if sub:
-        why = "" if auto or not HOSTED_AUTO_APPROVE else f" All {HOSTED_MAX} hosted slots are in use: free one or raise HOSTED_MAX."
-        notify(f"Squidbrake {'Team trial' if s.plan else 'hosted'} request: {s.name.strip()} ({email}), {s.company.strip()}. "
-               + (f"It started on its own; see {PUBLIC_URL}/admin" if auto else f"Approve it in {PUBLIC_URL}/admin.{why}"))
+        notify(f"Squidbrake {'Team trial' if s.plan else 'hosted'} sign-up: {s.name.strip()} ({email}), {s.company.strip()}. "
+               + (f"It started on its own; see {PUBLIC_URL}/admin" if auto else
+                  f"All {HOSTED_MAX} hosted slots are in use, so it's in line and starts when one frees up "
+                  f"(delete one, or raise HOSTED_MAX if the server has the memory)."))
     return {"ok": True, "link": f"{public_url(request)}/start/{code}"}
 
 
 @app.api_route("/signup", methods=["GET", "HEAD"], response_class=HTMLResponse)
 def signup_page():
-    config = {"supabase_url": SUPABASE_URL, "supabase_key": SUPABASE_ANON_KEY}
+    config = {"supabase_url": SUPABASE_URL, "supabase_key": SUPABASE_ANON_KEY,
+              "hosted": bool(SUPABASE_URL and HOSTED_DOMAIN), "offer_local": SIGNUP_LOCAL}
     return HTMLResponse(PAGE("signup.html").replace("__CONFIG__", json.dumps(config).replace("</", "<\\/")))
 
 
@@ -1577,7 +1572,7 @@ def start_page(code: str, request: Request):
     data = {"company": p["company"], "code": code, "server": public_url(request), "contact": CONTACT,
             "hosted": bool(p["hosted"]), "dashboard": dashboard_url(p["subdomain"]), "state": p["state"],
             "keys_ready": bool(p["admin_key"]), "keys_shown": bool(p["keys_revealed_at"]), "rekey": bool(p["rekey"]),
-            "self_serve_keys": bool(SUPABASE_URL), "auto_approve": HOSTED_AUTO_APPROVE, "plan": p["plan"], "trial_ends": p["trial_ends"],
+            "self_serve_keys": bool(SUPABASE_URL), "plan": p["plan"], "trial_ends": p["trial_ends"],
             "checkout": checkout_link(CHECKOUT_URL, code, p["email"]) if p["plan"] == "team" else ""}
     return HTMLResponse(PAGE("start.html").replace("__DATA__", json.dumps(data).replace("</", "<\\/")))
 

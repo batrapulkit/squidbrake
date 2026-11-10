@@ -95,29 +95,55 @@ def test_lost_keys_signing_in_again_makes_new_ones(insights, monkeypatch):
     assert '"self_serve_keys": true' in page and '"rekey": true' in page
 
 
-def test_without_sign_in_the_start_page_makes_new_keys_three_times_an_hour(insights, monkeypatch):
+def test_the_start_page_link_alone_never_makes_new_keys(insights, monkeypatch):
+    # a forwarded start link must not be enough to take over a dashboard: new keys need signing in again
     import app as insights_app
     monkeypatch.setattr(insights_app, "SUPABASE_URL", "")
-    insights_app._rekeys.clear()
     with insights_app.db() as c:
         c.execute("INSERT INTO pilots (code, company, created_at, hosted, subdomain, state, keys_revealed_at) "
                   "VALUES ('rekey-co', 'Rekey', ?, 1, 'rekey', 'running', ?)", (insights_app.now(), insights_app.now()))
-    ask = lambda: insights.post("/v1/pilot/rekey-co/new-keys")
-    assert insights.post("/v1/pilot/nope-co/new-keys").status_code == 404
-    for i in range(3):
-        assert ask().status_code == 200
-        insights.post("/v1/admin/provisioned", headers=ADMIN, json={"code": "rekey-co", "state": "running",
-                                                                    "admin_key": "gw_a", "agent_key": "gw_b"})
-        if i == 0:
-            assert ask().status_code == 409                      # new keys waiting on the page: nothing to renew
-        assert insights.post("/v1/pilot/rekey-co/keys").json()["admin_key"] == "gw_a"   # shown once
-    assert ask().status_code == 429                              # the fourth in an hour
-    monkeypatch.setattr(insights_app, "SUPABASE_URL", "https://x.supabase.co")
-    assert ask().status_code == 403                              # with sign-in, the email proves who asks
+    assert insights.post("/v1/pilot/rekey-co/new-keys").status_code in (404, 405)
+    assert insights.get("/v1/pilot/rekey-co/status").json()["rekey"] is False
+    page = insights.get("/start/rekey-co").text
+    assert '"self_serve_keys": false' in page and "/new-keys" not in page
     with insights_app.db() as c:
         insights_app._forget(c, "rekey-co")
 
 
-def test_the_signup_page_offers_only_the_hosted_setup(insights):
+def test_signing_in_again_makes_new_keys_three_times_an_hour(insights, monkeypatch):
+    import app as insights_app
+    insights_app._requests.clear()
+    insights_app._rekeys.clear()
+    monkeypatch.setattr(insights_app, "SUPABASE_URL", "https://x.supabase.co")
+    monkeypatch.setattr(insights_app, "supabase_user", lambda token: {"email": "re@key.dev",
+                                                                      "email_confirmed_at": "2026-11-01T00:00:00Z"})
+    with insights_app.db() as c:
+        c.execute("INSERT INTO pilots (code, company, created_at, email, hosted, subdomain, state, keys_revealed_at) "
+                  "VALUES ('rekey2-co', 'Rekey', ?, 're@key.dev', 1, 'rekey2', 'running', ?)",
+                  (insights_app.now(), insights_app.now()))
+    def ask():
+        insights_app._requests.clear()
+        return insights.post("/v1/signup", json={"new_keys": True}, headers={"Authorization": "Bearer t"})
+    for i in range(3):
+        assert ask().status_code == 200
+        assert insights.get("/v1/pilot/rekey2-co/status").json()["rekey"] is True
+        insights.post("/v1/admin/provisioned", headers=ADMIN, json={"code": "rekey2-co", "state": "running",
+                                                                    "admin_key": "gw_a", "agent_key": "gw_b"})
+        if i == 0:
+            assert ask().status_code == 200                      # new keys waiting on the page: just the page back
+        assert insights.post("/v1/pilot/rekey2-co/keys").json()["admin_key"] == "gw_a"   # shown once
+    assert ask().status_code == 429                              # the fourth in an hour
+    with insights_app.db() as c:
+        insights_app._forget(c, "rekey2-co")
+
+
+def test_the_signup_page_offers_only_the_hosted_setup_unless_the_flag_is_on(insights, monkeypatch):
+    import app as insights_app
+    monkeypatch.setattr(insights_app, "SUPABASE_URL", "https://x.supabase.co")
     page = insights.get("/signup").text
-    assert 'data-setup="local"' not in page and "On my computer" not in page and 'setup: "hosted"' in page
+    assert '"hosted": true' in page and '"offer_local": false' in page
+    monkeypatch.setattr(insights_app, "SIGNUP_LOCAL", True)                # INSIGHTS_SIGNUP_LOCAL=1
+    page = insights.get("/signup").text
+    assert '"offer_local": true' in page and 'data-setup="local"' in page and "Never your commands, files or prompts" in page
+    monkeypatch.setattr(insights_app, "SUPABASE_URL", "")                  # no email sign-in: no hosted
+    assert '"hosted": false' in insights.get("/signup").text

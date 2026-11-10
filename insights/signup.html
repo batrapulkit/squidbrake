@@ -102,6 +102,11 @@ button.go:disabled { opacity:.6; cursor:default; }
               background:var(--soft); }
 .state h2 { margin:0 0 8px; }
 .state p { color:var(--muted); margin:0 0 6px; }
+.pick { display:grid; gap:10px; margin:16px 0 4px; text-align:left; }
+.pick button { font:inherit; text-align:left; background:var(--surface); color:var(--ink); border:1px solid var(--line);
+               border-radius:10px; padding:14px 16px; cursor:pointer; }
+.pick button:hover, .pick button:focus-visible { border-color:var(--accent); outline:none; }
+.pick b { display:block; font-size:16px; margin-bottom:3px; } .pick span { color:var(--muted); font-size:14px; }
 .spin { width:30px; height:30px; border-radius:50%; border:3px solid var(--line); border-top-color:var(--accent);
         animation:spin .8s linear infinite; margin:6px auto 16px; }
 @keyframes spin { to { transform:rotate(360deg); } }
@@ -177,7 +182,7 @@ footer a { color:var(--muted); }
     <section class="card" id="card">
       <div class="k">Squidbrake Console</div>
       <h2>Sign up free</h2>
-      <p class="sub">Tell us a little about you and you get your own dashboard, running on our server,
+      <p class="sub" id="sub">Tell us a little about you and you get your own dashboard, running on our server,
         in about a minute. Nothing to keep open on your laptop.</p>
       <form id="f" novalidate>
         <label>Your name<input type="text" name="name" required maxlength="80" autocomplete="name"></label>
@@ -198,7 +203,7 @@ footer a { color:var(--muted); }
         <p class="err full" id="err" role="alert" hidden></p>
         <button type="submit" class="go" id="go">Sign up free</button>
       </form>
-      <p class="fine">Already signed up? Sign up again with the same email: you get your setup page back.<br>
+      <p class="fine" id="fine">Already signed up? Sign up again with the same email: you get your setup page back.<br>
         Your dashboard runs on our server, so the actions your agents send it (commands, tool inputs and results) are
         stored there, behind your keys. We use counts and what was held or blocked to improve Squidbrake.</p>
     </section>
@@ -206,7 +211,7 @@ footer a { color:var(--muted); }
 
   <div class="steps">
     <div><span class="n">01</span><h3>Tell us who you are</h3><p>Name, company, email. No password, no card.</p></div>
-    <div><span class="n">02</span><h3>Get your dashboard</h3><p>Your own address and keys, ready in about a minute. One line connects your agents.</p></div>
+    <div id="step2"><span class="n">02</span><h3>Get your dashboard</h3><p>Your own address and keys, ready in about a minute. One line connects your agents.</p></div>
     <div><span class="n">03</span><h3>Work as usual</h3><p>Approve the risky steps from the dashboard, your phone or Slack.</p></div>
   </div>
   <footer><span>© Squidbrake · on your computer or ours</span><span><a href="/security">Security</a></span></footer>
@@ -215,7 +220,8 @@ footer a { color:var(--muted); }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
-const CONFIG = __CONFIG__;   // filled in by the server: { supabase_url, supabase_key } (both empty = no email sign-in)
+const CONFIG = __CONFIG__;   // filled in by the server: { supabase_url, supabase_key, hosted, offer_local }
+// (no supabase_url: no email sign-in, so no hosted dashboard either: hosted is only for an email proven by sign-in)
 const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
 let brakeFlash = () => {};
 
@@ -375,17 +381,43 @@ const fail = (msg) => { err.textContent = msg; err.hidden = false; go.disabled =
   go.textContent = PLAN ? "Start my 14-day Team trial" : "Sign up free"; };
 const state = (html) => { card.innerHTML = `<div class="state">${html}</div>`; };
 
-// signed in: everyone gets a hosted gateway, started on its own (the API still takes setup "local": the
-// self-hosted install is in the docs, not offered here).
-// ?plan=team (pricing, or the dashboard's "invite your team"): the hosted Team plan, a 14-day trial
+// signed in: a hosted gateway, started on its own (in line if every slot is taken).
+// CONFIG.offer_local (INSIGHTS_SIGNUP_LOCAL=1): they pick "On my computer" or hosted, as before.
+// No email sign-in on this server (CONFIG.hosted false): the local setup, since hosted needs a proven email.
+// ?plan=team (pricing, or the dashboard's "invite your team"): the hosted Team plan, a 14-day trial, no choice to make
 // ?new_keys=1 (the start page's "Lost your keys?"): signed in again, so new keys are made for their dashboard
 const Q = new URLSearchParams(location.search), PLAN = Q.get("plan") === "team" ? "team" : "",
       SOURCE = (Q.get("from") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 30),
       NEW_KEYS = Q.get("new_keys") === "1";
 if (PLAN) { go.textContent = "Start my 14-day Team trial"; }
+const LOCAL_ONLY = !CONFIG.hosted && !PLAN, PICK = CONFIG.hosted && CONFIG.offer_local && !PLAN && !NEW_KEYS;
+const PRIVACY = `We see your name, email, the agents you picked, and for each action that was blocked or sent for approval:
+  the program (e.g. <span class="mono">rm</span>), the rule and what happened. Never your commands, files or prompts.`;
+if (LOCAL_ONLY || PICK) {
+  document.getElementById("sub").textContent = LOCAL_ONLY
+    ? "Tell us a little about you and you get a one-line install for your computer. Everything your agents do stays there."
+    : "Tell us a little about you, then pick where it runs: on your computer, or on our server with a dashboard for your team.";
+  document.getElementById("fine").innerHTML = (LOCAL_ONLY ? "Already signed up? Use the setup link from last time, or write to pulkit@squidbrake.com.<br>"
+    : "Already signed up? Sign up again with the same email: you get your setup page back.<br>")
+    + (LOCAL_ONLY ? PRIVACY : `On your computer: ${PRIVACY} Hosted: your dashboard runs on our server, so the actions your agents
+      send it (commands, tool inputs and results) are stored there, behind your keys.`);
+  document.getElementById("step2").innerHTML = LOCAL_ONLY
+    ? `<span class="n">02</span><h3>Install it</h3><p>One line on your computer, Windows or Mac.</p>`
+    : `<span class="n">02</span><h3>Pick where it runs</h3><p>On your computer (one line, Windows or Mac), or on our server with a dashboard for your team.</p>`;
+}
 function choose(body, token) {
-  return finish({ ...body, setup: "hosted", source: SOURCE, ...(PLAN ? { plan: PLAN } : {}),
-                  ...(NEW_KEYS ? { new_keys: true } : {}) }, token);
+  const extra = { source: SOURCE, ...(PLAN ? { plan: PLAN } : {}), ...(NEW_KEYS ? { new_keys: true } : {}) };
+  if (LOCAL_ONLY) return finish({ ...body, ...extra, setup: "local" }, token);
+  if (!PICK) return finish({ ...body, ...extra, setup: "hosted" }, token);
+  state(`<h2>How do you want to run Squidbrake?</h2><p>Same checks either way. You can switch later.</p>
+    <div class="pick">
+      <button type="button" data-setup="local"><b>On my computer</b><span>One line installs it. Everything your agents
+        do stays on your machine. Best for one person.</span></button>
+      <button type="button" data-setup="hosted"><b>On our server (hosted)</b><span>We run your gateway and dashboard at your
+        own address, so your team approves from anywhere. Ready in about a minute.</span></button>
+    </div>`);
+  card.querySelectorAll("[data-setup]").forEach((b) => b.addEventListener("click", () =>
+    finish({ ...body, ...extra, setup: b.dataset.setup }, token)));
 }
 
 async function finish(body, token) {
@@ -417,7 +449,7 @@ f.addEventListener("submit", async (e) => {
     if (error) return fail(error.message || "Couldn't send the email. Please try again.");
     state(`<div class="big">✉</div><h2>Check your inbox</h2>
            <p>We sent a sign-in link to <span class="mono">${esc(body.email)}</span>.</p>
-           <p>Open it on this computer: your dashboard starts right after.</p>
+           <p>${PICK ? "Open it on this computer, then pick where Squidbrake runs." : "Open it on this computer: your dashboard starts right after."}</p>
            <p style="margin-top:14px;font-size:13px">Nothing there? Check spam, or <a href="/signup">try again</a>.</p>`);
   } catch (x) { fail("Couldn't reach Squidbrake. Please try again."); }
 });

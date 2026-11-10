@@ -820,7 +820,7 @@ const STAGE = { "active": ["Active", "s-active"], "installed": ["Installed, no a
   "quiet": ["Installed", "s-installed"], "opened link": ["Opened the link", "s-opened"], "link sent": ["Link sent", "s-sent"],
   "left": ["Left the pilot", "s-left"], "setting up": ["Setting up", "s-installed"], "keys taken": ["Took keys, not connected yet", "s-opened"],
   "setup failed": ["Setup failed", "s-quiet"], "deleting": ["Deleting", "s-left"],
-  "waiting for approval": ["Asked for hosted: approve it", "s-opened"],
+  "in line for a slot": ["Hosted, in line: starts when a slot frees", "s-opened"],
   "installed · agent not connected": ["Installed · agent not connected", "s-quiet"],
   "agent connected": ["Agent connected, no actions yet", "s-installed"] };
 
@@ -983,10 +983,6 @@ async function load() {
         + `where Squidbrake runs:\n\nsquidbrake license set ${r.license}`;
       try { await navigator.clipboard.writeText(text); b.textContent = "Copied"; } catch { prompt("Copy this:", text); }
     } catch (e) { if (e.message !== "unauthorized") alert(e.message); }
-  });
-  document.querySelectorAll("[data-approve]").forEach((b) => b.onclick = async () => {
-    try { await api(`/v1/admin/pilots/${encodeURIComponent(b.dataset.approve)}/approve`, { method: "POST" }); load(); }
-    catch (e) { if (e.message !== "unauthorized") alert(e.message); }
   });
   document.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => {
     if (!confirm(b.dataset.warn)) return;
@@ -1438,7 +1434,7 @@ function row(p) {
       ${p.latency_ms && p.latency_ms.p50 != null ? `<div class="mini">gateway p50 ${p.latency_ms.p50} ms · p95 ${p.latency_ms.p95} ms</div>` : ""}
       ${p.trend !== null && p.trend !== undefined ? `<div class="mini"><span class="${p.trend >= 0 ? "up" : "down"}">${p.trend > 0 ? "+" : ""}${p.trend}%</span> vs last week</div>` : ""}</td>
     <td>${agents}</td><td>${hits}</td>
-    <td><div class="acts">${p.state === "waiting" ? `<button class="btn primary" data-approve="${esc(p.code)}" title="Starts their hosted gateway">Approve hosted</button>` : ""}${followUp(p) ? `<button class="btn" data-copy="${esc(followUp(p))}" title="A message for where they are now">Follow-up</button>` : ""}
+    <td><div class="acts">${followUp(p) ? `<button class="btn" data-copy="${esc(followUp(p))}" title="A message for where they are now">Follow-up</button>` : ""}
       <button class="btn" data-copy="${esc(p.link)}">Copy link</button>
       <button class="btn" data-license="${esc(p.code)}" title="A Team plan license for their own gateway (one year)">License</button>
       ${p.mrr ? "" : `<button class="btn" data-copy="${esc(payMessage(p))}" title="A message with the $999 paid pilot link">Paid pilot</button>`}

@@ -246,10 +246,10 @@ function hostedPage() {
   const keys = document.getElementById("keys");
   const big = "border:0;background:var(--accent);color:#fff;border-radius:10px;padding:11px 18px;font:inherit;font-weight:650;cursor:pointer;text-decoration:none;display:inline-block";
   const render = (s) => {
+    // new keys only after signing in again with the email on file: this page's link alone isn't proof enough
     const lost = D.self_serve_keys
       ? `Lost them? <a href="/signup?new_keys=1">Sign in again for new keys</a> (your agents keep working).`
-      : `Lost them? <button id="newKeys" class="tabs-like" style="border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:9px;padding:5px 11px;font:inherit;cursor:pointer">Get new keys</button>
-         (your agents keep working; your old admin key stops).`;
+      : `Lost them? Reply to the message this link came in and we'll issue new ones.`;
     if (s.rekey) {
       keys.innerHTML = `<p>⏳ Making new keys for <b>${esc(D.dashboard)}</b>. This page updates by itself (under a minute).</p>`;
       setTimeout(poll, 4000);
@@ -257,20 +257,9 @@ function hostedPage() {
       keys.innerHTML = `<p>Your keys were already shown on this page. Your dashboard: <a href="${esc(D.dashboard)}/dashboard" target="_blank" rel="noopener">${esc(D.dashboard)}</a>
         (sign in with your <b>admin</b> key). ${lost}</p>
         <p class="note">For step 2, put your <b>agent</b> key in place of <code>${keyless}</code>.</p>`;
-      const nk = document.getElementById("newKeys");
-      if (nk) nk.onclick = async () => {
-        nk.disabled = true;
-        const r = await fetch(`/v1/pilot/${encodeURIComponent(D.code)}/new-keys`, { method: "POST" });
-        if (r.ok) return render({ ...s, rekey: true });
-        nk.disabled = false;
-        nk.insertAdjacentHTML("afterend", ` <span class="note" style="color:var(--warn)">${esc((await r.json().catch(() => ({}))).detail || "Couldn't ask for new keys.")}</span>`);
-      };
     } else if (s.state === "waiting") {
-      keys.innerHTML = D.auto_approve
-        ? `<p>✓ You're in. Every hosted dashboard is taken right now, so yours at <b>${esc(D.dashboard)}</b>
-          starts as soon as one frees up, and we'll email you. This page updates by itself, so you can also just come back to it.</p>`
-        : `<p>✓ Got it. We're setting up your dashboard at <b>${esc(D.dashboard)}</b> by hand and will email
-          you when it's ready (usually within a day). This page updates by itself, so you can also just come back to it.</p>`;
+      keys.innerHTML = `<p>✓ You're in. Every hosted dashboard is taken right now, so yours at <b>${esc(D.dashboard)}</b>
+        starts on its own as soon as one frees up. This page updates by itself: keep it open, or come back to this link.</p>`;
       setTimeout(poll, 30000);
     } else if (!s.keys_ready) {
       keys.innerHTML = `<p>⏳ Setting up your dashboard at <b>${esc(D.dashboard)}</b>. This page updates by itself (under a minute).</p>`;

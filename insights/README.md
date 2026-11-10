@@ -30,12 +30,16 @@ one-line command that connects Claude Code to it.
 
 ### Self-serve sign-up
 
-`/signup` offers only the hosted setup (the API still accepts `setup: "local"`; the self-hosted install stays in the
-docs). A sign-up gets its gateway started at once while a slot is free (`HOSTED_AUTO_APPROVE`, on unless set to `0`);
-when all `HOSTED_MAX` slots are taken it waits, you get a message, and you approve it in the admin once one is free.
-Keys are shown once on the start page. Someone who lost theirs gets new ones from there, at most 3 times an hour
-(`INSIGHTS_NEW_KEYS_PER_HOUR`): with Supabase sign-in they sign in again first (`/signup?new_keys=1`); without it,
-the start page link is enough. provision.py then makes the new keys.
+A hosted dashboard is only for an email proven by sign-in: set `SUPABASE_URL` and `SUPABASE_ANON_KEY` (see "One
+address" for the Supabase settings; give Supabase your own SMTP, since its built-in sender won't reach real users).
+Nobody approves a sign-up by hand: it starts at once while one of the `HOSTED_MAX` slots is free, and otherwise
+waits in line and starts on its own as soon as one frees up (provision.py's next round). You get a message either way.
+Without Supabase sign-in, `/signup` gives the local setup instead and the Team trial isn't offered.
+
+`/signup` offers only the hosted setup; `INSIGHTS_SIGNUP_LOCAL=1` brings back the "On my computer" choice and the
+line on what we see of a local install. Keys are shown once on the start page. Someone who lost theirs signs in again
+(`/signup?new_keys=1`) for new ones, at most 3 times an hour (`INSIGHTS_NEW_KEYS_PER_HOUR`); the start page link
+alone is never enough. Without Supabase, make them from the admin. provision.py then makes the new keys.
 
 ### Monthly usage (for plan limits)
 
