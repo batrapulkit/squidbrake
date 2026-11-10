@@ -1152,7 +1152,8 @@ def _git(cmd: Command, words: list[str]) -> Command:
     elif "--no-verify" in args or (sub == "commit" and "n" in letters) or (
             sub == "config" and any("core.hookspath" in a for a in args)
             and not any(a in ("--get", "--list", "-l", "--get-all") for a in args)
-            and (len([a for a in args if not a.startswith("-")]) >= 2 or "--unset" in args)):
+            and (len([a for a in args if not a.startswith("-")]) >= 2 or "--unset" in args)) \
+            or any(w.lower().startswith("core.hookspath=") for w in words):   # git -c core.hooksPath=... <sub>
         cmd.kind, cmd.why = "irreversible", "skips the repository's own checks (git hooks)"
     elif sub == "reset" and "--hard" in args:
         cmd.kind, cmd.why = "irreversible", "throws away uncommitted work (git reset --hard)"

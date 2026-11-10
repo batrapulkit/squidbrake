@@ -146,6 +146,7 @@ def test_catastrophic(line):
     "git commit --no-verify -m x",
     "git push --no-verify",
     "git config core.hooksPath /dev/null",
+    "git -c core.hooksPath=/dev/null commit -m x",
 
     # Local accounts and admin rights, and new cloud access keys (#175)
     "useradd -m -G sudo x",
