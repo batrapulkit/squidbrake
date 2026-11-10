@@ -780,6 +780,10 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
             and any(_is_catastrophic_target(p) for p in _positional(words)):
         cmd.kind, cmd.why = "catastrophic", f"changes permissions on the whole system ({' '.join(words)})"
         return [cmd], []
+    if prog == "chmod" and ("-r" in {f.lower() for f in _flags(words)} or "--recursive" in lower) \
+            and any(m in ("777", "a+rwx", "ugo+rwx", "+rwx") or m.endswith("777") for m in lower[1:]):
+        cmd.kind, cmd.why = "irreversible", f"makes files world-writable and executable ({' '.join(words[:3])})"
+        return [cmd], []
     # piped (Get-Partition -DriveLetter D | Format-Volume) or positional (Format-Volume D) wipes too; only help doesn't
     if prog in ("format-volume", "clear-disk") and not any(w in ("-?", "-help", "/?") for w in lower[1:]):
         cmd.kind, cmd.why = "catastrophic", f"wipes a whole disk ({' '.join(words[:3])})"
@@ -895,6 +899,13 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
             cmd.kind, cmd.why = "irreversible", f"deletes whatever the destination has that the source doesn't ({' '.join(words[:4])})"
         elif off := BACKUPS_OFF.search(" ".join(lower[1:])):
             cmd.kind, cmd.why = "irreversible", f"switches off backups or deletion protection ({off.group(0)})"
+        elif (prog == "aws" and verbs[:2] == ["s3api", "put-bucket-acl"] and any(w in ("public-read", "public-read-write") for w in lower)):
+            cmd.kind, cmd.why = "irreversible", "makes an S3 bucket publicly readable"
+        elif (prog == "aws" and verbs[:2] in (["iam", "attach-user-policy"], ["iam", "attach-role-policy"], ["iam", "attach-group-policy"])
+              and any("administratoraccess" in w for w in lower)):
+            cmd.kind, cmd.why = "irreversible", "grants full administrator access to an IAM identity"
+        elif (prog == "gsutil" and verbs[:2] == ["iam", "ch"] and any(w.startswith(("allusers:", "allauthenticatedusers:")) for w in lower)):
+            cmd.kind, cmd.why = "irreversible", "makes cloud storage accessible to the public"
         elif (prog == "aws" and verbs[:2] == ["secretsmanager", "get-secret-value"]) or \
              (prog == "gcloud" and verbs[:3] == ["secrets", "versions", "access"]) or \
              (prog == "az" and verbs[:3] == ["keyvault", "secret", "show"]):

@@ -170,6 +170,11 @@ def test_catastrophic(line):
     "journalctl --vacuum-time=1s",
     "tmutil disable",
 
+    # Making something public or granting admin (#29)
+    "aws s3api put-bucket-acl --bucket b --acl public-read",
+    "aws iam attach-user-policy --user-name bot --policy-arn arn:aws:iam::aws:policy/AdministratorAccess",
+    "gsutil iam ch allUsers:objectViewer gs://bucket",
+    "chmod -R 777 .",
     # Sync commands that delete (#23)
     "rsync -a --delete src/ dst/",
     "aws s3 sync . s3://bucket --delete",
@@ -301,6 +306,10 @@ def test_no_false_alarm(line):
     "wevtutil qe Security /c:5",
     "tmutil status",
 
+    # Safe permissions and read-only checks (#29)
+    "aws s3api get-bucket-acl --bucket b",
+    "aws iam list-attached-user-policies --user-name bot",
+    "chmod 644 file.txt",
     # Sync commands without delete (#23)
     "rsync -a src/ dst/",
     "aws s3 sync . s3://bucket",
@@ -335,6 +344,10 @@ def test_summary_explains():
     assert "erases the record of what ran" in commands.read("history -c").summary()
     assert "admin rights" in commands.read("usermod -aG sudo x").summary()
     assert "access key" in commands.read("aws iam create-access-key --user-name x").summary()
+    assert "publicly readable" in commands.read("aws s3api put-bucket-acl --bucket b --acl public-read").summary()
+    assert "administrator access" in commands.read("aws iam attach-user-policy --user-name bot --policy-arn arn:aws:iam::aws:policy/AdministratorAccess").summary()
+    assert "accessible to the public" in commands.read("gsutil iam ch allUsers:objectViewer gs://bucket").summary()
+    assert "world-writable" in commands.read("chmod -R 777 .").summary()
     assert "deletes whatever the destination has" in commands.read("rsync -a --delete src/ dst/").summary()
     assert "DROP KEYSPACE" in commands.read("cqlsh -e 'DROP KEYSPACE prod'").summary()
     assert "InfluxDB" in commands.read("influx bucket delete -n prod").summary()
