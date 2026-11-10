@@ -170,6 +170,8 @@ def test_catastrophic(line):
     "wevtutil cl Security",
     "journalctl --vacuum-time=1s",
     "tmutil disable",
+    "clhy",
+    "wevtutil clear-log Security",
 
     # Making something public or granting admin (#29)
     "aws s3api put-bucket-acl --bucket b --acl public-read",

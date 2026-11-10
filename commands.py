@@ -741,10 +741,10 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
     if prog == "tmutil" and lower[1:2] in (["delete"], ["disable"]):
         cmd.kind, cmd.why = "irreversible", f"deletes Time Machine backups ({' '.join(words[:3])})" if lower[1:2] == ["delete"] else "turns Time Machine backups off (tmutil disable)"
         return [cmd], []
-    if (prog == "history" and any(a in ("-c", "-cw") or a.startswith("-c") for a in lower[1:])) or prog == "clear-history":
+    if (prog == "history" and any(a in ("-c", "-cw") or a.startswith("-c") for a in lower[1:])) or prog in ("clear-history", "clhy"):
         cmd.kind, cmd.why = "irreversible", "erases the record of what ran on this machine"
         return [cmd], []
-    if prog == "wevtutil" and lower[1:2] == ["cl"]:
+    if prog == "wevtutil" and lower[1:2] in (["cl"], ["clear-log"]):
         cmd.kind, cmd.why = "irreversible", "erases the record of what ran on this machine"
         return [cmd], []
     if prog == "journalctl" and any(a.startswith("--vacuum") for a in lower[1:]):
@@ -1368,6 +1368,7 @@ KNOWN = READ_ONLY | SHELLS | POWERSHELLS | {
     "sqlite3", "redis-cli", "mongosh", "cqlsh", "influx", "etcdctl", "brew", "apt", "apt-get", "dnf", "yum", "pacman", "choco", "winget", "scoop",
     "set-location", "sl", "new-item", "ni", "copy-item", "cp", "move-item", "mi", "set-content", "sc", "add-content",
     "out-file", "remove-item", "invoke-webrequest", "iwr", "invoke-restmethod", "irm", "start-process", "saps",
+    "tmutil", "wevtutil", "journalctl", "clear-history",
 }
 
 
