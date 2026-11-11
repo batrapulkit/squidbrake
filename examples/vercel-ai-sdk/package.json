@@ -1,0 +1,16 @@
+{
+  "name": "squidbrake-vercel-ai-sdk-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --experimental-strip-types agent.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^4.0.114",
+    "ai": "^7.0.169",
+    "zod": "^4.6.7"
+  },
+  "engines": {
+    "node": ">=22.6"
+  }
+}
