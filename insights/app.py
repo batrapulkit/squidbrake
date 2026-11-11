@@ -1498,13 +1498,20 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
         sub = _subdomain(c, slug) if setup == "hosted" and HOSTED_DOMAIN else None
         auto = bool(sub) and c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0] < HOSTED_MAX
         trial = (datetime.now(timezone.utc).date() + timedelta(days=14)).isoformat() if s.plan == "team" else None
+        queued = None
+        if sub and not auto:     # strictly after the last one in line: a coarse clock (Windows) can repeat a time
+            queued = datetime.now(timezone.utc)
+            last = c.execute("SELECT MAX(queued_at) FROM pilots").fetchone()[0]
+            if last and datetime.fromisoformat(last) >= queued:
+                queued = datetime.fromisoformat(last) + timedelta(microseconds=1)
+            queued = queued.isoformat()
         c.execute("INSERT INTO pilots (code, company, contact, note, created_at, email, uses_agents, hosted, subdomain, "
                   "state, plan, trial_ends, started_at, queued_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                   (code, s.company.strip(), f"{s.name.strip()} · {email}",
                    f"signup ({s.plan or setup})" + (f" from {s.source}" if s.source else "") + " · agents: "
                    + (", ".join(agents) or "-"), now(), email, json.dumps(agents),
                    int(bool(sub)), sub, ("requested" if auto else "waiting") if sub else None, s.plan or None, trial,
-                   now() if auto else None, datetime.now(timezone.utc).isoformat() if sub and not auto else None))
+                   now() if auto else None, queued))
     if sub:
         notify(f"Squidbrake {'Team trial' if s.plan else 'hosted'} sign-up: {s.name.strip()} ({email}), {s.company.strip()}. "
                + (f"It started on its own; see {PUBLIC_URL}/admin" if auto else
