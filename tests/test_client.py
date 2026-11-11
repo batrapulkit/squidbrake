@@ -150,3 +150,31 @@ def test_openai_agents_example_runs_all_three_outcomes(gateway, capsys):
     assert "Allowed: Release notes for v0.15 rollout" in out
     assert "Review outcome: Refunded $42.00 on inv_demo_123." in out
     assert "Blocked: NOT RUN: Squidbrake stopped shell.exec" in out
+
+
+def test_pydantic_ai_example_runs_all_three_outcomes(gateway, capsys):
+    import importlib.util
+
+    pytest.importorskip("pydantic_ai")
+    spec = importlib.util.spec_from_file_location("pydantic_ai_demo", ROOT / "examples" / "pydantic-ai" / "demo.py")
+    demo = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(demo)
+
+    admin = {"X-Gateway-Key": gateway.admin_key}
+
+    def approve_refund():
+        for _ in range(100):
+            rows = httpx.get(gateway.url + "/v1/events", headers=admin,
+                             params={"status": "awaiting_approval", "limit": 20}).json()["events"]
+            refund = next((e for e in rows if e["name"] == "invoice.refund"), None)
+            if refund:
+                httpx.post(f"{gateway.url}/v1/events/{refund['id']}/approve", headers=admin, json={"note": "ok"})
+                return
+            time.sleep(0.1)
+
+    threading.Thread(target=approve_refund, daemon=True).start()
+    demo.run_direct(gateway)
+    out = capsys.readouterr().out
+    assert "Allowed: Release notes for v0.15 rollout" in out
+    assert "Review outcome: Refunded $42.00 on inv_demo_123." in out
+    assert "Blocked: NOT RUN: Squidbrake stopped shell.exec" in out
