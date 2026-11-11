@@ -632,13 +632,29 @@ def _reclaim_unused(c) -> None:
 
 def _start_waiting(c) -> None:
     """Hosted sign-ups that came in while every slot was taken: start the oldest ones as slots free up (nobody approves
-    them by hand). Run each time provision.py asks what to do, so a freed slot is used on its next round (10 s)."""
+    them by hand). Run each time provision.py asks what to do, so a freed slot is used on its next round (10 s).
+    Only those in line (queued_at): a request from before self-serve sign-up (no queued_at) was never approved, and
+    its email never proven, so it stays until you delete it or put it in line from the admin."""
     free = HOSTED_MAX - c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0]
     if free <= 0:
         return
-    for r in c.execute("SELECT code FROM pilots WHERE hosted=1 AND state='waiting' ORDER BY COALESCE(queued_at, created_at) LIMIT ?",
-                       (free,)).fetchall():
+    for r in c.execute("SELECT code FROM pilots WHERE hosted=1 AND state='waiting' AND queued_at IS NOT NULL "
+                       "ORDER BY queued_at LIMIT ?", (free,)).fetchall():
         c.execute("UPDATE pilots SET state='requested', started_at=? WHERE code=? AND state='waiting'", (now(), r["code"]))
+
+
+@app.post("/v1/admin/pilots/{code}/queue", dependencies=[Depends(admin)])
+def queue_old_request(code: str):
+    """An old hosted request (from before self-serve sign-up) you decided to keep: it joins the end of the line."""
+    with _lock, db() as c:
+        last = c.execute("SELECT MAX(queued_at) FROM pilots").fetchone()[0]
+        t = datetime.now(timezone.utc).isoformat()
+        if last and t <= last:                      # strictly after the last one in line (see signup)
+            t = (datetime.fromisoformat(last) + timedelta(microseconds=1)).isoformat()
+        if not c.execute("UPDATE pilots SET queued_at=? WHERE code=? AND hosted=1 AND state='waiting' AND queued_at IS NULL",
+                         (t, code)).rowcount:
+            raise HTTPException(404, "no old hosted request with that code")
+    return {"ok": True}
 
 
 @app.post("/v1/admin/pilots/{code}/new-keys", dependencies=[Depends(admin)])
@@ -727,7 +743,7 @@ def pilot_status(code: str, request: Request):
             _missed(request)
             raise HTTPException(404)
         ahead = c.execute("SELECT COUNT(*) FROM pilots WHERE hosted=1 AND state='waiting' AND "
-                          "COALESCE(queued_at, created_at) < ?", (p["q"],)).fetchone()[0] if p["state"] == "waiting" else 0
+                          "queued_at IS NOT NULL AND queued_at < ?", (p["q"],)).fetchone()[0] if p["state"] == "waiting" else 0
         connected = _connected(c, code)
     return {"state": p["state"], "keys_ready": bool(p["admin_key"]), "keys_shown": bool(p["keys_revealed_at"]),
             "rekey": bool(p["rekey"]), "connected": connected, "ahead": ahead}
@@ -1032,7 +1048,7 @@ def overview(request: Request):
             ever = sum(i["total_events"] or 0 for i in mine)
             if p["state"] != "running":
                 stage = {"requested": "setting up", "failed": "setup failed", "deleting": "deleting",
-                         "waiting": "in line for a slot"}.get(p["state"], stage)
+                         "waiting": "in line for a slot" if p.get("queued_at") else "old hosted request"}.get(p["state"], stage)
             elif not p["keys_revealed_at"]:
                 stage = "opened link" if p["page_views"] else "link sent"
             elif not ever:

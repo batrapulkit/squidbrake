@@ -626,6 +626,7 @@ def test_an_unused_hosted_dashboard_is_freed_and_the_next_in_line_starts(insight
         add("rc-admin", "made by hand", ago(hours=25))                             # from the admin: never freed
         add("rc-paid", "signup (team)", ago(hours=25), mrr=499)                    # paying: never freed
         add("rc-next", "signup (hosted)", None, state="waiting")                   # in line
+        c.execute("UPDATE pilots SET queued_at=? WHERE code='rc-next'", (ago(minutes=2),))
         c.execute("INSERT INTO installs (install_id, code, joined_at, total_events) VALUES (?, 'rc-used', ?, 3)",
                   ("5ec1a1" + "0" * 26, insights_app.now()))
     monkeypatch.setattr(insights_app, "HOSTED_MAX", live + 6)                       # full until something is freed
@@ -640,6 +641,28 @@ def test_an_unused_hosted_dashboard_is_freed_and_the_next_in_line_starts(insight
     with insights_app.db() as c:
         for code in ("rc-nokeys", "rc-fresh", "rc-idle", "rc-used", "rc-admin", "rc-paid", "rc-next"):
             insights_app._forget(c, code)
+
+
+def test_an_old_hosted_request_never_starts_on_its_own_until_you_put_it_in_line(insights, monkeypatch):
+    # requests from before self-serve sign-up (no queued_at) were never approved and their email never proven
+    import app as insights_app
+    admin = {"X-Admin-Key": "admin-test-key"}
+    with insights_app.db() as c:
+        c.execute("INSERT INTO pilots (code, company, created_at, email, hosted, subdomain, state, note) "
+                  "VALUES ('old-req', 'Old', '2026-10-01T00:00:00+00:00', 'old@req.dev', 1, 'oldreq', 'waiting', 'signup (hosted)')")
+        live = c.execute(f"SELECT COUNT(*) FROM pilots WHERE {insights_app.LIVE}").fetchone()[0]
+    monkeypatch.setattr(insights_app, "HOSTED_MAX", live + 5)                     # plenty of free slots
+    state = lambda: next(p["state"] for p in insights.get("/v1/admin/provision", headers=admin).json()["pilots"]
+                         if p["code"] == "old-req")
+    assert state() == "waiting"                                                  # a free slot doesn't start it
+    stage = next(p["stage"] for p in insights.get("/v1/admin/overview", headers=admin).json()["pilots"] if p["code"] == "old-req")
+    assert stage == "old hosted request"
+    assert insights.post("/v1/admin/pilots/old-req/queue").status_code == 401
+    assert insights.post("/v1/admin/pilots/old-req/queue", headers=admin).status_code == 200
+    assert state() == "requested"                                                # in line, and a slot is free
+    assert insights.post("/v1/admin/pilots/old-req/queue", headers=admin).status_code == 404
+    with insights_app.db() as c:
+        insights_app._forget(c, "old-req")
 
 
 def test_hosted_sign_ups_start_on_their_own_and_wait_in_line_when_full(insights, monkeypatch):
