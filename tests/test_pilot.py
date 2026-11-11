@@ -33,6 +33,7 @@ SECRET = "PLANTED-MARKER-not-a-real-secret"   # must never show up in what a pil
 @pytest.fixture(scope="module")
 def insights():
     import app as insights_app
+    insights_app._hosted_ips.clear()             # hosted sign-ups a day from one address (every test is "testclient")
     with TestClient(insights_app.app) as c:
         yield c
 
@@ -579,33 +580,96 @@ def test_with_supabase_only_a_verified_sign_in_signs_up_and_signing_in_again_giv
     assert '"supabase_url": "https://x.supabase.co"' in page and "__CONFIG__" not in page
 
 
-def test_signup_hosted_waits_for_you_to_approve_it(insights, monkeypatch):
+def _signed_in(monkeypatch, insights_app):
+    """Supabase sign-in on, and every Bearer token is a verified sign-in for the email it names."""
+    monkeypatch.setattr(insights_app, "SUPABASE_URL", "https://x.supabase.co")
+    monkeypatch.setattr(insights_app, "supabase_user", lambda token: {"email": token, "email_confirmed_at": "2026-11-01T00:00:00Z"})
+    return lambda email, **kw: {"json": {"name": "Mei", "email": email, "company": "Gamma", "agents": ["codex"], **kw},
+                                "headers": {"Authorization": f"Bearer {email}"}}
+
+
+def test_without_sign_in_a_hosted_sign_up_starts_at_once_but_one_address_gets_two_a_day(insights, monkeypatch):
     import app as insights_app
     insights_app._requests.clear()
+    monkeypatch.setattr(insights_app, "SUPABASE_URL", "")
+    monkeypatch.setattr(insights_app, "notify", lambda text: None)
+    monkeypatch.setattr(insights_app, "HOSTED_MAX", 1000)
+    sign = lambda email, **kw: insights.post("/v1/signup", json={"name": "Mo", "email": email, "company": "Fast", **kw})
+    r = sign("mo@fast.io", setup="hosted")
+    code = r.json()["link"].rsplit("/", 1)[1]
+    assert insights.get(f"/v1/pilot/{code}/status").json()["state"] == "requested"      # no email step, no approval
+    page = insights.get(f"/start/{code}").text
+    assert '"hosted": true' in page and '"reclaim": {"keys_minutes": 30, "idle_hours": 24}' in page
+    assert sign("jo@fast.io", plan="team").status_code == 200                         # the Team trial too
+    assert sign("lu@fast.io", setup="hosted").status_code == 429                      # a third from here today
+    assert sign("lu@fast.io", setup="local").status_code == 200                       # local isn't limited
+    assert '"hosted": true' in insights.get("/signup").text
+
+
+def test_an_unused_hosted_dashboard_is_freed_and_the_next_in_line_starts(insights, monkeypatch):
+    import app as insights_app
+    from datetime import datetime, timedelta, timezone
+    told = []
+    monkeypatch.setattr(insights_app, "notify", told.append)
+    admin = {"X-Admin-Key": "admin-test-key"}
+    ago = lambda **kw: (datetime.now(timezone.utc) - timedelta(**kw)).isoformat(timespec="seconds")
+    with insights_app.db() as c:
+        live = c.execute(f"SELECT COUNT(*) FROM pilots WHERE {insights_app.LIVE}").fetchone()[0]
+        add = lambda code, note, started, revealed=None, state="running", mrr=0: c.execute(
+            "INSERT INTO pilots (code, company, created_at, email, hosted, subdomain, state, note, started_at, "
+            "keys_revealed_at, mrr) VALUES (?,?,?,?,1,?,?,?,?,?,?)",
+            (code, code, started or ago(minutes=1), f"{code}@x.dev", code, state, note, started, revealed, mrr))
+        add("rc-nokeys", "signup (hosted)", ago(minutes=31))                       # keys never taken: freed
+        add("rc-fresh", "signup (hosted)", ago(minutes=5))                         # still has time
+        add("rc-idle", "signup (hosted)", ago(hours=25), revealed=ago(hours=25))   # keys taken, no agent in 24 h: freed
+        add("rc-used", "signup (hosted)", ago(hours=25), revealed=ago(hours=25))   # an agent connected: kept
+        add("rc-admin", "made by hand", ago(hours=25))                             # from the admin: never freed
+        add("rc-paid", "signup (team)", ago(hours=25), mrr=499)                    # paying: never freed
+        add("rc-next", "signup (hosted)", None, state="waiting")                   # in line
+        c.execute("INSERT INTO installs (install_id, code, joined_at, total_events) VALUES (?, 'rc-used', ?, 3)",
+                  ("5ec1a1" + "0" * 26, insights_app.now()))
+    monkeypatch.setattr(insights_app, "HOSTED_MAX", live + 6)                       # full until something is freed
+    pilots = lambda: {p["code"]: p["state"] for p in insights.get("/v1/admin/provision", headers=admin).json()["pilots"]}
+    st = pilots()
+    assert st["rc-nokeys"] == st["rc-idle"] == "deleting"
+    assert st["rc-fresh"] == st["rc-used"] == st["rc-admin"] == st["rc-paid"] == "running"
+    assert st["rc-next"] == "requested"                                             # a slot freed: it starts on its own
+    assert len(told) == 2 and "keys weren't taken" in " ".join(told) and "no agent connected" in " ".join(told)
+    assert insights.get("/v1/pilot/rc-used/status").json()["connected"] is True
+    assert insights.get("/v1/pilot/rc-fresh/status").json()["connected"] is False
+    with insights_app.db() as c:
+        for code in ("rc-nokeys", "rc-fresh", "rc-idle", "rc-used", "rc-admin", "rc-paid", "rc-next"):
+            insights_app._forget(c, code)
+
+
+def test_hosted_sign_ups_start_on_their_own_and_wait_in_line_when_full(insights, monkeypatch):
+    import app as insights_app
+    insights_app._requests.clear()
+    req = _signed_in(monkeypatch, insights_app)
     told = []
     monkeypatch.setattr(insights_app, "notify", told.append)
     with insights_app.db() as c:
         live = c.execute(f"SELECT COUNT(*) FROM pilots WHERE {insights_app.LIVE}").fetchone()[0]
     monkeypatch.setattr(insights_app, "HOSTED_MAX", live + 1)
     admin = {"X-Admin-Key": "admin-test-key"}
-    sign = lambda email, setup: insights.post("/v1/signup", json={"name": "Mei", "email": email, "company": "Gamma",
-                                                                  "agents": ["codex"], "setup": setup})
-    r = sign("mei@gamma.io", "hosted").json()
-    code = r["link"].rsplit("/", 1)[1]
-    page = insights.get(urlparse(r["link"]).path).text
-    assert '"hosted": true' in page and '"state": "waiting"' in page and "Your checklist" in page
-    assert len(told) == 1 and "mei@gamma.io" in told[0]                       # you hear about it
-    q = insights.get("/v1/admin/provision", headers=admin).json()["pilots"]
-    assert any(p["code"] == code and p["state"] == "waiting" for p in q)     # provision.py doesn't start it
-    other = sign("li@gamma.io", "hosted").json()["link"].rsplit("/", 1)[1]   # a second request waits too
-    assert insights.post(f"/v1/admin/pilots/{code}/approve").status_code == 401
-    assert insights.post(f"/v1/admin/pilots/{code}/approve", headers=admin).status_code == 200
-    assert insights.get(f"/v1/pilot/{code}/status").json()["state"] == "requested"   # now provision.py starts it
-    assert insights.post(f"/v1/admin/pilots/{code}/approve", headers=admin).status_code == 404
-    assert insights.post(f"/v1/admin/pilots/{other}/approve", headers=admin).status_code == 409   # no slot left
-    assert '"hosted": false' in insights.get(urlparse(sign("wu@gamma.io", "local").json()["link"]).path).text
-    assert len(told) == 2                                                     # local sign-ups don't ping you
-    assert sign("x@gamma.io", "cloud").status_code == 422
+    sign = lambda email, **kw: insights.post("/v1/signup", **req(email, setup="hosted", **kw)).json()["link"].rsplit("/", 1)[1]
+    first = sign("mei@gamma.io")
+    assert insights.get(f"/v1/pilot/{first}/status").json()["state"] == "requested"   # provision.py starts it
+    assert "started on its own" in told[0] and "mei@gamma.io" in told[0]
+    second, third = sign("li@gamma.io"), sign("wu@gamma.io")                           # no slot left: in line
+    page = insights.get(f"/start/{second}").text
+    assert '"hosted": true' in page and '"state": "waiting"' in page and "two steps, about 2 minutes" in page
+    assert insights.get(f"/v1/pilot/{third}/status").json()["ahead"] == 1          # first in, first out
+    assert "in line" in told[1] and "starts when one frees up" in told[1]
+    assert insights.post(f"/v1/admin/pilots/{second}/approve", headers=admin).status_code in (404, 405)   # nobody approves
+    state = lambda code: next(p["state"] for p in insights.get("/v1/admin/provision", headers=admin).json()["pilots"]
+                              if p["code"] == code)
+    assert state(second) == "waiting" and state(third) == "waiting"           # still full
+    insights.post("/v1/admin/provisioned", headers=admin, json={"code": first, "state": "deleted"})   # a slot frees
+    assert state(second) == "requested" and state(third) == "waiting"        # the oldest in line starts on its own
+    assert '"hosted": false' in insights.get(urlparse(insights.post("/v1/signup", **req("x@gamma.io", setup="local")).json()["link"]).path).text
+    assert len(told) == 3                                                     # local sign-ups don't ping you
+    assert insights.post("/v1/signup", **req("y@gamma.io", setup="cloud")).status_code == 422
 
 
 def test_one_website_serves_the_pages_and_the_old_address_sends_people_there(insights, monkeypatch):
@@ -655,38 +719,20 @@ def test_a_busy_install_becomes_a_lead_once_and_the_funnel_counts_it(insights, m
     assert insights.get("/v1/admin/funnel").status_code == 401
 
 
-def test_team_plan_signup_is_a_hosted_trial_waiting_for_approval(insights, monkeypatch):
+def test_team_plan_signup_is_a_hosted_trial(insights, monkeypatch):
     import app as insights_app
     insights_app._requests.clear()
+    req = _signed_in(monkeypatch, insights_app)
     monkeypatch.setattr(insights_app, "notify", lambda text: None)
     monkeypatch.setattr(insights_app, "CHECKOUT_URL", "https://pay.example/team")
-    r = insights.post("/v1/signup", json={"name": "Ivy", "email": "ivy@trial.dev", "company": "TrialCo",
-                                          "setup": "local", "plan": "team", "source": "invite"}).json()
+    r = insights.post("/v1/signup", **req("ivy@trial.dev", setup="local", plan="team", source="invite")).json()
     page = insights.get(urlparse(r["link"]).path).text
-    assert '"hosted": true' in page and '"state": "waiting"' in page and '"plan": "team"' in page
+    assert '"hosted": true' in page and '"plan": "team"' in page
     assert '"checkout": "https://pay.example/team?client_reference_id=' in page and '"trial_ends": "20' in page
     p = next(p for p in insights.get("/v1/admin/overview", headers={"X-Admin-Key": "admin-test-key"}).json()["pilots"]
              if p.get("email") == "ivy@trial.dev")
     assert "from invite" in p["note"] and p["plan"] == "team"
-    assert insights.post("/v1/signup", json={"name": "x", "email": "x@t.dev", "company": "x", "plan": "gold"}).status_code == 422
-
-
-def test_hosted_signup_starts_on_its_own_while_a_slot_is_free(insights, monkeypatch):
-    import app as insights_app
-    insights_app._requests.clear()
-    told = []
-    monkeypatch.setattr(insights_app, "notify", told.append)
-    monkeypatch.setattr(insights_app, "HOSTED_AUTO_APPROVE", True)
-    with insights_app.db() as c:
-        live = c.execute(f"SELECT COUNT(*) FROM pilots WHERE {insights_app.LIVE}").fetchone()[0]
-    monkeypatch.setattr(insights_app, "HOSTED_MAX", live + 1)
-    sign = lambda email: insights.post("/v1/signup", json={"name": "Ola", "email": email, "company": "Auto",
-                                                           "plan": "team"}).json()["link"].rsplit("/", 1)[1]
-    first = sign("ola@auto.dev")
-    assert insights.get(f"/v1/pilot/{first}/status").json()["state"] == "requested"   # provision.py starts it
-    assert "started on its own" in told[0]
-    second = sign("bo@auto.dev")                                                         # no slot left: it waits
-    assert insights.get(f"/v1/pilot/{second}/status").json()["state"] == "waiting" and "Approve it" in told[1]
+    assert insights.post("/v1/signup", **req("x@t.dev", plan="gold")).status_code == 422
 
 
 def test_stripe_payments_reach_the_pilot_they_were_for(insights, monkeypatch):

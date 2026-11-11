@@ -26,7 +26,36 @@ one-line command that connects Claude Code to it.
 - Caddy serves `*.HOSTED_DOMAIN` with on-demand certificates, and asks `/v1/caddy/ask` first, so it only gets
   certificates for hosted pilots that exist.
 - Be clear with founders: on a hosted gateway their agents' actions (commands, tool inputs and results) are stored on
-  your server. The start page says so, and offers the private setup instead.
+  your server. The start page says so, and points to the self-hosted setup in the docs instead.
+
+### Self-serve sign-up
+
+Nobody approves a sign-up by hand. A hosted dashboard starts at once while one of the `HOSTED_MAX` slots is free;
+otherwise the sign-up waits in line (first in, first out: `queued_at`) and starts on its own on provision.py's next
+round after a slot frees up. The start page shows the place in line. You get a message either way.
+
+So junk or abandoned sign-ups can't hold the slots, a free sign-up's dashboard that nobody uses is freed again (and you
+get a message): keys not taken within `INSIGHTS_RECLAIM_KEYS_MINUTES` (30) of its start, or no agent action within
+`INSIGHTS_RECLAIM_IDLE_HOURS` (24). Never one made from the admin or one that paid; `0` turns either off.
+
+With Supabase sign-in (`SUPABASE_URL`, `SUPABASE_ANON_KEY`; see "One address", and give Supabase your own SMTP, since
+its built-in sender won't reach real users) the email is proven before the dashboard starts. Without it the dashboard
+starts straight away, and one address gets `INSIGHTS_HOSTED_PER_IP_DAY` (2) hosted sign-ups a day.
+
+The start page has two steps: get your keys, then the install line with the agent key filled in; it turns green on its
+own when the first agent action arrives (hosted gateways send their counts every 20 s when they change).
+
+`/signup` offers only the hosted setup; `INSIGHTS_SIGNUP_LOCAL=1` brings back the "On my computer" choice and the
+line on what we see of a local install. Keys are shown once on the start page. Someone who lost theirs signs in again
+(`/signup?new_keys=1`) for new ones, at most 3 times an hour (`INSIGHTS_NEW_KEYS_PER_HOUR`); the start page link
+alone is never enough. Without Supabase, make them from the admin. provision.py then makes the new keys.
+
+### Monthly usage (for plan limits)
+
+Admin, then **Monthly usage** (`GET /v1/admin/usage/monthly?months=6`): real actions per pilot and calendar month
+(UTC). Real means something an agent did or tried: not a person's prompt, an agent's question, or the installer's
+own hook check (`pilot.is_real`), from the daily counts each install sends (a hosted gateway is one). A month from a
+gateway older than this count shows all its actions and is marked estimated.
 
 ## The database: your Supabase project
 
@@ -60,7 +89,8 @@ Only after `squidbrake pilot join CODE --server URL`, which shows the list below
 
 - Squidbrake version, OS, enforce/shadow mode, number of rules
 - agent labels (e.g. `claude-code`) and how many actions each made
-- per day, for the last 7 days: actions allowed, held, approved, rejected, blocked, timed out, failed
+- per day, for the last 7 days: actions allowed, held, approved, rejected, blocked, timed out, failed, and how many
+  were agents' actions (not prompts, questions or the install check)
 - the ids of the rules that blocked or held things
 
 **Never:** commands, code, files, prompts, tool inputs or outputs, keys, people's names. `squidbrake pilot leave` stops it.

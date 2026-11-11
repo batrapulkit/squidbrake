@@ -13,8 +13,9 @@ Nothing is sent unless you join. What is sent, at start, every 2 minutes while s
   - the agents connected, by their labels (e.g. "claude-code", "antigravity"), and which agents on this computer
     have Squidbrake's hook in their settings (so a pilot that installed but never connected an agent can be helped)
   - per day, for the last 7 days: how many actions were allowed, held, approved, rejected, blocked, timed out or failed,
-    and how many were paused by an emergency stop (counted apart from what rules blocked), and how many a person
-    marked "this was legit" (squidbrake feedback)
+    and how many were paused by an emergency stop (counted apart from what rules blocked), how many a person
+    marked "this was legit" (squidbrake feedback), and how many were agents' actions rather than prompts, questions
+    or Squidbrake's own install check
   - how long the gateway took to decide, as p50 / p95 / p99 milliseconds
   - which rules blocked or held things (rule ids such as "command:catastrophic_command")
   - for each action held or blocked in the last 7 days: when, which agent, the program only (e.g. "rm", "git"),
@@ -137,6 +138,15 @@ def catches(conn, events, since: str, reasons: dict) -> list[dict]:
 
 
 PAUSE_RULES = ("emergency-stop", "session-stop")
+# A "real" action, the unit plan limits are counted in: something an agent did or tried, so not a person's prompt
+# (kind "prompt"), an agent's question to a person ("question"), or the install's own check that the hook works
+# (connect.py DOCTOR_COMMAND). insights/app.py counts a hosted gateway's records the same way (real_action).
+NOT_ACTIONS = ("prompt", "question")
+SELF_CHECK = "squidbrake doctor check"
+
+
+def is_real(kind: str | None, raw_input: str | None) -> bool:
+    return (kind or "") not in NOT_ACTIONS and SELF_CHECK not in (raw_input or "")
 
 
 def usage(engine, events, mode: str, rules: int, version: str, reasons: dict | None = None,
@@ -149,12 +159,14 @@ def usage(engine, events, mode: str, rules: int, version: str, reasons: dict | N
     n = lambda cond: func.sum(case((cond, 1), else_=0))
     in_week = events.c.created_at >= since
     paused = func.coalesce(events.c.rule_id.in_(PAUSE_RULES), False)
+    real = func.coalesce(events.c.kind, "").notin_(NOT_ACTIONS) & \
+        ~func.coalesce(events.c.input, "").contains(SELF_CHECK, autoescape=True)
     with engine.connect() as conn:
         days = {d: {"events": int(t or 0), "allowed": int(a or 0), "held": int(h or 0), "approved": int(ap or 0),
                     "rejected": int(rj or 0), "blocked": int(b or 0), "timed_out": int(to or 0), "failed": int(f or 0),
                     "would_block": int(wb or 0), "would_hold": int(wh or 0), "paused": int(ps or 0),
-                    "legit": int(lg or 0)}
-                for d, t, a, h, ap, rj, b, to, f, wb, wh, ps, lg in conn.execute(select(
+                    "legit": int(lg or 0), "real": int(rl or 0)}
+                for d, t, a, h, ap, rj, b, to, f, wb, wh, ps, lg, rl in conn.execute(select(
                     day, func.count(),
                     n((events.c.decision == "allow") & events.c.decided_by.is_(None)),
                     n(events.c.approval_deadline.isnot(None)),
@@ -167,6 +179,7 @@ def usage(engine, events, mode: str, rules: int, version: str, reasons: dict | N
                     n(events.c.would == "review"),
                     n((events.c.status == "denied") & events.c.decided_by.is_(None) & paused.is_(True)),
                     n(events.c.feedback == "legit"),            # a person said a hold or block should have run
+                    n(real),                                    # what plan limits count (is_real)
                 ).where(in_week).group_by(day)).all()}
         agent = func.coalesce(events.c.source, events.c.client)
         agents = dict(conn.execute(select(agent, func.count()).where(in_week).group_by(agent)).all())
