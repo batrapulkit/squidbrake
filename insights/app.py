@@ -127,9 +127,13 @@ with db() as _c:
                         # when its hosted gateway was asked to start (sign-up, or its turn in line): unused ones are freed
                         ("started_at", "TEXT"),
                         # when it joined the line for a hosted slot, to the microsecond: first in, first out
-                        ("queued_at", "TEXT")):
+                        ("queued_at", "TEXT"),
+                        # when the founder first took keys; unlike keys_revealed_at, new keys never clear it
+                        ("keys_first_shown_at", "TEXT")):
         if _col not in _have:
             _c.execute(f"ALTER TABLE pilots ADD COLUMN {_col} {_type}")
+            if _col == "keys_first_shown_at":   # dashboards whose keys were already taken stay that way
+                _c.execute("UPDATE pilots SET keys_first_shown_at=keys_revealed_at WHERE keys_revealed_at IS NOT NULL")
 
 # Every install that says yes to the first-run question (telemetry.py) joins this code. It has gone missing from the
 # database twice (deleted with the other test links), and then every one of those joins was refused with a 404 that
@@ -618,10 +622,15 @@ def _connected(c, code: str) -> bool:
 def _reclaim_unused(c) -> None:
     """Free the slot of a sign-up's hosted dashboard nobody used (see RECLAIM_KEYS_MINUTES): provision.py removes it."""
     t = datetime.now(timezone.utc)
-    for p in c.execute(f"SELECT code, company, email, started_at, keys_revealed_at FROM pilots WHERE hosted=1 AND "
-                       f"state='running' AND started_at IS NOT NULL AND {RECLAIMABLE}").fetchall():
+    for p in c.execute(f"SELECT code, company, email, started_at, keys_revealed_at, keys_first_shown_at, rekey FROM pilots "
+                       f"WHERE hosted=1 AND state='running' AND started_at IS NOT NULL AND {RECLAIMABLE}").fetchall():
+        if p["rekey"] or _connected(c, p["code"]):     # new keys on the way, or an agent has used it: someone's there
+            continue
         age = (t - datetime.fromisoformat(p["started_at"])).total_seconds()
-        why = ("its keys weren't taken" if RECLAIM_KEYS_MINUTES and not p["keys_revealed_at"]
+        # Only a dashboard whose keys were NEVER taken: new keys (lost ones, or from the admin) clear keys_revealed_at
+        # so the start page shows them, and must not make a dashboard in use look abandoned.
+        never_taken = not p["keys_revealed_at"] and not p["keys_first_shown_at"]
+        why = ("its keys weren't taken" if RECLAIM_KEYS_MINUTES and never_taken
                and age > RECLAIM_KEYS_MINUTES * 60 else
                "no agent connected" if RECLAIM_IDLE_HOURS and age > RECLAIM_IDLE_HOURS * 3600
                and not _connected(c, p["code"]) else "")
@@ -796,7 +805,8 @@ def reveal_keys(code: str, request: Request):
             raise HTTPException(404)
         if not p["admin_key"]:
             raise HTTPException(409, "already shown" if p["keys_revealed_at"] else "your dashboard is still being set up")
-        c.execute("UPDATE pilots SET admin_key=NULL, agent_key=NULL, keys_revealed_at=? WHERE code=?", (now(), code))
+        c.execute("UPDATE pilots SET admin_key=NULL, agent_key=NULL, keys_revealed_at=?, "
+                  "keys_first_shown_at=COALESCE(keys_first_shown_at, ?) WHERE code=?", (now(), now(), code))
     return {"dashboard": dashboard_url(p["subdomain"]), "admin_key": p["admin_key"], "agent_key": p["agent_key"]}
 
 
