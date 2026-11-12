@@ -681,7 +681,7 @@ def test_hosted_sign_ups_start_on_their_own_and_wait_in_line_when_full(insights,
     assert "started on its own" in told[0] and "mei@gamma.io" in told[0]
     second, third = sign("li@gamma.io"), sign("wu@gamma.io")                           # no slot left: in line
     page = insights.get(f"/start/{second}").text
-    assert '"hosted": true' in page and '"state": "waiting"' in page and "two steps, about 2 minutes" in page
+    assert '"hosted": true' in page and '"state": "waiting"' in page and "let's get you set up" in page and "Reveal my keys" in page
     assert insights.get(f"/v1/pilot/{third}/status").json()["ahead"] == 1          # first in, first out
     assert "in line" in told[1] and "starts when one frees up" in told[1]
     assert insights.post(f"/v1/admin/pilots/{second}/approve", headers=admin).status_code in (404, 405)   # nobody approves

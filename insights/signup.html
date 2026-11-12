@@ -111,6 +111,38 @@ button.go:disabled { opacity:.6; cursor:default; }
         animation:spin .8s linear infinite; margin:6px auto 16px; }
 @keyframes spin { to { transform:rotate(360deg); } }
 
+/* the journey across the card: sign up -> verify email -> dashboard -> connect */
+.journey { list-style:none; margin:12px 0 18px; padding:0; display:flex; align-items:center; gap:0; }
+.journey li { display:flex; align-items:center; gap:7px; font-size:12.5px; color:var(--muted); white-space:nowrap; }
+.journey li + li::before { content:""; width:22px; height:2px; background:var(--line); margin:0 8px; border-radius:2px; }
+.journey li.done + li::before { background:var(--go); }
+.journey .dot { width:20px; height:20px; border-radius:50%; border:2px solid var(--line); background:#fff; display:grid;
+                place-items:center; font:700 10.5px var(--sans); color:#fff; flex:none; }
+.journey li.done .dot { background:var(--go); border-color:var(--go); }
+.journey li.now { color:var(--ink); font-weight:600; }
+.journey li.now .dot { border-color:var(--accent); box-shadow:0 0 0 4px rgba(242,98,46,.18); }
+@media (max-width:560px) { .journey li:not(.now) .t { display:none; } .journey li + li::before { width:14px; margin:0 5px; } }
+.state .journey { justify-content:center; margin-top:0; }
+/* check your inbox */
+.env { width:72px; height:72px; margin:4px auto 14px; border-radius:20px; background:#fff; border:1px solid var(--line); display:grid;
+       place-items:center; font-size:32px; position:relative; animation:bob 2.4s ease-in-out infinite; }
+.env::after { content:"1"; position:absolute; top:-7px; right:-7px; width:22px; height:22px; border-radius:50%; background:var(--accent);
+              color:#fff; font:700 12px var(--sans); display:grid; place-items:center; }
+@keyframes bob { 50% { transform:translateY(-5px); } }
+.state .to { display:inline-block; font-family:var(--mono); font-size:13.5px; background:#fff; border:1px solid var(--line);
+             border-radius:8px; padding:4px 10px; color:var(--ink); margin:4px 0 8px; }
+.inbox { display:inline-flex; align-items:center; gap:8px; margin:10px 0 4px; background:var(--ink); color:var(--surface) !important;
+         text-decoration:none; font-weight:600; border-radius:10px; padding:11px 18px; }
+.again { font-size:13.5px; margin-top:12px !important; }
+.linkbtn { border:0; background:none; padding:0; font:inherit; color:var(--ink); text-decoration:underline; cursor:pointer; }
+.linkbtn:disabled { color:var(--muted); text-decoration:none; cursor:default; }
+.bar { height:6px; border-radius:99px; background:var(--soft); overflow:hidden; margin:14px auto 4px; max-width:260px; position:relative; }
+.bar i { position:absolute; inset:0 auto 0 0; width:40%; border-radius:99px; background:var(--accent); animation:slide 1.2s ease-in-out infinite; }
+@keyframes slide { 0% { left:-40%; } 100% { left:100%; } }
+.time { display:inline-block; font-family:var(--mono); font-size:11.5px; color:var(--go); background:#DCEFE2; border-radius:99px;
+        padding:1px 8px; margin-left:6px; vertical-align:2px; }
+@media (prefers-reduced-motion: reduce) { .env, .bar i, .spin { animation:none; } }
+
 /* how it works */
 .steps { display:grid; grid-template-columns:repeat(3, 1fr); gap:0; border-top:1px solid var(--line); margin-bottom:28px; }
 .steps div { padding:20px 20px 4px 0; }
@@ -182,8 +214,8 @@ footer a { color:var(--muted); }
     <section class="card" id="card">
       <div class="k">Squidbrake Console</div>
       <h2>Sign up free</h2>
-      <p class="sub" id="sub">Tell us a little about you and you get your own dashboard, running on our server,
-        in about a minute. Nothing to keep open on your laptop.</p>
+      <ol class="journey" id="journey" aria-label="Your progress"></ol>
+      <p class="sub" id="sub">Your own dashboard, running on our server, in about a minute. No password, no card.</p>
       <form id="f" novalidate>
         <label>Your name<input type="text" name="name" required maxlength="80" autocomplete="name"></label>
         <label>Company<input type="text" name="company" required maxlength="80" autocomplete="organization"></label>
@@ -204,15 +236,14 @@ footer a { color:var(--muted); }
         <button type="submit" class="go" id="go">Sign up free</button>
       </form>
       <p class="fine" id="fine">Already signed up? Sign up again with the same email: you get your setup page back.<br>
-        Your dashboard runs on our server, so the actions your agents send it (commands, tool inputs and results) are
-        stored there, behind your keys. We use counts and what was held or blocked to improve Squidbrake.</p>
+        Your agents' actions are stored on our server, behind your keys. <a href="/security">What we store</a></p>
     </section>
   </div>
 
   <div class="steps">
-    <div><span class="n">01</span><h3>Tell us who you are</h3><p>Name, company, email. No password, no card.</p></div>
-    <div id="step2"><span class="n">02</span><h3>Get your dashboard</h3><p>Your own address and keys, ready in about a minute. One line connects your agents.</p></div>
-    <div><span class="n">03</span><h3>Work as usual</h3><p>Approve the risky steps from the dashboard, your phone or Slack.</p></div>
+    <div><span class="n">01</span><h3>Sign up <span class="time">~30 s</span></h3><p>Name, company, email, then click the link we send you.</p></div>
+    <div id="step2"><span class="n">02</span><h3>Get your dashboard <span class="time">~1 min</span></h3><p>Your own address and two keys. The page tells you when it's ready.</p></div>
+    <div><span class="n">03</span><h3>Connect your agent <span class="time">~1 min</span></h3><p>Paste one line, reopen your agent. Then approve risky steps from anywhere.</p></div>
   </div>
   <footer><span>© Squidbrake · on your computer or ours</span><span><a href="/security">Security</a></span></footer>
 </div>
@@ -379,7 +410,17 @@ const sb = CONFIG.supabase_url && window.supabase
 
 const fail = (msg) => { err.textContent = msg; err.hidden = false; go.disabled = false;
   go.textContent = PLAN ? "Start my 14-day Team trial" : "Sign up free"; };
-const state = (html) => { card.innerHTML = `<div class="state">${html}</div>`; };
+// the journey shown on the card: where they are, and what's left (verify only with sign-in by email)
+const journey = (at) => {
+  const steps = ["Sign up", ...(CONFIG.supabase_url ? ["Verify email"] : []),
+                 ...(CONFIG.hosted === false ? ["Install"] : ["Dashboard", "Connect"])];
+  const i = Math.min(at === "dash" ? steps.indexOf("Dashboard") : at === "verify" ? 1 : 0, steps.length - 1);
+  return steps.map((t, n) => `<li class="${n < i ? "done" : n === i ? "now" : ""}"><span class="dot">${n < i ? "✓" : ""}</span><span class="t">${t}</span></li>`).join("");
+};
+document.getElementById("journey").innerHTML = journey("form");
+const state = (html, at) => {
+  card.innerHTML = `<div class="state">${at ? `<ol class="journey">${journey(at)}</ol>` : ""}${html}</div>`;
+};
 
 // signed in: a hosted gateway, started on its own (in line if every slot is taken).
 // CONFIG.offer_local (INSIGHTS_SIGNUP_LOCAL=1): they pick "On my computer" or hosted, as before.
@@ -425,14 +466,15 @@ function choose(body, token) {
 }
 
 async function finish(body, token) {
-  state(`<div class="spin"></div><h2>Setting you up…</h2><p>One moment.</p>`);
+  state(`<h2>Creating your dashboard…</h2><p>Taking you to your setup page.</p><div class="bar"><i></i></div>`,
+        body.setup === "local" ? "" : "dash");
   const r = await fetch("/v1/signup", { method: "POST", body: JSON.stringify(body),
     headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
   const j = await r.json().catch(() => ({}));
   if (r.ok && j.link) { location.href = j.link; return; }
   if (r.ok) { state(`<div class="big">✓</div><h2>Thanks!</h2><p>We'll be in touch.</p>`); return; }
   state(`<div class="big">!</div><h2>That didn't work</h2><p>${esc(typeof j.detail === "string" ? j.detail : "Please try again.")}</p>
-         <p><a href="/signup">Start again</a></p>`);
+         <p><a href="/signup">Start again</a></p>`, "dash");
 }
 
 f.addEventListener("submit", async (e) => {
@@ -447,16 +489,45 @@ f.addEventListener("submit", async (e) => {
   try {
     if (!sb) return choose(body);
     if (body.website) return state(`<div class="big">✓</div><h2>Thanks!</h2>`);   // a bot
-    const { error } = await sb.auth.signInWithOtp({ email: body.email, options: {
-      emailRedirectTo: location.origin + "/signup" + location.search,   // keeps ?plan=team, ?new_keys=1
-      data: { name: body.name, company: body.company, agents: body.agents } } });
+    const error = await sendLink(body);
     if (error) return fail(error.message || "Couldn't send the email. Please try again.");
-    state(`<div class="big">✉</div><h2>Check your inbox</h2>
-           <p>We sent a sign-in link to <span class="mono">${esc(body.email)}</span>.</p>
-           <p>${PICK ? "Open it on this computer, then pick where Squidbrake runs." : "Open it on this computer: your dashboard starts right after."}</p>
-           <p style="margin-top:14px;font-size:13px">Nothing there? Check spam, or <a href="/signup">try again</a>.</p>`);
+    checkInbox(body);
   } catch (x) { fail("Couldn't reach Squidbrake. Please try again."); }
 });
+
+const sendLink = async (body) => (await sb.auth.signInWithOtp({ email: body.email, options: {
+  emailRedirectTo: location.origin + "/signup" + location.search,   // keeps ?plan=team, ?new_keys=1
+  data: { name: body.name, company: body.company, agents: body.agents } } })).error;
+
+// a shortcut to their inbox for the big providers (a work address on Google or Microsoft can't be told apart)
+const INBOXES = [[/^(gmail|googlemail)\.com$/, "Gmail", "https://mail.google.com/mail/u/0/#search/squidbrake"],
+                 [/^(outlook|hotmail|live|msn)\./, "Outlook", "https://outlook.live.com/mail/0/"],
+                 [/^(yahoo|ymail)\./, "Yahoo Mail", "https://mail.yahoo.com/"],
+                 [/^(icloud|me|mac)\.com$/, "iCloud Mail", "https://www.icloud.com/mail"],
+                 [/^(proton\.me|protonmail\.com|pm\.me)$/, "Proton Mail", "https://mail.proton.me/"]];
+
+function checkInbox(body) {
+  const domain = body.email.split("@")[1] || "", box = INBOXES.find(([re]) => re.test(domain));
+  state(`<div class="env">✉</div><h2>Check your inbox</h2>
+         <p>We sent a sign-in link to</p><span class="to">${esc(body.email)}</span>
+         <p>${PICK ? "Click it on this computer, then pick where Squidbrake runs." : "Click it on this computer and your dashboard starts right away."}</p>
+         ${box ? `<a class="inbox" href="${box[2]}" target="_blank" rel="noopener">Open ${box[1]} ↗</a>` : ""}
+         <p class="again">Nothing after a minute? Check spam or Promotions.<br>
+           <button class="linkbtn" id="resend" disabled></button> · <a href="/signup">Use a different email</a></p>`, "verify");
+  const b = document.getElementById("resend");
+  let left = 60;
+  const tick = () => {
+    if (left > 0) { b.textContent = `Resend in ${left} s`; b.disabled = true; left -= 1; setTimeout(tick, 1000); }
+    else { b.textContent = "Resend the link"; b.disabled = false; }
+  };
+  b.onclick = async () => {
+    b.disabled = true; b.textContent = "Sending…";
+    const error = await sendLink(body).catch((x) => x);
+    if (error) { b.textContent = "Couldn't send: try again in a minute"; left = 60; setTimeout(tick, 4000); return; }
+    left = 60; b.textContent = "Sent ✓"; setTimeout(tick, 1500);
+  };
+  tick();
+}
 
 // back from the email link: signed in, so finish the sign-up with what they told us the first time
 if (sb) sb.auth.getSession().then(({ data }) => {
