@@ -1592,8 +1592,19 @@ def test_settings(c, org):
     assert c.put("/v1/settings", headers=org["admin"], json={"slack_webhook": "not-a-url"}).status_code == 400
     assert c.put("/v1/settings", headers=org["admin"], json={"notify_as": "viewer"}).status_code == 400  # can't approve
     s = c.put("/v1/settings", headers=org["admin"], json={"ntfy_topic": "acme-approvals-x1", "public_url": "https://gw.acme.test"}).json()
-    assert s["ntfy_topic"] == "acme-approvals-x1" and s["public_url"] == "https://gw.acme.test"
+    assert s["ntfy_topic"] == "acme-approvals-x1" and s["public_url"] == "https://gw.acme.test" and s["paused_channels"] == []
     c.put("/v1/settings", headers=org["admin"], json={"ntfy_topic": "", "public_url": ""})
+
+
+def test_channels_the_plan_switches_off_show_as_paused_not_empty(c, org, monkeypatch):
+    # after the grace date, a free gateway sends no phone/Slack alerts: the page must say so instead of looking unset
+    import license
+    c.put("/v1/settings", headers=org["admin"], json={"ntfy_topic": "acme-approvals-x2"})
+    monkeypatch.setattr(license, "GRACE_UNTIL", "2020-01-01")
+    s = c.get("/v1/settings", headers=org["admin"]).json()
+    assert s["ntfy_topic"] == "" and s["paused_channels"] == ["phone"] and s["license"]["team_features"] is False
+    monkeypatch.setattr(license, "GRACE_UNTIL", "9999-12-31")
+    c.put("/v1/settings", headers=org["admin"], json={"ntfy_topic": ""})
 
 
 # ---------------------------------------------------------------- history: the gateway judges by what came before

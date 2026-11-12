@@ -3806,8 +3806,14 @@ def public_settings() -> dict:
     """Settings as the dashboard sees them: the AI key is never sent back, only whether one is set."""
     s = settings()
     key = s.pop("ai_key", "") or ""
+    # Channels someone set up that the plan switches off (settings() blanks them): the page says they're paused,
+    # rather than showing empty fields as if they were never set
+    saved = state_get("settings", {})
+    paused = [] if license.paid(KEYS_PATH.parent) else [name for name, keys in (
+        ("phone", ("ntfy_topic",)), ("slack", ("slack_webhook",)), ("teams", ("teams_webhook",)),
+        ("email", ("email_to",)), ("telegram", ("telegram_bot_token",))) if any(saved.get(k) for k in keys)]
     return {**s, "ai_key_set": bool(key), "ai_key_hint": f"…{key[-4:]}" if len(key) > 8 else "",
-            "license": license.status(KEYS_PATH.parent)}
+            "license": license.status(KEYS_PATH.parent), "paused_channels": paused}
 
 
 @app.get("/v1/settings")
