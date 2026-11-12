@@ -7,7 +7,7 @@ default_reason: Filesystem changes require approval
 
 rules:
   # The server has no delete tool in the version checked above, so nothing
-  # needs blocking today. This rule stays as a guard: if a future server
+  # needs blocking today. This rule stays as a backstop: if a future server
   # version adds a delete or remove tool, it is denied outright instead of
   # falling through to the default review.
   - id: block-filesystem-deletes

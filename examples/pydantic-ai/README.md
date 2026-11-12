@@ -1,8 +1,8 @@
 # Pydantic AI
 
-This example guards a [Pydantic AI](https://ai.pydantic.dev) agent's tools with `client.Gateway`
+This example checks a [Pydantic AI](https://ai.pydantic.dev) agent's tools with `client.Gateway`
 ([`client.py`](../../client.py)). Pydantic AI tools are plain functions, so each function is
-guarded with `gw.guard(...)` **before** it is registered on the agent:
+wrapped with `gw.guard(...)` **before** it is registered on the agent:
 
 ```python
 agent = Agent(model, tools=[
@@ -11,15 +11,15 @@ agent = Agent(model, tools=[
 ])
 ```
 
-Before a tool runs, the guard posts the call to the local Squidbrake gateway:
+Before a tool runs, the wrapper posts the call to the local Squidbrake gateway:
 
-- If the rule says **allow**, the tool runs immediately and the guard records the output and duration.
+- If the rule says **allow**, the tool runs immediately and the wrapper records the output and duration.
 - If the rule says **review**, the call waits while a person approves or rejects it in the dashboard
   (or on a phone / Slack). If approved, the tool runs; if rejected, the tool never runs.
 - If the rule says **deny**, the tool function is never called.
 
 A stopped call does not end the run on an exception. `Denied` carries the gateway's reason, and the
-guard returns the `refusal(...)` text as the tool's result — `NOT RUN: Squidbrake stopped
+wrapper returns the `refusal(...)` text as the tool's result — `NOT RUN: Squidbrake stopped
 shell.exec: ...` — so the model reads *why* it was stopped and can tell the user, instead of the
 agent crashing or silently carrying on.
 
@@ -57,7 +57,7 @@ The three calls trigger all three outcomes in the dashboard:
 
 ## Run with a real model
 
-Pass `--agent` to run the same guarded tools with a real model. Set the provider's API key
+Pass `--agent` to run the same checked tools with a real model. Set the provider's API key
 (e.g. `OPENAI_API_KEY`) and, optionally, `PYDANTIC_AI_MODEL` (default `openai:gpt-5`):
 
 ```bash
