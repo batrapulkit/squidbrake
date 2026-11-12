@@ -1193,6 +1193,47 @@ def test_atlassian_example_policy():
         assert decide(name)[0] == "deny", name
 
 
+def test_filesystem_example_policy():
+    rules = Path(__file__).resolve().parents[1] / "examples" / "rules" / "filesystem.yaml"
+    p = server.Policy(rules)
+
+    def decide(name):
+        return p.evaluate(kind="mcp", name=name, source=None, client="test", session_id=None, input={})
+
+    for name in (
+        "filesystem.read_text_file",
+        "filesystem.read_media_file",
+        "filesystem.read_multiple_files",
+        "filesystem.list_directory",
+        "filesystem.list_directory_with_sizes",
+        "filesystem.directory_tree",
+        "filesystem.search_files",
+        "filesystem.get_file_info",
+        "filesystem.list_allowed_directories",
+    ):
+        assert decide(name)[0] == "allow", name
+
+    for name in (
+        "filesystem.write_file",
+        "filesystem.append_file",
+        "filesystem.edit_file",
+        "filesystem.move_file",
+        "filesystem.copy_file",
+        "filesystem.create_directory",
+    ):
+        assert decide(name)[0] == "review", name
+
+    # The current server has no delete tool; the deny rule guards a future one.
+    for name in (
+        "filesystem.delete_file",
+        "filesystem.remove_directory",
+    ):
+        assert decide(name)[0] == "deny", name
+
+    # Every pattern is filesystem-scoped: another app's tools see the default.
+    assert decide("github.delete_repo")[0] == "review"
+
+
 def test_proxy(c):
     seen = {}
 
