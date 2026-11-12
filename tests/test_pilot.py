@@ -770,6 +770,56 @@ def test_stripe_payments_reach_the_pilot_they_were_for(insights, monkeypatch):
         f"https://buy.stripe.com/x?client_reference_id={code}&prefilled_email=a%40b.c"
 
 
+def test_each_plan_signs_up_hosted_and_paying_turns_on_its_license(insights, monkeypatch):
+    """Free only watches; Starter/Pro watch until paid; the plan that was paid for is the license the gateway gets."""
+    import hashlib
+    import hmac as _hmac
+    import time as _time
+    import app as insights_app
+    sys.path.insert(0, str(ROOT))
+    import license
+    import signing
+    insights_app._requests.clear()
+    req = _signed_in(monkeypatch, insights_app)
+    monkeypatch.setattr(insights_app, "notify", lambda text: None)
+    monkeypatch.setattr(insights_app, "STRIPE_SECRET", "whsec_test")
+    monkeypatch.setattr(insights_app, "CHECKOUT_URLS", {"starter": "https://buy.stripe.com/starter"})
+    secret = signing.new_secret()
+    monkeypatch.setattr(insights_app, "LICENSE_SECRET", secret.hex())
+    monkeypatch.setattr(license, "PUBLIC_KEY_HEX", signing.ed25519_public_key(secret).hex())
+    admin = {"X-Admin-Key": "admin-test-key"}
+    row = lambda code: next(p for p in insights.get("/v1/admin/provision", headers=admin).json()["pilots"] if p["code"] == code)
+    sign = lambda email, **kw: insights.post("/v1/signup", **req(email, **kw)).json()["link"].rsplit("/", 1)[1]
+
+    free = sign("fay@free.dev", setup="hosted")
+    assert row(free)["plan"] == "free" and row(free)["license"] is None              # Free only watches
+    starter = sign("sam@starter.dev", plan="starter")
+    page = insights.get(f"/start/{starter}").text
+    assert row(starter)["plan"] == "starter" and row(starter)["license"] is None    # not paid yet: watches
+    assert f"client_reference_id={starter}__starter" in page and '"trial_ends": null' in page
+
+    body = json.dumps({"type": "checkout.session.completed", "data": {"object": {
+        "mode": "subscription", "amount_total": 900, "client_reference_id": f"{starter}__starter", "customer": "cus_s"}}}).encode()
+    t = int(_time.time())
+    sig = _hmac.new(b"whsec_test", f"{t}.".encode() + body, hashlib.sha256).hexdigest()
+    assert insights.post("/v1/stripe/webhook", content=body, headers={"Stripe-Signature": f"t={t},v1={sig}"}).status_code == 200
+    lic = license.check(row(starter)["license"])
+    assert lic["plan"] == "starter" and lic["expires"] > "2026"                      # paid: a year of Starter
+    assert '"checkout": ""' in insights.get(f"/start/{starter}").text                 # nothing left to pay
+
+
+def test_which_hosted_gateways_get_a_license(monkeypatch):
+    import app as insights_app
+    monkeypatch.setattr(insights_app, "LICENSE_SECRET", "11" * 32)
+    lic = lambda **p: insights_app._license_for({"code": "c", "company": "Co", "mrr": 0, "trial_ends": None, **p})
+    body = lambda t: json.loads(__import__("base64").urlsafe_b64decode(t.split(".")[0] + "=="))
+    assert lic(plan="free") is None and lic(plan="starter") is None and lic(plan="pro") is None
+    assert body(lic(plan="pro", mrr=19))["plan"] == "pro"
+    assert body(lic(plan="team", trial_ends="2099-01-01")) == {"org": "Co", "plan": "team", "expires": "2099-01-01"}
+    assert lic(plan="starter", trial_ends="2099-01-01") is None                      # Starter has no trial
+    assert body(lic(plan=None))["plan"] == "team"                                     # a pilot set up by hand: as before
+
+
 def test_a_call_booked_on_calendly_is_saved_and_sent_once(insights, monkeypatch):
     import app as insights_app
     insights_app._requests.clear()

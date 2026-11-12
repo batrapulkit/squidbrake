@@ -1781,7 +1781,12 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     $("#shadowBanner").replaceChildren(el("b", { text: "👁 Shadow mode" }), " ", el("span", { text: shadowAll
       ? "is on: nothing is blocked or held. Squidbrake records what it would have done (see Reports). Click 👁 Observe on (top right) to enforce again."
       : `for ${me.shadow_agents.join(", ")}: their actions aren't blocked or held, only recorded. Everyone else is enforced.` }));
-    if (me.plan === "free") {
+    if (me.watch_only) {
+      $("#shadowBanner").hidden = false;
+      $("#shadowBanner").replaceChildren(el("b", { text: "Watching only" }),
+        " ", el("span", { text: "Every action is recorded, but nothing is blocked or held on this plan. " }),
+        el("a", { href: me.upgrade_url, target: "_blank", rel: "noopener", text: "Turn on blocking" }));
+    } else if (me.plan === "free") {
       const left = Math.max(0, Math.ceil((new Date(me.trial_ends) - Date.now()) / 86400000));
       $("#shadowBanner").hidden = false;
       $("#shadowBanner").replaceChildren(el("b", { text: me.trial_over ? "Your free 14 days have ended" : `Free plan: ${left} day${left === 1 ? "" : "s"} left` }),

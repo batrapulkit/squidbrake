@@ -455,7 +455,7 @@ def test_me(c):
     assert me.pop("license")["team_features"] is True                # the tests keep the Team features on (conftest)
     assert me == {"client": "boss", "can_approve": True, "auth_enabled": True,
                   "kind": "person", "roles": ["admin"], "is_admin": True, "is_owner": True, "access": "admin",
-                  "mode": "enforce", "shadow_agents": [], "plan": None, "trial_ends": None, "trial_over": False,
+                  "mode": "enforce", "shadow_agents": [], "plan": None, "trial_ends": None, "trial_over": False, "watch_only": False,
                   "upgrade_url": server.UPGRADE_URL}
 
 

@@ -54,7 +54,7 @@ def test_a_team_trial_gets_a_license_not_the_free_plan_and_a_running_one_gets_it
     provision.start({"code": "co-2", "subdomain": "co2", "dashboard": "https://co2.app.test", "keys_ready": False,
                      "plan": "team", "trial_ends": "2026-11-03", "license": "LIC1"})
     run = next(c for c in calls if c[0] == "run")
-    assert not any("SQUIDBRAKE_PLAN" in a for a in run)    # after the trial it keeps blocking; only Team features stop
+    assert "SQUIDBRAKE_PLAN=team" in run    # blocks with the trial's license; after the trial, unpaid, it only watches
     assert ("exec", "sbp-co2", "python", "-c", provision.LICENSE_SET, "LIC1") in calls
     calls2, _ = fake(monkeypatch, ["true", "true"])
     running = {"code": "co-2", "subdomain": "co2", "dashboard": "https://co2.app.test", "keys_ready": True, "license": "LIC1"}

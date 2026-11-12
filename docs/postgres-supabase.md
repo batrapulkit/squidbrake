@@ -64,7 +64,7 @@ secrets, **before** the first start:
 | `keys.json` | every key's fingerprint (agents and people) | no agent or person can sign in; a new start makes new keys | `GATEWAY_API_KEYS`, `GATEWAY_APPROVERS` |
 | `ledger.key` | signs the audit checkpoints | old checkpoints can't be checked against the new public key | `SQUIDBRAKE_LEDGER_KEY` (64 hex) |
 | `secret.key` | signs approval links, masks emails | links already sent stop working | `GATEWAY_SECRET` |
-| `license.key` | the Team plan | Team features stop | `SQUIDBRAKE_LICENSE` |
+| `license.key` | your paid plan | that plan's features stop | `SQUIDBRAKE_LICENSE` |
 | `rules.yaml` | the policy | the shipped rules apply | `RULES_PATH` |
 
 `integrity.json` and `pilot.json` are made again on their own. Keys from `GATEWAY_API_KEYS` can't be managed from the

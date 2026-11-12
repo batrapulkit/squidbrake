@@ -64,6 +64,22 @@ table.cover tr:first-child td { border-top:0; }
 const D = __DATA__;
 const app = document.getElementById("app");
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// Which plan this dashboard is on, and what turns blocking on (squidbrake.com/pricing)
+const PRICES = { starter: 9, pro: 19, team: 299, scale: 499 };
+function planNote() {
+  if (!D.hosted || !D.plan || D.paying) return "";
+  const name = D.plan[0].toUpperCase() + D.plan.slice(1), price = PRICES[D.plan];
+  const pay = D.checkout ? ` <a href="${esc(D.checkout)}" target="_blank" rel="noopener">` : "";
+  const box = (title, body) => `<section class="step" style="border-left:4px solid var(--ok)"><h2>${title}</h2><p>${body}</p></section>`;
+  if (D.plan === "free")
+    return box("Free plan: watching only", `Every action your agents take is recorded, but nothing is blocked or held.
+      <a href="/pricing" target="_blank" rel="noopener">Pick a plan</a> to turn blocking on.`);
+  if (D.trial_ends)
+    return box(`Your ${name} trial`, `Free until <b>${esc(D.trial_ends)}</b>, then $${price} a month, cancel any month.
+      ${pay ? `${pay}Add a card now</a> so it keeps blocking.` : "We'll email you before it ends."}`);
+  return box(`Your ${name} plan: $${price} a month`, `Until it's paid, your dashboard watches only: every action is
+    recorded, nothing is blocked or held. ${pay ? `${pay}Pay $${price} a month</a> to turn blocking on.` : "Write to us to pay."}`);
+}
 // a view counts only once the page runs in a browser: link previews fetch the page but don't run it
 if (!D.missing) fetch(`/v1/pilot/${encodeURIComponent(D.code)}/seen`, { method: "POST" }).catch(() => {});
 
@@ -171,11 +187,7 @@ function hostedPage() {
       changes wait for your OK, and dangerous commands are blocked. Your dashboard runs on our server, so there's
       nothing to keep open on your laptop.</p>
 
-    ${D.plan === "team" ? `<section class="step" style="border-left:4px solid var(--ok)"><h2>Your Team trial</h2>
-      <p>Free until <b>${esc(D.trial_ends || "")}</b>: shared approvals from the dashboard, your phone or Slack, for your
-        whole team. Then $499 a month for one team, cancel any month.
-        ${D.checkout ? `<a href="${esc(D.checkout)}" target="_blank" rel="noopener">Add a card now</a> so it keeps running.` : "We'll email you before it ends."}</p>
-    </section>` : ""}
+    ${planNote()}
     <section class="step" id="s1"><h2><span class="n">1</span> Get your keys</h2>
       <div id="keys"></div>
     </section>

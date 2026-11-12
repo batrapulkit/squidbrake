@@ -378,18 +378,22 @@ const sb = CONFIG.supabase_url && window.supabase
   : null;
 
 const fail = (msg) => { err.textContent = msg; err.hidden = false; go.disabled = false;
-  go.textContent = PLAN ? "Start my 14-day Team trial" : "Sign up free"; };
+  go.textContent = PLAN ? PLAN_GO : "Sign up free"; };
 const state = (html) => { card.innerHTML = `<div class="state">${html}</div>`; };
 
 // signed in: a hosted gateway, started on its own (in line if every slot is taken).
 // CONFIG.offer_local (INSIGHTS_SIGNUP_LOCAL=1): they pick "On my computer" or hosted, as before.
 // No hosted dashboards on this server (CONFIG.hosted false, no HOSTED_DOMAIN): the local setup.
-// ?plan=team (pricing, or the dashboard's "invite your team"): the hosted Team plan, a 14-day trial, no choice to make
+// ?plan=starter|pro|team|scale (pricing, or the dashboard's "invite your team"): that hosted plan, no choice to make.
+// Team and Scale start with 14 days free; Starter and Pro watch only until they're paid (the start page has the link)
 // ?new_keys=1 (the start page's "Lost your keys?"): signed in again, so new keys are made for their dashboard
-const Q = new URLSearchParams(location.search), PLAN = Q.get("plan") === "team" ? "team" : "",
+const Q = new URLSearchParams(location.search),
+      PLAN = Q.get("tier") === "scale" ? "scale" : (["starter", "pro", "team", "scale"].includes(Q.get("plan")) ? Q.get("plan") : ""),
+      PLAN_NAME = PLAN && PLAN[0].toUpperCase() + PLAN.slice(1),
+      PLAN_GO = ["team", "scale"].includes(PLAN) ? `Start my 14-day ${PLAN_NAME} trial` : `Start ${PLAN_NAME}`,
       SOURCE = (Q.get("from") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 30),
       NEW_KEYS = Q.get("new_keys") === "1";
-if (PLAN) { go.textContent = "Start my 14-day Team trial"; }
+if (PLAN) { go.textContent = PLAN_GO; }
 const LOCAL_ONLY = !CONFIG.hosted && !PLAN, PICK = CONFIG.hosted && CONFIG.offer_local && !PLAN && !NEW_KEYS;
 const PRIVACY = `We see your name, email, the agents you picked, and for each action that was blocked or sent for approval:
   the program (e.g. <span class="mono">rm</span>), the rule and what happened. Never your commands, files or prompts.`;

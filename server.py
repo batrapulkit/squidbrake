@@ -193,6 +193,12 @@ def trial_over() -> bool:
     except (ValueError, TypeError):    # not a date, or no timezone: never cut someone off over a typo
         return False
 
+
+def hosted_watch_only() -> bool:
+    """A dashboard we host (provision.py sets SQUIDBRAKE_PLAN) blocks and holds on a paid plan: without a license it
+    records everything and lets it through, like shadow mode. Self-hosted gateways never set PLAN: blocking stays free."""
+    return bool(PLAN) and not license.paid(KEYS_PATH.parent)
+
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 log = logging.getLogger("gateway")
 audit_log = logging.getLogger("gateway.audit")
@@ -1235,7 +1241,7 @@ class Policy:
         """Shadow mode: record what would happen, but let it through (everything, or the agents listed). A rule or
         sequence with its own `mode:` wins, so a team can enforce the catastrophic ones first and observe the rest."""
         self._maybe_reload()
-        if trial_over():
+        if trial_over() or hosted_watch_only():
             return True
         rid = str(rule_id or "")
         own = next((r["mode"] for r in self.rules if r["id"] == rid), None) or             next((q["mode"] for q in self.sequences if f"sequence:{q['id']}" == rid), None)
@@ -2445,8 +2451,10 @@ def settings() -> dict:
                 "smtp_from": os.getenv("SMTP_FROM", ""), "siem_url": os.getenv("SIEM_URL", ""),
                 "siem_token": os.getenv("SIEM_TOKEN", ""), "siem_format": os.getenv("SIEM_FORMAT", "json")}
     cfg = {**defaults, **state_get("settings", {})}
-    if not license.paid(KEYS_PATH.parent):       # Team plan: Slack, Teams, email and phone push
-        cfg.update(slack_webhook="", teams_webhook="", email_to="", ntfy_topic="", telegram_bot_token="", telegram_chat_id="")
+    if not license.has(KEYS_PATH.parent, "channels"):       # Starter and up: Slack, Teams, Telegram and email
+        cfg.update(slack_webhook="", teams_webhook="", email_to="", telegram_bot_token="", telegram_chat_id="")
+    if not license.has(KEYS_PATH.parent, "phone"):          # Starter and up: phone push
+        cfg.update(ntfy_topic="")
     return cfg
 
 
@@ -3385,7 +3393,7 @@ def me(who: str = Depends(auth)):
             "can_approve": can_approve(who), "auth_enabled": keystore.enabled,
             "mode": policy.mode, "shadow_agents": policy.shadow_agents, "version": VERSION, "latest": latest_known(),
             "plan": PLAN or None, "trial_ends": TRIAL_ENDS or None, "trial_over": trial_over(), "upgrade_url": UPGRADE_URL,
-            "license": license.status(KEYS_PATH.parent)}
+            "watch_only": hosted_watch_only(), "license": license.status(KEYS_PATH.parent)}
 
 
 def _local_only(request: Request) -> None:
@@ -4364,7 +4372,7 @@ def build_evidence(days: int, who: str) -> dict:
 @app.get("/v1/audit/evidence-pack")
 def evidence_pack(days: int = Query(90, ge=1, le=3650), who: str = Depends(person)):
     """A printable page for an auditor: controls in place, what happened, and the requirements it speaks to."""
-    license.need(KEYS_PATH.parent, "audit")
+    license.need(KEYS_PATH.parent, "compliance")
     with audited_tx() as conn:
         audit(conn, who, "audit.exported", None, format="evidence-pack", days=days)
     return Response(evidence.render_html(build_evidence(days, who)), media_type="text/html", headers={

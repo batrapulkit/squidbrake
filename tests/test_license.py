@@ -49,7 +49,7 @@ def test_without_a_license_the_team_features_ask_for_the_plan(c, org, after_grac
     assert c.post("/v1/team", headers=org["admin"], json={"name": "ravi", "kind": "person"}).status_code == 402
     assert c.post("/v1/team", headers=org["admin"], json={"name": "bot-2", "kind": "agent"}).status_code == 200  # agents: free
     r = c.put("/v1/settings", headers=org["admin"], json={"slack_webhook": "https://hooks.example/y"})
-    assert r.status_code == 402 and "Team plan" in r.json()["detail"]
+    assert r.status_code == 402 and "Starter plan" in r.json()["detail"]        # the cheapest plan that has it
     assert c.put("/v1/settings", headers=org["admin"], json={"ntfy_topic": "other"}).status_code == 402
     assert c.get("/v1/audit/export.csv", headers=org["admin"]).status_code == 402
     assert c.get("/v1/audit/evidence-pack", headers=org["admin"]).status_code == 402
@@ -83,3 +83,44 @@ def test_squidbrake_com_issues_licenses_the_gateway_accepts(monkeypatch):
     assert license.check(token) == {"org": "Acme", "plan": "team", "expires": "2099-01-01"}
     monkeypatch.setattr(insights_app, "LICENSE_SECRET", "")
     assert insights_app.issue_license("Acme", "2099-01-01") is None                  # no secret: no licenses
+
+
+@pytest.mark.parametrize("plan,unlocked,still_locked", [
+    ("starter", ["/v1/devices/register/start"], ["/v1/audit/export.csv", "/v1/audit/evidence-pack"]),
+    ("pro", ["/v1/audit/export.csv"], ["/v1/audit/evidence-pack"]),
+    ("team", ["/v1/audit/export.csv"], ["/v1/audit/evidence-pack"]),
+    ("scale", ["/v1/audit/export.csv", "/v1/audit/evidence-pack"], []),
+])
+def test_each_plan_unlocks_its_own_features(c, org, after_grace, plan, unlocked, still_locked):
+    (server.KEYS_PATH.parent / license.FILE).write_text(license.issue(SECRET, "Acme", "2099-01-01", plan=plan))
+    assert c.get("/v1/me", headers=org["admin"]).json()["license"]["plan"] == plan
+    for path in unlocked:
+        call = c.post if path.startswith("/v1/devices") else c.get
+        assert call(path, headers=org["admin"]).status_code != 402, (plan, path)
+    for path in still_locked:
+        r = c.get(path, headers=org["admin"])
+        assert r.status_code == 402 and "plan" in r.json()["detail"], (plan, path)
+    people = c.post("/v1/team", headers=org["admin"], json={"name": "ravi", "kind": "person"}).status_code
+    assert (people == 200) == (plan in ("team", "scale"))          # more than one person: Team and up
+    assert server.settings()["slack_webhook"] == "https://hooks.example/x"     # Slack: every paid plan
+
+
+def test_an_old_team_license_is_still_a_team_license(after_grace):
+    body = license.issue(SECRET, "Acme", "2099-01-01")          # every license before plans says "team"
+    assert license.plan_of(license.check(body)) == "team"
+    assert license.plan_of({"org": "x", "plan": "something-new", "expires": "2099-01-01"}) == "team"
+
+
+def test_a_hosted_dashboard_only_watches_until_it_has_a_license(c, org, after_grace, monkeypatch):
+    push = {"name": "Bash", "input": {"command": "git push --force origin main"}}     # waits for a person when enforced
+    rm = {"name": "Bash", "input": {"command": "rm -rf ~/"}}
+    monkeypatch.setattr(server, "PLAN", "starter")                  # provision.py sets it on dashboards we host
+    assert c.get("/v1/me", headers=org["admin"]).json()["watch_only"] is True
+    assert c.post("/v1/events", headers=org["agent"], json=push).json()["decision"] == "allow"   # recorded, let through
+    assert c.post("/v1/events", headers=org["agent"], json=rm).json()["decision"] == "deny"      # catastrophic: always
+    (server.KEYS_PATH.parent / license.FILE).write_text(license.issue(SECRET, "Acme", "2099-01-01", plan="starter"))
+    assert c.get("/v1/me", headers=org["admin"]).json()["watch_only"] is False
+    assert c.post("/v1/events", headers=org["agent"], json=push).json()["decision"] == "review"
+    monkeypatch.setattr(server, "PLAN", "")                          # self-hosted: blocking is free, no license
+    (server.KEYS_PATH.parent / license.FILE).unlink()
+    assert c.post("/v1/events", headers=org["agent"], json=push).json()["decision"] == "review"
