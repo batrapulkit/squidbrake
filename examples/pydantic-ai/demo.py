@@ -1,7 +1,7 @@
 """
-Pydantic AI example: three plain-function tools guarded by Squidbrake's Gateway (client.py).
+Pydantic AI example: three plain-function tools checked by Squidbrake's Gateway (client.py).
 
-Pydantic AI tools are plain functions, so each one is guarded with `gw.guard(...)` *before*
+Pydantic AI tools are plain functions, so each one is wrapped with `gw.guard(...)` *before*
 it is registered on the agent, and a call the gateway stops comes back as the tool's result
 (the `refusal(...)` text, built from the reason `Denied` carries) instead of ending the run
 on an exception - so the model reads why it was stopped.
@@ -50,7 +50,7 @@ def run_shell(command: str) -> str:
 
 
 def guard_tool(gw: Gateway, name: str, fn: Callable) -> Callable:
-    """Guard a plain function with the Gateway under `name`, before it is registered as a tool.
+    """Check a plain function with the Gateway under `name`, before it is registered as a tool.
 
     `gw.guard` raises `Denied` when the gateway stops a call; here that becomes the tool's
     result (the `refusal` text), so the model reads the reason and the run continues.
@@ -68,7 +68,7 @@ def guard_tool(gw: Gateway, name: str, fn: Callable) -> Callable:
 
 
 def build_agent(gw: Gateway, model: Any) -> Any:
-    """The agent: the same three tools as the OpenAI Agents example, guarded the same way.
+    """The agent: the same three tools as the OpenAI Agents example, checked the same way.
 
     Tool names are the ones the shipped rules.yaml keys on: `notes.read` runs
     (allow-reads), `invoice.refund` waits for approval (approve-refunds), and
