@@ -463,6 +463,39 @@ dialog .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 1
 .saved b { font-size: 15px; } .saved span { color: var(--text-secondary); font-size: 13px; }
 .saved a { margin-left: auto; }
 .saved.plan { border-left-color: #b45309; }
+.prog { margin: 0 0 14px; padding: 0 0 14px; }
+.prog summary { cursor: pointer; list-style: none; }
+.prog summary::-webkit-details-marker { display: none; }
+.bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin: 8px 16px 0; }
+.bar i { display: block; height: 100%; background: var(--good); border-radius: inherit; transition: width .6s ease; }
+.badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; padding: 12px 16px 0; margin: 0; list-style: none; }
+.badges li { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; font-size: 12.5px; color: var(--text-secondary); }
+.badges li b { display: block; font-size: 13px; color: var(--text-primary, inherit); }
+.badges li.locked { opacity: .5; filter: grayscale(1); }
+.badges li.got { border-color: var(--good); }
+.next { padding: 10px 16px 0; font-size: 12.5px; color: var(--text-muted); }
+.next .bar { margin: 6px 0 0; height: 5px; }
+.next .bar i { background: var(--accent); }
+.badges li.next-up { border: 1px dashed var(--accent); color: var(--text-primary); }
+.badges li .tag { float: right; font-size: 11px; color: var(--accent); font-weight: 600; }
+.badges li.pop { animation: pop .7s ease; }
+@keyframes pop { 0% { transform: scale(.9); box-shadow: 0 0 0 0 var(--good); } 50% { transform: scale(1.06); }
+  100% { transform: scale(1); box-shadow: 0 0 0 10px transparent; } }
+.listening { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--good); margin-right: 6px;
+  animation: blink 1.6s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: .25; } }
+/* Coach marks: point at the one button that earns the next badge. CSS, so the queue's live re-render keeps them. */
+body[data-coach="approve"] #aq > li:first-child .btn.approve,
+body[data-coach="reject"] #aq > li:first-child .btn.reject, .btn.coach-me { animation: ring 1.6s ease-out infinite; }
+.btn.coach-me::before { content: "👉"; display: inline-block; margin-right: 4px; animation: nudge 1s ease-in-out infinite; }
+body[data-coach="approve"] #aq > li:first-child .btn.approve::before,
+body[data-coach="reject"] #aq > li:first-child .btn.reject::before { content: "👉"; display: inline-block; margin-right: 4px; animation: nudge 1s ease-in-out infinite; }
+@keyframes ring { 0% { box-shadow: 0 0 0 0 var(--accent); } 100% { box-shadow: 0 0 0 8px transparent; } }
+@keyframes nudge { 50% { transform: translateX(4px); } }
+.coach-tip { margin: 0 16px 4px; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); font-size: 13px; color: var(--text-primary); }
+.badges li.next-up .tag::before { content: "👉 "; display: inline-block; animation: nudge 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } .badges li.pop, .listening, .btn::before, .btn,
+  .badges li .tag::before { animation: none !important; } }
 code { font-family: var(--mono); font-size: .92em; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
 
 /* forms */
@@ -531,6 +564,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     <label class="toggle"><input type="checkbox" id="auto" checked> Live</label>
     <button class="btn" id="refresh" title="Refresh">↻</button>
     <button class="btn" id="phoneBtn" title="Approve from your phone">📱 Phone</button>
+    <button class="btn" id="soundBtn" aria-pressed="true" title="Play a chime when an action needs approval">🔊</button>
     <button class="btn" id="notifyBtn" aria-pressed="false">🔔 <span id="notifyText">Alerts off</span></button>
     <button class="btn" id="keyBtn" title="Sign in with a different key">⚿ <span id="meName">Key</span></button>
     <button class="btn" id="modeBtn" data-admin hidden aria-pressed="false"
@@ -542,6 +576,12 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   <div class="shadow-banner" id="shadowBanner" hidden></div>
 
   <div id="view-activity" class="view">
+  <details class="card prog" id="progCard" open hidden>
+    <summary class="card-head"><h2>Your progress</h2><span class="sub" id="progSub"></span></summary>
+    <div class="bar" role="progressbar" aria-label="Badges unlocked" aria-valuemin="0" id="progBar"><i></i></div>
+    <ul class="badges" id="badges"></ul>
+    <div class="next" id="progNext"></div>
+  </details>
   <div class="saved" id="savedCard" hidden><div><b id="savedTitle"></b><br><span>Each one was stopped before it ran.</span></div>
     <a class="btn" id="savedShare" target="_blank" rel="noopener">Share on LinkedIn</a></div>
   <div class="saved plan" id="planCard" hidden><div><b id="planTitle"></b><br><span id="planText"></span></div>
@@ -571,6 +611,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
       <h2 id="aqTitle">Needs approval <span class="count" id="aqCount"></span></h2>
       <span class="hint" id="aqHint"></span>
     </div>
+    <p class="coach-tip" id="coachTip" hidden></p>
     <ul class="aq" id="aq"></ul>
   </section>
 
@@ -1505,7 +1546,8 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     const box = $("#chart");
     const total = buckets.reduce((a, b) => a + b.count, 0);
     renderChartTable(buckets, bucket);
-    if (!total) { box.replaceChildren(el("div", { class: "empty", text: "No calls in this period." })); return; }
+    if (!total) { box.replaceChildren(el("div", { class: "empty" }, el("span", { class: "listening", "aria-hidden": "true" }),
+      "Quiet in this period. New actions draw here live.")); return; }
 
     const W = Math.max(box.clientWidth, 280), H = 200;
     const m = { t: 10, r: 4, b: 24, l: 40 };
@@ -1598,7 +1640,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   function renderTop(stats) {
     const list = $("#top"), top = stats.top_names || [];
     list.replaceChildren();
-    if (!top.length) { list.append(el("li", { class: "empty", text: "Nothing yet." })); return; }
+    if (!top.length) { list.append(el("li", { class: "empty", text: "Your agent's most used tools will rank here." })); return; }
     const max = top[0].count;
     top.forEach((t) => list.append(el("li", {},
       el("button", { title: `Filter by ${t.name}`, onclick: () => setFilter("name", state.f.name === t.name ? "" : t.name) },
@@ -1635,10 +1677,10 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     $("#noRows").hidden = rows.length > 0;
     const narrowed = Object.keys(state.f).some((k) => state.f[k]) || state.window;
     $("#noRows").replaceChildren(
-      el("div", { class: "empty-title", text: narrowed ? "Nothing matches" : (listMode === "chains" ? "No chains yet" : "No calls yet") }),
+      el("div", { class: "empty-title" }, narrowed ? "Nothing matches" : [el("span", { class: "listening", "aria-hidden": "true" }), "Listening for your agent"]),
       el("div", { text: narrowed
         ? "Try a wider time range, or clear a filter."
-        : "When an agent works through a session, the whole run shows up here as one chain." }),
+        : "Try it now: ask your agent to “list the files in this folder”. It shows up here within a second." }),
     );
     $("#more").hidden = !nextBefore;
     const chainN = chains.length;
@@ -1721,9 +1763,62 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
       + `https://squidbrake.com/go/share`;
     $("#savedShare").href = `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(text)}`;
   }
+  // Progress badges, all from the last year of report counts; nothing new is stored on the server.
+  // [name, what it means, how to earn it, unlocked?]. "Set up" is always earned (you are looking at the dashboard),
+  // so the bar never starts at zero: people finish what they have already started (endowed progress).
+  const BADGES = [
+    ["Set up", "Squidbrake is running and watching", "", () => true],
+    ["First check", "Your agent's first action went through Squidbrake",
+      "Ask your agent to do anything, like “list the files in this folder”", (a) => a.seen >= 1],
+    ["Asked first", "An action waited for you to decide", "Ask your agent to change a file; you'll be asked first", (a) => a.held >= 1],
+    ["Your call", "You approved an action", "Press Approve on an action that is waiting", (a) => a.approved >= 1],
+    ["Saved the day", "A risky action was stopped before it ran", "Press Reject on an action you didn't expect", (a) => a.blocked + a.rejected >= 1],
+    ["Warmed up", "100 actions checked", "Keep working with your agent as usual", (a) => a.seen >= 100],
+    ["Ten saves", "10 risky actions stopped", "Reject anything you didn't expect", (a) => a.blocked + a.rejected >= 10],
+    ["Thousand club", "1,000 actions checked", "Keep going", (a) => a.seen >= 1000],
+  ];
+  const GOALS = [1, 10, 100, 1000, 10000, 100000];
+  const CHEERS = ["Good start", "Getting going", "Nice progress", "Halfway there", "Over halfway", "Almost there", "So close", "All badges earned"];
+  async function loadProgress() {
+    const r = (await api("/v1/reports/week", { days: 366 })).actions || {};
+    const a = Object.fromEntries(["seen", "held", "approved", "blocked", "rejected"].map((k) => [k, r[k] || 0]));
+    const got = BADGES.filter((b) => b[3](a)), nextUp = BADGES.find((b) => !b[3](a));
+    let seen = null;
+    try { seen = JSON.parse(localStorage.getItem("sb.badges") || "null"); } catch {}
+    const fresh = seen ? got.filter((b) => !seen.includes(b[0])) : [];
+    $("#progCard").hidden = false;
+    $("#progSub").textContent = `${got.length} of ${BADGES.length} badges · ${CHEERS[Math.min(got.length - 1, CHEERS.length - 1)]}`;
+    const bar = $("#progBar");
+    bar.setAttribute("aria-valuemax", BADGES.length); bar.setAttribute("aria-valuenow", got.length);
+    bar.firstChild.style.width = `${(got.length / BADGES.length) * 100}%`;
+    $("#badges").replaceChildren(...BADGES.map((b) => {
+      const [name, why, how, ok] = b, isNext = b === nextUp;
+      return el("li", { class: ok(a) ? `got${fresh.includes(b) ? " pop" : ""}` : (isNext ? "next-up" : "locked"),
+        title: ok(a) ? "Earned" : how },
+        isNext ? el("span", { class: "tag", text: "Next up" }) : null,
+        el("b", { text: `${ok(a) ? "★" : "☆"} ${name}` }), isNext ? how : why);
+    }));
+    // Goal gradient: the next count goal is always close, and says how few are left.
+    const goal = GOALS.find((n) => n > a.seen), left = goal - a.seen;
+    $("#progNext").replaceChildren(...(goal ? [a.seen
+      ? `Only ${nf.format(left)} more to reach ${nf.format(goal)} actions checked`
+      : "Waiting for your agent's first action. It shows up here within a second.",
+      el("div", { class: "bar" }, el("i", { style: `width:${Math.max(4, (a.seen / goal) * 100)}%` }))] : []));
+    // Point at the button that earns the next badge (only shows while something is waiting for approval).
+    const coach = { "Your call": "approve", "Saved the day": "reject" }[nextUp?.[0]] || "";
+    document.body.dataset.coach = coach;
+    $("#coachTip").hidden = !coach;
+    $("#coachTip").textContent = coach === "approve"
+      ? "👇 Your agent is waiting for you. Click ✓ Approve to let it run (and earn “Your call”)."
+      : "👇 Something you didn't expect? Click ✕ Reject to stop it before it runs (and earn “Saved the day”).";
+    // Celebrate badges earned since this browser last looked; the first visit only records them.
+    if (fresh.length) toast(`🎉 Badge earned: ${fresh.map((b) => b[0]).join(", ")}`, 5000);
+    try { localStorage.setItem("sb.badges", JSON.stringify(got.map((b) => b[0]))); } catch {}
+  }
   const reload = () => {
     state.window = null; const g = ++gen;
     loadSaved().catch(() => {});
+    loadProgress().catch(() => {});
     return run(g, () => Promise.all([loadMe().then(() => Promise.all([loadQueue(), loadControls(), loadView()])),
                                      loadStats(g), loadEvents(false, g)]));
   };
@@ -1734,6 +1829,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     liveBusy = true;
     const g = gen;
     try {
+      loadProgress().catch(() => {});
       await run(g, () => Promise.all([loadQueue(), loadControls(), loadStats(g), refreshEvents(g),
                                       view === "reports" ? loadReports() : null]));
     } finally { liveBusy = false; }
@@ -2015,10 +2111,50 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     if (s !== "off") { renderNotifyBtn(); toast(DESK_TITLES[s], 8000); return; }
     const p = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
     deskPref.set(p === "granted");
+    $("#notifyBtn").classList.remove("coach-me");
     renderNotifyBtn();
     toast(p === "granted" ? "Desktop alerts on. Keep this tab open; it can stay in the background." : DESK_TITLES[deskState()], 8000);
   });
   renderNotifyBtn();
+  // Chime: on by default. Browsers only allow sound after the viewer has clicked the page once, so the
+  // audio context is unlocked on the first click anywhere.
+  const soundPref = {
+    get() { try { return localStorage.getItem("gw.sound") !== "0"; } catch { return true; } },
+    set(v) { try { localStorage.setItem("gw.sound", v ? "1" : "0"); } catch {} },
+  };
+  let audio = null;
+  const unlockAudio = () => { try { audio = audio || new AudioContext(); audio.resume(); } catch {} };
+  document.addEventListener("pointerdown", unlockAudio, { once: true });
+  function chime() {
+    if (!soundPref.get() || !audio || audio.state !== "running") return;
+    [[880, 0], [1320, 0.16]].forEach(([hz, at]) => {   // two soft notes, "ding-dong"
+      const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + at;
+      o.frequency.value = hz; o.type = "sine";
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+      o.connect(g).connect(audio.destination); o.start(t); o.stop(t + 0.55);
+    });
+  }
+  function renderSoundBtn() {
+    const on = soundPref.get(), b = $("#soundBtn");
+    b.textContent = on ? "🔊" : "🔇"; b.setAttribute("aria-pressed", String(on));
+    b.setAttribute("aria-label", on ? "Approval sound on" : "Approval sound off");
+  }
+  $("#soundBtn").addEventListener("click", () => {
+    soundPref.set(!soundPref.get()); renderSoundBtn(); unlockAudio(); chime();
+    toast(soundPref.get() ? "Sound on: you'll hear a chime when an action needs approval." : "Sound off.");
+  });
+  renderSoundBtn();
+  // Blink the tab title while something waits and the viewer is in another tab.
+  let blink = false;
+  setInterval(() => {
+    if (!document.hidden || !queue.length) {
+      if (blink) { blink = false; document.title = queue.length ? `(${queue.length}) Needs approval · Squidbrake` : "Squidbrake"; }
+      return;
+    }
+    blink = !blink;
+    document.title = blink ? "🔔 Waiting for you!" : `(${queue.length}) Needs approval · Squidbrake`;
+  }, 1000);
   function notifyQueue() {
     const viewer = me ? me.client : "", waiting = new Set(queueIds);
     notifyOpen = notifyOpen.filter((o) => o.ids.some((id) => waiting.has(id)) || (o.n.close(), false));   // decided elsewhere: take it down
@@ -2026,6 +2162,9 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     const fresh = queue.filter((q) => !notifySeen.has(q.id));
     notifySeen = waiting;
     if (!fresh.length || !(me && me.can_approve)) return;
+    chime();
+    // Desktop pop-ups are off: point at the button that turns them on.
+    $("#notifyBtn").classList.toggle("coach-me", deskState() === "off");
     if (document.visibilityState === "visible" && document.hasFocus()) return;   // they're looking at the page already
     if (deskState() !== "on") { renderNotifyBtn(); return; }   // permission may have been revoked since
     const one = fresh.length === 1 ? fresh[0] : null;
