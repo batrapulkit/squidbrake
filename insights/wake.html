@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Waking your dashboard · Squidbrake</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Host+Grotesk:wght@300..700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Opened when someone visits <sub>.app.squidbrake.com while its gateway sleeps: Caddy sends them here (handle_errors),
+   this wakes it (POST /v1/wake/<sub>), waits, and sends them back to where they were going. */
+:root { --bg:#E6EBE2; --paper:#FBFCF9; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5; --soft:#DCE3D8;
+        --go:#237447; --accent:#F2622E; --sans:"Host Grotesk","Helvetica Neue",Helvetica,Arial,sans-serif;
+        --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace; color-scheme:light; }
+* { box-sizing:border-box; }
+body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--ink);
+       font:16px/1.55 var(--sans); -webkit-font-smoothing:antialiased; padding:16px; }
+.card { background:var(--paper); border:1px solid var(--line); border-radius:20px; padding:32px 28px; max-width:440px;
+        width:100%; text-align:center; }
+.brand { font-weight:700; font-size:18px; letter-spacing:-.02em; margin-bottom:18px; }
+.brand span { color:var(--accent); }
+.moon { font-size:44px; line-height:1; margin-bottom:10px; }
+h1 { font-size:24px; font-weight:500; letter-spacing:-.03em; margin:0 0 6px; }
+p { color:var(--muted); margin:0 0 4px; }
+.host { font-family:var(--mono); font-size:13px; color:var(--ink); background:var(--soft); border-radius:6px; padding:2px 8px; }
+.meter { height:8px; background:var(--soft); border-radius:99px; overflow:hidden; margin:20px 0 10px; }
+.meter i { display:block; height:100%; width:4%; border-radius:99px; background:linear-gradient(90deg, var(--go), #36a066);
+           transition:width .9s ease; }
+.small { font-size:13px; }
+@media (prefers-reduced-motion: reduce) { .meter i { transition:none; } }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="brand">Squid<span>brake</span></div>
+  <div class="moon" id="icon">😴</div>
+  <h1 id="title">Waking your dashboard</h1>
+  <p><span class="host" id="host"></span></p>
+  <div class="meter"><i id="bar"></i></div>
+  <p class="small" id="note">It was asleep because nobody had used it for a while. Nothing was deleted: everything is as you left it.</p>
+</div>
+<script>
+(() => {
+  const sub = decodeURIComponent(location.pathname.split("/").pop() || "").toLowerCase();
+  const to = new URLSearchParams(location.search).get("to") || "/dashboard";
+  const $ = (id) => document.getElementById(id);
+  const safePath = (p) => (/^\/(?!\/)/.test(p) ? p : "/dashboard");        // only a path on that dashboard, never elsewhere
+  let pct = 4, tries = 0, wasRunning = 0;
+  const grow = setInterval(() => { pct = Math.min(92, pct + (92 - pct) * 0.06); $("bar").style.width = pct + "%"; }, 900);
+  const go = (dashboard) => {
+    // a running gateway that keeps failing would bounce people between it and this page: stop after 3 rounds a minute
+    let recent = [];
+    try { recent = JSON.parse(sessionStorage.getItem("sb-wake") || "[]").filter((t) => Date.now() - t < 60000); } catch {}
+    if (recent.length >= 3) {
+      clearInterval(grow); $("icon").textContent = "⚠️"; $("title").textContent = "Your dashboard isn't answering";
+      $("note").innerHTML = 'It is running but not responding. Try again in a minute, or write to <a href="mailto:pulkit@squidbrake.com">pulkit@squidbrake.com</a>.';
+      return;
+    }
+    try { sessionStorage.setItem("sb-wake", JSON.stringify([...recent, Date.now()])); } catch {}
+    clearInterval(grow); $("bar").style.width = "100%"; $("icon").textContent = "☀️"; $("title").textContent = "Awake";
+    // a hash (e.g. #activity) never reached the server, so it can't come back in `to`: the dashboard opens on its home
+    setTimeout(() => location.replace(dashboard + safePath(to)), 2500);   // a few seconds for the gateway to answer
+  };
+  const tick = async () => {
+    tries++;
+    let s;
+    try {
+      const r = await fetch(`/v1/wake/${encodeURIComponent(sub)}`, { method: "POST" });
+      if (r.status === 404) {
+        clearInterval(grow); $("icon").textContent = "🤔"; $("title").textContent = "No dashboard at this address";
+        $("note").innerHTML = 'Check the address, or <a href="/signup">sign in at squidbrake.com</a>.'; return;
+      }
+      s = await r.json();
+    } catch { return setTimeout(tick, 5000); }
+    $("host").textContent = (s.dashboard || "").replace(/^https?:\/\//, "");
+    if (s.state === "running") {
+      // already up: it may have just finished starting, or it is restarting (Caddy sent us here on a brief error)
+      if (++wasRunning >= 2 || tries > 1) return go(s.dashboard);
+      return setTimeout(tick, 3000);
+    }
+    if (s.state === "waiting") {
+      $("title").textContent = "In line to wake";
+      $("note").textContent = s.ahead ? `Every slot is busy right now: ${s.ahead} ahead of you. It wakes on its own; keep this tab open.`
+        : "You're next. It wakes on its own as soon as a slot frees; keep this tab open.";
+      return setTimeout(tick, 8000);
+    }
+    if (s.state === "failed") $("note").textContent = "Starting it hit a problem; trying again. If this takes over 5 minutes, write to pulkit@squidbrake.com.";
+    setTimeout(tick, 3000);                       // requested / sleeping / failed: starting up
+  };
+  $("host").textContent = sub;
+  tick();
+})();
+</script>
+</body>
+</html>

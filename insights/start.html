@@ -371,8 +371,9 @@ function hostedPage() {
         <li><b>Working on something sensitive?</b> Run Squidbrake on your own machine instead (see the
           <a href="/docs">docs</a>): then everything stays there.</li>
         <li>When the pilot ends, or whenever you ask, we delete your dashboard and everything in it.</li>
-        ${R ? `<li>A dashboard nobody uses is freed for the next person: keys not taken within ${R.keys_minutes} minutes,
-          or no agent connected within ${R.idle_hours} hours.</li>` : ""}
+        ${R ? `<li>A dashboard nobody uses goes to sleep so the next person can start (keys not taken within ${R.keys_minutes}
+          minutes, or no agent connected within ${R.idle_hours} hours). Nothing is deleted: open this link or your
+          dashboard's address and it wakes up as you left it.</li>` : ""}
       </ul>
     </details>
 
@@ -436,7 +437,7 @@ function hostedPage() {
       let s = null;
       try { s = await (await fetch(`/v1/pilot/${encodeURIComponent(D.code)}/status`)).json(); } catch {}
       if (s && s.connected) return connected();
-      if (R) liveText.textContent = `Listening for your agent's first action… (connect within ${R.idle_hours} h to keep this dashboard)`;
+      if (R) liveText.textContent = `Listening for your agent's first action… (no rush: if it sleeps, this link wakes it)`;
       await new Promise((r) => setTimeout(r, 5000));
     }
   };
@@ -481,7 +482,12 @@ function hostedPage() {
   };
 
   const render = (s) => {
-    if (s.rekey) {
+    if (s.state === "sleeping") {          // unused for a while: it slept, nothing was deleted. Coming back wakes it.
+      keys.innerHTML = `<p style="color:var(--ink)">😴 Your dashboard was asleep. Waking it up, everything's as you left it…</p>`;
+      progress(1, "Waking your dashboard", "under a minute");
+      fetch(`/v1/pilot/${encodeURIComponent(D.code)}/wake`, { method: "POST" })
+        .then((r) => r.json()).then(render).catch(() => setTimeout(poll, 4000));
+    } else if (s.rekey) {
       keys.innerHTML = `<p style="color:var(--ink)">⏳ Making new keys for <b>${esc(host)}</b>. This updates by itself (under a minute).</p>`;
       progress(2, "Making new keys", "under a minute");
       setTimeout(poll, 4000);
@@ -512,7 +518,7 @@ function hostedPage() {
             <p style="color:var(--ink);margin:0;font-weight:600">Your dashboard is ready at ${esc(host)}</p>
             <p style="margin:2px 0 0">Your two keys are shown <b>once</b>, then this page forgets them.</p></div></div>
           <div class="btns"><button id="reveal" class="btn">Reveal my keys</button></div>
-          ${R ? `<span class="chip">⏱ Take them within ${R.keys_minutes} min of the start, or the dashboard is freed for the next person</span>` : ""}`;
+          ${R ? `<span class="chip">💤 Not taken within ${R.keys_minutes} min, it goes to sleep. Nothing is lost: this link wakes it.</span>` : ""}`;
         document.getElementById("reveal").onclick = reveal;
         s1sub.textContent = "";
         progress(2, "Step 1 of 2: get your keys", "under 2 minutes left");

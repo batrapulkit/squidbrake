@@ -633,7 +633,7 @@ def test_new_keys_never_get_a_dashboard_in_use_deleted(insights, monkeypatch):
         insights_app._forget(c, "rk-google")
 
 
-def test_an_unused_hosted_dashboard_is_freed_and_the_next_in_line_starts(insights, monkeypatch):
+def test_an_unused_hosted_dashboard_sleeps_and_the_next_in_line_starts(insights, monkeypatch):
     import app as insights_app
     from datetime import datetime, timedelta, timezone
     told = []
@@ -646,7 +646,7 @@ def test_an_unused_hosted_dashboard_is_freed_and_the_next_in_line_starts(insight
             "INSERT INTO pilots (code, company, created_at, email, hosted, subdomain, state, note, started_at, "
             "keys_revealed_at, mrr) VALUES (?,?,?,?,1,?,?,?,?,?,?)",
             (code, code, started or ago(minutes=1), f"{code}@x.dev", code, state, note, started, revealed, mrr))
-        add("rc-nokeys", "signup (hosted)", ago(minutes=31))                       # keys never taken: freed
+        add("rc-nokeys", "signup (hosted)", ago(minutes=31))                       # keys never taken: sleeps
         add("rc-fresh", "signup (hosted)", ago(minutes=5))                         # still has time
         add("rc-idle", "signup (hosted)", ago(hours=25), revealed=ago(hours=25))   # keys taken, no agent in 24 h: freed
         add("rc-used", "signup (hosted)", ago(hours=25), revealed=ago(hours=25))   # an agent connected: kept
@@ -659,10 +659,13 @@ def test_an_unused_hosted_dashboard_is_freed_and_the_next_in_line_starts(insight
     monkeypatch.setattr(insights_app, "HOSTED_MAX", live + 6)                       # full until something is freed
     pilots = lambda: {p["code"]: p["state"] for p in insights.get("/v1/admin/provision", headers=admin).json()["pilots"]}
     st = pilots()
-    assert st["rc-nokeys"] == st["rc-idle"] == "deleting"
+    assert st["rc-nokeys"] == st["rc-idle"] == "sleeping"                        # never deleted
     assert st["rc-fresh"] == st["rc-used"] == st["rc-admin"] == st["rc-paid"] == "running"
     assert st["rc-next"] == "requested"                                             # a slot freed: it starts on its own
     assert len(told) == 2 and "keys weren't taken" in " ".join(told) and "no agent connected" in " ".join(told)
+    with insights_app.db() as c:
+        row = c.execute("SELECT slept_why FROM pilots WHERE code='rc-nokeys'").fetchone()
+    assert row["slept_why"] == "its keys weren't taken"
     assert insights.get("/v1/pilot/rc-used/status").json()["connected"] is True
     assert insights.get("/v1/pilot/rc-fresh/status").json()["connected"] is False
     with insights_app.db() as c:
@@ -1023,3 +1026,52 @@ def test_auto_update_waits_for_a_quiet_moment(monkeypatch, tmp_path):
     with engine.begin() as conn:
         conn.execute(server.events.update().values(status="awaiting_approval"))
     assert not server._quiet_for_update()                      # a person is still deciding one
+
+
+def test_a_sleeping_dashboard_wakes_first_in_line_and_starts_as_it_was(insights, monkeypatch):
+    import app as insights_app
+    from datetime import datetime, timedelta, timezone
+    monkeypatch.setattr(insights_app, "notify", lambda *_: None)
+    admin = {"X-Admin-Key": "admin-test-key"}
+    ago = lambda **kw: (datetime.now(timezone.utc) - timedelta(**kw)).isoformat(timespec="seconds")
+    with insights_app.db() as c:
+        c.execute("INSERT INTO pilots (code, company, created_at, email, hosted, subdomain, state, note, started_at, admin_key, agent_key) "
+                  "VALUES ('zz-sleepy', 'Sleepy', ?, 'zz@x.dev', 1, 'zzsleepy', 'running', 'signup (hosted)', ?, 'gw_a1', 'gw_b1')",
+                  (ago(hours=2), ago(minutes=31)))
+        c.execute("INSERT INTO pilots (code, company, created_at, email, hosted, subdomain, state, note, queued_at) "
+                  "VALUES ('zz-newbie', 'Newbie', ?, 'nb@x.dev', 1, 'zznewbie', 'waiting', 'signup (hosted)', ?)",
+                  (ago(minutes=1), ago(minutes=1)))
+        live = c.execute(f"SELECT COUNT(*) FROM pilots WHERE {insights_app.LIVE}").fetchone()[0]
+    monkeypatch.setattr(insights_app, "HOSTED_MAX", live - 1)                        # full, even after it sleeps
+    state = lambda code: next(p["state"] for p in insights.get("/v1/admin/provision", headers=admin).json()["pilots"]
+                              if p["code"] == code)
+    assert state("zz-sleepy") == "sleeping"                                          # keys not taken in 30 min
+    assert insights.get("/v1/pilot/zz-sleepy/status").json()["state"] == "sleeping"
+    stage = next(p["stage"] for p in insights.get("/v1/admin/overview", headers=admin).json()["pilots"] if p["code"] == "zz-sleepy")
+    assert stage.startswith("asleep")
+    # its address: no key or start link given out, a made-up one is a 404
+    assert insights.post("/v1/wake/nosuchdash").status_code == 404
+    woke = insights.post("/v1/wake/zzsleepy").json()
+    assert woke["state"] == "waiting" and woke["ahead"] == 0 and set(woke) == {"state", "ahead", "dashboard"}
+    assert insights.get("/v1/pilot/zz-newbie/status").json()["ahead"] == 1          # the returning one goes first
+    monkeypatch.setattr(insights_app, "HOSTED_MAX", live)                            # one slot frees
+    assert state("zz-sleepy") == "requested" and state("zz-newbie") == "waiting"
+    insights.post("/v1/admin/provisioned", headers=admin, json={"code": "zz-sleepy", "state": "running"})
+    s = insights.post("/v1/pilot/zz-sleepy/wake").json()                             # awake: waking again is harmless
+    assert s["state"] == "running" and s["keys_ready"] is True                       # keys still waiting for them
+    assert state("zz-sleepy") == "running"                                           # a fresh 30 minutes, not re-slept
+    assert insights.post("/v1/admin/pilots/zz-sleepy/wake", headers=admin).status_code == 409
+    assert "Waking your dashboard" in insights.get("/wake/zzsleepy").text
+    with insights_app.db() as c:
+        for code in ("zz-sleepy", "zz-newbie"):
+            insights_app._forget(c, code)
+
+
+def test_every_page_the_app_serves_is_in_its_docker_image():
+    # a page missing from insights/Dockerfile's COPY works in tests and is a 500 in production (wake.html was)
+    import re
+    app_src = (ROOT / "insights" / "app.py").read_text(encoding="utf-8")
+    copy = " ".join(line for line in (ROOT / "insights" / "Dockerfile").read_text(encoding="utf-8").splitlines()
+                    if line.startswith("COPY"))
+    missing = [n for n in set(re.findall(r'PAGE\("([^"/]+)"\)', app_src)) if n not in copy.split()]
+    assert not missing, f"add to insights/Dockerfile COPY: {missing}"

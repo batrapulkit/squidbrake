@@ -210,6 +210,17 @@ def remove(p):
     api("/v1/admin/provisioned", {"code": p["code"], "state": "deleted"})
 
 
+def sleep(p):
+    """An unused dashboard put to sleep (insights _reclaim_unused): stop its container to free the memory, and keep
+    the container, its data volume and its logs. `--restart unless-stopped` keeps a stopped one stopped across
+    reboots; waking it (state requested) is start(), which finds it stopped and starts it again as it was."""
+    name = "sbp-" + p["subdomain"]
+    if state(name) == "true":
+        log("sleeping", name)
+        docker("stop", "-t", "20", name, check=False)   # tried again next round if it didn't stop
+        _licensed.pop(name, None)       # set again (or checked) when it wakes
+
+
 last_failure = {}   # code -> time: a failed setup is retried every 5 minutes, not every tick
 
 
@@ -218,6 +229,8 @@ def tick():
         try:
             if p["state"] == "deleting":
                 remove(p)
+            elif p["state"] == "sleeping":
+                sleep(p)
             elif p["state"] == "failed" and time.time() - last_failure.get(p["code"], 0) < 300:
                 continue
             elif p["state"] in ("requested", "failed") or (p["state"] == "running" and (

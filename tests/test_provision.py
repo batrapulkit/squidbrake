@@ -203,3 +203,32 @@ def test_the_license_is_written_without_loading_the_gateway(tmp_path, monkeypatc
     out = subprocess.run([sys.executable, "-c", probe, code, "not-a-license"], cwd=root, capture_output=True, text=True,
                          env={**__import__("os").environ, "PYTHONPATH": str(root)})
     assert out.stdout.strip() == "False", out.stderr     # the gateway (server.py) is never imported
+
+
+def test_a_sleeping_gateway_is_stopped_never_removed_and_wakes_as_it_was(monkeypatch):
+    calls, reports = fake(monkeypatch, ["true", "false"])
+    pilot = {"code": "co-z", "subdomain": "coz", "state": "sleeping", "keys_ready": True, "dashboard": "https://coz.app.test"}
+    monkeypatch.setattr(provision, "api", lambda path, body=None: {"pilots": [pilot]} if path == "/v1/admin/provision"
+                        else reports.append((path, body)) or {})
+    provision.tick()                                          # running: stopped
+    provision.tick()                                          # already stopped: left as it is
+    assert [c for c in calls if c[0] != "inspect"] == [("stop", "-t", "20", "sbp-coz")]
+    assert not any(c[0] in ("rm", "volume", "run") for c in calls) and reports == []
+    calls_, reports_ = fake(monkeypatch, ["false"])          # woken (state requested): the same container starts again
+    provision.start({**pilot, "state": "requested"})
+    assert ("start", "sbp-coz") in calls_ and not any(c[0] in ("rm", "run") for c in calls_)
+    assert reports_[-1] == ("/v1/admin/provisioned", {"code": "co-z", "state": "running"})
+
+
+def test_a_failing_setup_is_reported_and_tried_again_later(monkeypatch):
+    reports = []
+    pilot = {"code": "co-f", "subdomain": "cof", "state": "requested", "keys_ready": False, "dashboard": "https://cof.app.test"}
+    monkeypatch.setattr(provision, "api", lambda path, body=None: {"pilots": [pilot]} if path == "/v1/admin/provision"
+                        else reports.append(body) or {})
+
+    def broken(p):
+        raise RuntimeError("docker is down")
+    monkeypatch.setattr(provision, "start", broken)
+    provision.last_failure.clear()
+    provision.tick()
+    assert reports == [{"code": "co-f", "state": "failed", "error": "docker is down"}]
