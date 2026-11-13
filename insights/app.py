@@ -42,9 +42,11 @@ CHECKOUT_URL = os.getenv("INSIGHTS_CHECKOUT_URL", "")
 PAID_PLANS = ("starter", "pro", "team", "scale")          # squidbrake.com/pricing; license.py PLANS says what each unlocks
 TRIAL_PLANS = ("team", "scale")                           # 14 days free, no card to start
 # A Stripe Payment Link per plan, "starter=https://buy.stripe.com/...,pro=...,team=...,scale=...".
-# INSIGHTS_CHECKOUT_URL on its own is the Team plan's (as before plans).
-CHECKOUT_URLS = {k.strip(): v.strip() for k, _, v in (x.partition("=") for x in
-                 os.getenv("INSIGHTS_CHECKOUT_URLS", "").split(",")) if k.strip() in PAID_PLANS and v.strip()}
+# INSIGHTS_CHECKOUT_URL on its own is the Team plan's (as before plans). Default: the live links ($9, $19, $299, $499).
+CHECKOUT_URLS = {k.strip(): v.strip() for k, _, v in (x.partition("=") for x in os.getenv("INSIGHTS_CHECKOUT_URLS",
+                 "starter=https://buy.stripe.com/28EfZh1Lq7Zy0S05zr3Ru0f,pro=https://buy.stripe.com/3cI6oHahW1Ba6ck7Hz3Ru0g,"
+                 "team=https://buy.stripe.com/cNi9ATeyc7Zy7go1jb3Ru0h,scale=https://buy.stripe.com/4gM8wP0Hm0x60S03rj3Ru0i"
+                 ).split(",")) if k.strip() in PAID_PLANS and v.strip()}
 
 
 def checkout_url(plan: str | None) -> str:

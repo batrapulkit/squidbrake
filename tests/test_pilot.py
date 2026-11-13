@@ -774,6 +774,7 @@ def test_team_plan_signup_is_a_hosted_trial(insights, monkeypatch):
     insights_app._requests.clear()
     req = _signed_in(monkeypatch, insights_app)
     monkeypatch.setattr(insights_app, "notify", lambda text: None)
+    monkeypatch.setattr(insights_app, "CHECKOUT_URLS", {})          # the old single Team link still works on its own
     monkeypatch.setattr(insights_app, "CHECKOUT_URL", "https://pay.example/team")
     r = insights.post("/v1/signup", **req("ivy@trial.dev", setup="local", plan="team", source="invite")).json()
     page = insights.get(urlparse(r["link"]).path).text
