@@ -83,6 +83,7 @@ def _license_for(p) -> str | None:
         return issue_license(org, year, plan)
     return issue_license(org, p["trial_ends"], plan) if plan in TRIAL_PLANS and p["trial_ends"] else None  # where a Team plan is paid (e.g. a Stripe payment link)           # shown on start pages, e.g. "WhatsApp +91..., you@x.com"
 CODE_RE = re.compile(r"^[a-z0-9-]{3,40}$")
+SUB_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")     # one DNS label: a hosted pilot's <subdomain>
 
 app = FastAPI(title="Squidbrake Insights", docs_url=None, redoc_url=None)
 # squidbrake.com is a static site: its "Book a demo" form posts here (/v1/team-request), from the browser
@@ -151,7 +152,9 @@ with db() as _c:
                         # when it joined the line for a hosted slot, to the microsecond: first in, first out
                         ("queued_at", "TEXT"),
                         # when the founder first took keys; unlike keys_revealed_at, new keys never clear it
-                        ("keys_first_shown_at", "TEXT")):
+                        ("keys_first_shown_at", "TEXT"),
+                        # when an unused hosted gateway was put to sleep (_reclaim_unused), and why
+                        ("slept_at", "TEXT"), ("slept_why", "TEXT")):
         if _col not in _have:
             _c.execute(f"ALTER TABLE pilots ADD COLUMN {_col} {_type}")
             if _col == "keys_first_shown_at":   # dashboards whose keys were already taken stay that way
@@ -174,12 +177,15 @@ seed_community()
 
 HOSTED_DOMAIN = os.getenv("HOSTED_DOMAIN", "")        # e.g. app.squidbrake.com (with a *.app wildcard DNS record)
 HOSTED_MAX = int(os.getenv("HOSTED_MAX", "6"))         # each hosted gateway uses ~50-100 MB of memory
-LIVE = "hosted=1 AND state NOT IN ('deleting', 'waiting')"     # takes a hosted slot (waiting: in line for one)
+LIVE = "hosted=1 AND state NOT IN ('deleting', 'waiting', 'sleeping')"   # takes a hosted slot (waiting: in line for one)
 # /signup offers "On my computer" next to the hosted setup (and says what we see of a local install) when this is 1
 SIGNUP_LOCAL = os.getenv("INSIGHTS_SIGNUP_LOCAL", "") == "1"
 # A hosted dashboard from a free sign-up that nobody uses goes back to the line, so junk or abandoned sign-ups can't
 # hold the HOSTED_MAX slots: keys not taken within RECLAIM_KEYS_MINUTES of its start, or no agent action within
 # RECLAIM_IDLE_HOURS. Never one made from the admin, or one that paid. 0 turns either off.
+# Such a gateway is put to SLEEP, never deleted: provision.py stops its container (container, data volume and logs
+# all kept) and its slot is free. Opening the start page or the dashboard address wakes it (_wake): it goes to the
+# front of the line and starts again as it was, keys included. Only Delete in the admin removes one for good.
 RECLAIM_KEYS_MINUTES = int(os.getenv("INSIGHTS_RECLAIM_KEYS_MINUTES", "30"))
 RECLAIM_IDLE_HOURS = int(os.getenv("INSIGHTS_RECLAIM_IDLE_HOURS", "24"))
 RECLAIMABLE = "note LIKE 'signup%' AND COALESCE(mrr, 0) = 0 AND COALESCE(paid_once, 0) = 0"
@@ -642,7 +648,7 @@ def _connected(c, code: str) -> bool:
 
 
 def _reclaim_unused(c) -> None:
-    """Free the slot of a sign-up's hosted dashboard nobody used (see RECLAIM_KEYS_MINUTES): provision.py removes it."""
+    """Free the slot of a sign-up's hosted dashboard nobody used (see RECLAIM_KEYS_MINUTES): it goes to sleep."""
     t = datetime.now(timezone.utc)
     for p in c.execute(f"SELECT code, company, email, started_at, keys_revealed_at, keys_first_shown_at, rekey FROM pilots "
                        f"WHERE hosted=1 AND state='running' AND started_at IS NOT NULL AND {RECLAIMABLE}").fetchall():
@@ -657,8 +663,25 @@ def _reclaim_unused(c) -> None:
                "no agent connected" if RECLAIM_IDLE_HOURS and age > RECLAIM_IDLE_HOURS * 3600
                and not _connected(c, p["code"]) else "")
         if why:
-            c.execute("UPDATE pilots SET state='deleting', admin_key=NULL, agent_key=NULL WHERE code=?", (p["code"],))
-            notify(f"Squidbrake: freed the hosted dashboard of {p['company']} ({p['email']}): {why}.")
+            # its keys stay here (not yet taken: the start page still offers them after it wakes)
+            c.execute("UPDATE pilots SET state='sleeping', slept_at=?, slept_why=? WHERE code=? AND state='running'",
+                      (now(), why, p["code"]))
+            notify(f"Squidbrake: put the hosted dashboard of {p['company']} ({p['email']}) to sleep: {why}. "
+                   "Nothing is deleted; it wakes when they open their link.")
+
+
+def _wake(c, code: str) -> bool:
+    """A sleeping dashboard someone came back to: to the FRONT of the line (they're waiting on a page right now), so it
+    starts on the next free slot, as it was. _start_waiting gives it a new started_at, so the reclaim timers start
+    over. -> whether it was asleep."""
+    first = c.execute("SELECT MIN(queued_at) FROM pilots WHERE hosted=1 AND state='waiting' AND queued_at IS NOT NULL"
+                      ).fetchone()[0]
+    t = ((datetime.fromisoformat(first) - timedelta(microseconds=1)) if first else datetime.now(timezone.utc)).isoformat()
+    woke = c.execute("UPDATE pilots SET state='waiting', queued_at=?, slept_at=NULL, slept_why=NULL "
+                     "WHERE code=? AND hosted=1 AND state='sleeping'", (t, code)).rowcount
+    if woke:
+        _start_waiting(c)                   # a free slot: starting now, not on provision.py's next round
+    return bool(woke)
 
 
 def _start_waiting(c) -> None:
@@ -685,6 +708,15 @@ def queue_old_request(code: str):
         if not c.execute("UPDATE pilots SET queued_at=? WHERE code=? AND hosted=1 AND state='waiting' AND queued_at IS NULL",
                          (t, code)).rowcount:
             raise HTTPException(404, "no old hosted request with that code")
+    return {"ok": True}
+
+
+@app.post("/v1/admin/pilots/{code}/wake", dependencies=[Depends(admin)])
+def admin_wake(code: str):
+    """Wake a sleeping hosted dashboard from the admin (e.g. before a call with them)."""
+    with _lock, db() as c:
+        if not _wake(c, code):
+            raise HTTPException(409, "that dashboard isn't asleep")
     return {"ok": True}
 
 
@@ -756,7 +788,7 @@ def caddy_ask(domain: str = ""):
     """Caddy asks before getting a certificate for <sub>.HOSTED_DOMAIN: only for hosted pilots that exist."""
     sub = domain.removesuffix("." + HOSTED_DOMAIN) if HOSTED_DOMAIN and domain.endswith("." + HOSTED_DOMAIN) else None
     with db() as c:
-        ok = bool(sub) and c.execute("SELECT 1 FROM pilots WHERE subdomain=? AND state IN ('requested','running')",
+        ok = bool(sub) and c.execute("SELECT 1 FROM pilots WHERE subdomain=? AND state IN ('requested','running','sleeping')",
                                      (sub,)).fetchone()
     if not ok:
         raise HTTPException(404)
@@ -778,6 +810,46 @@ def pilot_status(code: str, request: Request):
         connected = _connected(c, code)
     return {"state": p["state"], "keys_ready": bool(p["admin_key"]), "keys_shown": bool(p["keys_revealed_at"]),
             "rekey": bool(p["rekey"]), "connected": connected, "ahead": ahead}
+
+
+@app.post("/v1/pilot/{code}/wake")
+def pilot_wake(code: str, request: Request):
+    """The start page, opened again for a dashboard that went to sleep: wake it."""
+    _guessing(request)
+    with _lock, db() as c:
+        if not c.execute("SELECT 1 FROM pilots WHERE code=? AND hosted=1", (code,)).fetchone():
+            _missed(request)
+            raise HTTPException(404)
+        _wake(c, code)
+    return pilot_status(code, request)
+
+
+def _by_subdomain(c, sub: str):
+    return c.execute("SELECT code, state, subdomain, COALESCE(queued_at, created_at) AS q FROM pilots "
+                     "WHERE subdomain=? AND hosted=1", (sub.lower(),)).fetchone() if SUB_RE.match(sub or "") else None
+
+
+@app.post("/v1/wake/{sub}")
+def wake_by_address(sub: str, request: Request):
+    """Someone opened <sub>.HOSTED_DOMAIN while its gateway sleeps (Caddy sends them to /wake/<sub>): wake it.
+    The address is public anyway (DNS, its certificate), so this only says how far along it is: never a key or the
+    start link. Waking a dashboard nobody uses costs a slot until the reclaim timers put it back to sleep."""
+    _guessing(request)
+    with _lock, db() as c:
+        p = _by_subdomain(c, sub)
+        if not p:
+            _missed(request)
+            raise HTTPException(404)
+        _wake(c, p["code"])
+        p = _by_subdomain(c, sub)
+        ahead = c.execute("SELECT COUNT(*) FROM pilots WHERE hosted=1 AND state='waiting' AND queued_at IS NOT NULL "
+                          "AND queued_at < ?", (p["q"],)).fetchone()[0] if p["state"] == "waiting" else 0
+    return {"state": p["state"], "ahead": ahead, "dashboard": dashboard_url(p["subdomain"])}
+
+
+@app.get("/wake/{sub}", include_in_schema=False)
+def wake_page(sub: str):
+    return HTMLResponse(PAGE("wake.html"), headers={"Cache-Control": "no-store"})
 
 
 PREVIEW_BOTS = re.compile(r"bot|crawl|spider|preview|facebookexternalhit|slack|whatsapp|telegram|discord|skype|"
@@ -1080,6 +1152,7 @@ def overview(request: Request):
             ever = sum(i["total_events"] or 0 for i in mine)
             if p["state"] != "running":
                 stage = {"requested": "setting up", "failed": "setup failed", "deleting": "deleting",
+                         "sleeping": f"asleep ({p.get('slept_why') or 'unused'})",
                          "waiting": "in line for a slot" if p.get("queued_at") else "old hosted request"}.get(p["state"], stage)
             elif not p["keys_revealed_at"]:
                 stage = "opened link" if p["page_views"] else "link sent"
