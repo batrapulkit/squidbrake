@@ -1065,3 +1065,13 @@ def test_a_sleeping_dashboard_wakes_first_in_line_and_starts_as_it_was(insights,
     with insights_app.db() as c:
         for code in ("zz-sleepy", "zz-newbie"):
             insights_app._forget(c, code)
+
+
+def test_every_page_the_app_serves_is_in_its_docker_image():
+    # a page missing from insights/Dockerfile's COPY works in tests and is a 500 in production (wake.html was)
+    import re
+    app_src = (ROOT / "insights" / "app.py").read_text(encoding="utf-8")
+    copy = " ".join(line for line in (ROOT / "insights" / "Dockerfile").read_text(encoding="utf-8").splitlines()
+                    if line.startswith("COPY"))
+    missing = [n for n in set(re.findall(r'PAGE\("([^"/]+)"\)', app_src)) if n not in copy.split()]
+    assert not missing, f"add to insights/Dockerfile COPY: {missing}"
