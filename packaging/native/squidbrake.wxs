@@ -21,17 +21,37 @@
         <Environment Id="PathEntry" Name="PATH" Value="[INSTALLFOLDER]" Part="last" Action="set" System="no" />
         <RegistryValue Root="HKCU" Key="Software\Squidbrake" Name="installed" Type="integer" Value="1" KeyPath="yes" />
       </Component>
+      <!-- Installed by a person (no URL, i.e. not an Intune / MDM install): the Squidbrake app starts at every login.
+           The same value the app's "Start at login" switches; uninstalling takes it out. -->
+      <Component Id="AppAtLogin" Guid="4e1f7a62-2b9d-4c55-8f0e-9a3d6c2b7e18" Condition="NOT URL">
+        <RegistryValue Root="HKCU" Key="Software\Microsoft\Windows\CurrentVersion\Run" Name="SquidbrakeApp" Type="string"
+                       Value="&quot;[INSTALLFOLDER]squidbrake-app.exe&quot;" KeyPath="yes" />
+      </Component>
     </ComponentGroup>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="AppShortcut" Guid="9c3b5d17-6f2e-4a8b-b1d4-2e7f0a9c5d63">
+        <Shortcut Id="AppStartMenu" Name="Squidbrake" Description="Keeps your AI agents connected to your dashboard"
+                  Target="[INSTALLFOLDER]squidbrake-app.exe" WorkingDirectory="INSTALLFOLDER" />
+        <RegistryValue Root="HKCU" Key="Software\Squidbrake" Name="shortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
 
     <Feature Id="Main">
       <ComponentGroupRef Id="App" />
+      <ComponentRef Id="AppShortcut" />
     </Feature>
 
     <!-- best effort: a gateway that can't be reached doesn't undo the install; `squidbrake doctor` says what's wrong -->
     <CustomAction Id="ConnectAgents" Directory="INSTALLFOLDER" Execute="deferred" Impersonate="yes" Return="ignore"
                   ExeCommand="&quot;[INSTALLFOLDER]squidbrake.exe&quot; connect all --url &quot;[URL]&quot; --key &quot;[KEY]&quot; --yes" />
+    <!-- opened by a person: start the app once the install is done (it opens its sign-in page). Not for silent
+         installs (/qn, UILevel 2) or MDM ones that connect with URL and KEY. -->
+    <CustomAction Id="LaunchApp" Directory="INSTALLFOLDER" Execute="immediate" Impersonate="yes" Return="asyncNoWait"
+                  ExeCommand="&quot;[INSTALLFOLDER]squidbrake-app.exe&quot;" />
     <InstallExecuteSequence>
       <Custom Action="ConnectAgents" Before="InstallFinalize" Condition="URL AND KEY AND NOT REMOVE" />
+      <Custom Action="LaunchApp" After="InstallFinalize" Condition="NOT URL AND NOT REMOVE AND UILevel &gt; 2" />
     </InstallExecuteSequence>
   </Package>
 </Wix>

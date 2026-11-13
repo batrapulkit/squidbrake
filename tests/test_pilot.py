@@ -1067,6 +1067,136 @@ def test_a_sleeping_dashboard_wakes_first_in_line_and_starts_as_it_was(insights,
             insights_app._forget(c, code)
 
 
+# ---- the Squidbrake app (desktop.py): sign in with an email code, this computer gets an agent key
+
+def _app_signin(monkeypatch, insights_app, sent=None):
+    """Supabase on; the right code for any email is 123456."""
+    monkeypatch.setattr(insights_app, "SUPABASE_URL", "https://x.supabase.co")
+    monkeypatch.setattr(insights_app, "notify", lambda *_: None)
+    monkeypatch.setattr(insights_app, "supabase_send_code", lambda email: (sent.append(email) if sent is not None else None) or True)
+    monkeypatch.setattr(insights_app, "supabase_check_code", lambda email, code: {
+        "email": email, "email_confirmed_at": "2026-11-01T00:00:00Z"} if code == "123456" else None)
+    insights_app._app_codes.clear()
+    insights_app._app_tries.clear()
+
+
+def _hosted(insights_app, code, email, state="running", admin_key="gw_adm", agent_key="gw_agt", **cols):
+    with insights_app.db() as c:
+        c.execute("INSERT INTO pilots (code, company, created_at, email, hosted, subdomain, state, note, started_at, "
+                  "admin_key, agent_key) VALUES (?,?,?,?,1,?,?, 'signup (hosted)', ?,?,?)",
+                  (code, code.title(), insights_app.now(), email, code.replace("-", ""), state, insights_app.now(),
+                   admin_key, agent_key))
+        for k, v in cols.items():
+            c.execute(f"UPDATE pilots SET {k}=? WHERE code=?", (v, code))
+
+
+def test_the_app_signs_in_with_an_email_code_and_takes_the_agent_key_nobody_copied(insights, monkeypatch):
+    import app as insights_app
+    sent = []
+    _app_signin(monkeypatch, insights_app, sent)
+    _hosted(insights_app, "app-one", "one@app.dev")
+    assert insights.post("/v1/app/code", json={"email": "One@App.dev"}).json() == {"ok": True}
+    assert sent == ["one@app.dev"]
+    assert insights.post("/v1/app/connect", json={"email": "one@app.dev", "code": "000000", "device": "Mac"}).status_code == 401
+    r = insights.post("/v1/app/connect", json={"email": "one@app.dev", "code": "123456", "device": "Rohan's <b>Mac</b>"}).json()
+    # the start page's agent key, waiting there untaken: straight to this computer, with a token for its check-ins
+    assert r["state"] == "connected" and r["agent_key"] == "gw_agt" and r["device_token"] and r["link"]
+    assert r["dashboard"] == "https://appone.app.example.com"
+    assert insights.get(f"/v1/app/link/{r['link']}").status_code == 410            # given once
+    s = insights.get("/v1/pilot/app-one/status").json()
+    assert s["apps"] == ["Rohan's bMacb"] and s["keys_ready"] is True                # the admin key still waits
+    keys = insights.post("/v1/pilot/app-one/keys").json()
+    assert keys["admin_key"] == "gw_adm" and keys["agent_key"] is None              # the agent key went to the app
+    stage = next(p for p in insights.get("/v1/admin/overview", headers={"X-Admin-Key": "admin-test-key"}).json()["pilots"]
+                 if p["code"] == "app-one")
+    assert stage["apps"] == ["Rohan's bMacb"]
+    with insights_app.db() as c:
+        insights_app._forget(c, "app-one")
+        assert not c.execute("SELECT 1 FROM devices WHERE code='app-one'").fetchone()
+
+
+def test_a_second_computer_gets_its_own_key_from_the_provisioner(insights, monkeypatch):
+    import app as insights_app
+    _app_signin(monkeypatch, insights_app)
+    admin = {"X-Admin-Key": "admin-test-key"}
+    _hosted(insights_app, "app-two", "two@app.dev", admin_key=None, agent_key=None, keys_revealed_at=insights_app.now())
+    r = insights.post("/v1/app/connect", json={"email": "two@app.dev", "code": "123456", "device": "Work PC"}).json()
+    assert r["state"] == "connecting" and "agent_key" not in r
+    jobs = next(p for p in insights.get("/v1/admin/provision", headers=admin).json()["pilots"] if p["code"] == "app-two")
+    assert [x["device"] for x in jobs["app_links"]] == ["Work PC"]
+    assert insights.post("/v1/admin/app-key", json={"id": jobs["app_links"][0]["id"], "key": "gw_pc"}).status_code == 401
+    insights.post("/v1/admin/app-key", headers=admin, json={"id": jobs["app_links"][0]["id"], "key": "gw_pc",
+                                                            "key_name": "app-work-pc"})
+    got = insights.get(f"/v1/app/link/{r['link']}").json()
+    assert got["state"] == "connected" and got["agent_key"] == "gw_pc"
+    jobs = next(p for p in insights.get("/v1/admin/provision", headers=admin).json()["pilots"] if p["code"] == "app-two")
+    assert jobs["app_links"] == []                                                  # done: no more keys made
+    with insights_app.db() as c:
+        assert c.execute("SELECT key_name FROM devices WHERE code='app-two'").fetchone()[0] == "app-work-pc"
+        insights_app._forget(c, "app-two")
+
+
+def test_the_app_wakes_a_sleeping_dashboard_and_keeps_it_awake(insights, monkeypatch):
+    import app as insights_app
+    from datetime import datetime, timedelta, timezone
+    _app_signin(monkeypatch, insights_app)
+    admin = {"X-Admin-Key": "admin-test-key"}
+    old = (datetime.now(timezone.utc) - timedelta(hours=30)).isoformat()
+    _hosted(insights_app, "app-zzz", "zzz@app.dev", state="sleeping", started_at=old)
+    with insights_app.db() as c:
+        live = c.execute(f"SELECT COUNT(*) FROM pilots WHERE {insights_app.LIVE}").fetchone()[0]
+    monkeypatch.setattr(insights_app, "HOSTED_MAX", live + 1)
+    r = insights.post("/v1/app/connect", json={"email": "zzz@app.dev", "code": "123456", "device": "Mac"}).json()
+    assert r["state"] == "starting"                                                 # woken, and a slot was free
+    insights.post("/v1/admin/provisioned", headers=admin, json={"code": "app-zzz", "state": "running"})
+    got = insights.get(f"/v1/app/link/{r['link']}").json()
+    assert got["state"] == "connected" and got["agent_key"] == "gw_agt"
+    token = got["device_token"]
+    # 30 hours old, no agent action yet: without the app it would go back to sleep; the app checking in keeps it
+    with insights_app.db() as c:
+        c.execute("UPDATE pilots SET started_at=? WHERE code='app-zzz'", (old,))
+    state = lambda: next(p["state"] for p in insights.get("/v1/admin/provision", headers=admin).json()["pilots"]
+                         if p["code"] == "app-zzz")
+    assert state() == "running"
+    with insights_app.db() as c:                                                    # the app quiet for a day: it sleeps
+        c.execute("UPDATE devices SET last_seen=? WHERE code='app-zzz'", (old,))
+    assert state() == "sleeping"
+    beat = insights.post("/v1/app/heartbeat", json={"token": token, "version": "1.0", "os": "Darwin"}).json()
+    assert beat["state"] in ("requested", "waiting")                                # the app woke it again
+    assert insights.post("/v1/app/heartbeat", json={"token": "x" * 30}).status_code == 401
+    insights.post("/v1/app/signout", json={"token": token})
+    assert insights.post("/v1/app/heartbeat", json={"token": token}).status_code == 401
+    with insights_app.db() as c:
+        insights_app._forget(c, "app-zzz")
+
+
+def test_the_app_never_says_who_signed_up_and_limits_codes(insights, monkeypatch):
+    import app as insights_app
+    _app_signin(monkeypatch, insights_app)
+    assert insights.post("/v1/app/code", json={"email": "nobody@app.dev"}).json() == {"ok": True}   # same answer
+    r = insights.post("/v1/app/connect", json={"email": "nobody@app.dev", "code": "123456", "device": "Mac"})
+    assert r.status_code == 404 and "/signup" in r.json()["detail"]                 # only after proving the email
+    for _ in range(insights_app.APP_CODES_PER_HOUR - 1):
+        insights.post("/v1/app/code", json={"email": "nobody@app.dev"})
+    assert insights.post("/v1/app/code", json={"email": "nobody@app.dev"}).status_code == 429
+    for _ in range(insights_app.APP_TRIES_PER_10_MIN):
+        insights.post("/v1/app/connect", json={"email": "guess@app.dev", "code": "999999"})
+    assert insights.post("/v1/app/connect", json={"email": "guess@app.dev", "code": "123456"}).status_code == 429
+    monkeypatch.setattr(insights_app, "SUPABASE_URL", "")
+    assert insights.post("/v1/app/code", json={"email": "a@app.dev"}).status_code == 503   # no Supabase: no app sign-in
+
+
+def test_the_start_page_offers_the_app_only_when_it_is_switched_on(insights, monkeypatch):
+    import app as insights_app
+    _app_signin(monkeypatch, insights_app)
+    _hosted(insights_app, "app-page", "page@app.dev")
+    page = insights.get("/start/app-page").text
+    assert '"app_downloads": ""' in page                                            # off: the install commands only
+    monkeypatch.setattr(insights_app, "APP_DOWNLOADS", "https://example.com/dl")
+    assert '"app_downloads": "https://example.com/dl"' in insights.get("/start/app-page").text
+    with insights_app.db() as c:
+        insights_app._forget(c, "app-page")
+
 def test_every_page_the_app_serves_is_in_its_docker_image():
     # a page missing from insights/Dockerfile's COPY works in tests and is a 500 in production (wake.html was)
     import re

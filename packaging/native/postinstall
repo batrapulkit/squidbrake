@@ -1,4 +1,16 @@
 #!/bin/sh
 # macOS .pkg: the program is in /usr/local/lib/squidbrake; put `squidbrake` on the PATH.
 ln -sf /usr/local/lib/squidbrake/squidbrake /usr/local/bin/squidbrake
+
+# Opened by a person (Installer.app): start the Squidbrake app for them, which opens its sign-in page and from then on
+# starts at every login. Not for MDM / `installer` installs (COMMAND_LINE_INSTALL): a fleet connects with URL and KEY
+# (packaging/mdm) and shouldn't get a sign-in page on every Mac. Best effort: the install never fails over it.
+if [ -z "${COMMAND_LINE_INSTALL:-}" ]; then
+  CU=$(stat -f%Su /dev/console 2>/dev/null || true)
+  if [ -n "$CU" ] && [ "$CU" != "root" ] && [ "$CU" != "loginwindow" ]; then
+    CUID=$(id -u "$CU" 2>/dev/null || true)
+    [ -n "$CUID" ] && launchctl asuser "$CUID" sudo -u "$CU" -H nohup /usr/local/lib/squidbrake/squidbrake app \
+      >/dev/null 2>&1 &
+  fi
+fi
 exit 0

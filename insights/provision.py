@@ -158,6 +158,16 @@ NEW_KEYS = KEYS_IO + (
     " 'roles': [], 'created_at': now}\n"
     "save(); print(json.dumps({'old': old, **new}))\n")
 DROP_KEYS = KEYS_IO + "[data['keys'].pop(n, None) for n in sys.argv[1:]]; save()\n"
+# One agent key for one computer signing in to the Squidbrake app (insights /v1/app/connect). Nothing else changes:
+# the admin key and agents already connected keep working. Named after the computer, so the Team page shows it and
+# it can be removed there on its own.
+APP_KEY = KEYS_IO + (
+    "name = sys.argv[1]; i = 2\n"
+    "while name in data['keys']:\n    name = sys.argv[1] + '-' + str(i); i += 1\n"
+    "key = 'gw_' + secrets.token_urlsafe(24)\n"
+    "data['keys'][name] = {'sha256': hashlib.sha256(key.encode()).hexdigest(), 'kind': 'agent', 'approver': False,"
+    " 'roles': [], 'created_at': time.strftime('%Y-%m-%dT%H:%M:%S.000Z', time.gmtime())}\n"
+    "save(); print(json.dumps({'name': name, 'key': key}))\n")
 
 
 def new_keys(p):
@@ -177,6 +187,33 @@ def new_keys(p):
     api("/v1/admin/provisioned", {"code": p["code"], "state": "running",
                                   "admin_key": made["admin"], "agent_key": made["agent"]})
     log("new keys", name)
+
+
+def app_key_name(device):
+    """'Karishma's MacBook Air' -> 'app-karishmas-macbook-air' (a key name the gateway accepts)."""
+    slug = re.sub(r"[^a-z0-9]+", "-", device.lower()).strip("-")[:40].strip("-")
+    return "app-" + (slug or "computer")
+
+
+def app_keys(p):
+    """Computers signing in to the Squidbrake app whose start-page agent key was already taken: one key each."""
+    name = "sbp-" + p["subdomain"]
+    for link in p.get("app_links") or []:
+        if time.time() - last_failure.get(link["id"], 0) < 60:
+            continue
+        try:
+            made = json.loads(docker("exec", name, "python", "-c", APP_KEY, app_key_name(link["device"])))
+        except (RuntimeError, ValueError):
+            last_failure[link["id"]] = time.time()
+            api("/v1/admin/app-key", {"id": link["id"], "error": "couldn't make a key in the gateway"})
+            continue
+        if not key_works(name, made["key"]):
+            last_failure[link["id"]] = time.time()
+            docker("exec", name, "python", "-c", DROP_KEYS, made["name"], check=False)
+            api("/v1/admin/app-key", {"id": link["id"], "error": "the new key doesn't open the gateway"})
+            continue
+        api("/v1/admin/app-key", {"id": link["id"], "key": made["key"], "key_name": made["name"]})
+        log("app key", name, made["name"])
 
 
 _licensed = {}   # gateway name -> the license it was given (the server runs an older Python)
@@ -238,6 +275,8 @@ def tick():
                 start(p)
             elif p["state"] == "running" and p.get("rekey"):
                 new_keys(p)
+            elif p["state"] == "running" and p.get("app_links"):
+                app_keys(p)
             elif p["state"] == "running":            # a healthy gateway: only its license, when new or renewed
                 give_license("sbp-" + p["subdomain"], p)
         except Exception as e:

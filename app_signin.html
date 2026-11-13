@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Sign in · Squidbrake</title>
+<style>
+/* The Squidbrake app's sign-in (desktop.py serves it on 127.0.0.1 at a random address). squidbrake.com's palette;
+   no outside fonts or scripts, so it works the same offline-first and behind strict networks. */
+:root { --bg:#E6EBE2; --paper:#FBFCF9; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5; --soft:#DCE3D8;
+        --go:#237447; --go-soft:#DCEFE2; --stop:#C0301C; --stop-soft:#F7DFDA; --accent:#F2622E; --accent-hover:#E4541F;
+        --sans:"Helvetica Neue",Helvetica,Arial,sans-serif; --mono:ui-monospace,Menlo,Consolas,monospace; color-scheme:light; }
+* { box-sizing:border-box; }
+[hidden] { display:none !important; }
+body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--ink);
+       font:16px/1.55 var(--sans); -webkit-font-smoothing:antialiased; padding:16px; }
+.card { background:var(--paper); border:1px solid var(--line); border-radius:20px; padding:30px 28px 26px; max-width:440px; width:100%; }
+.brand { font-weight:700; font-size:18px; letter-spacing:-.02em; margin-bottom:18px; }
+.brand span { color:var(--accent); }
+.steps { display:flex; gap:6px; margin:0 0 20px; }
+.steps i { flex:1; height:6px; border-radius:99px; background:var(--soft); transition:background .4s; }
+.steps i.on { background:var(--go); }
+h1 { font-size:24px; font-weight:500; letter-spacing:-.03em; margin:0 0 6px; line-height:1.2; }
+p { color:var(--muted); margin:0 0 14px; }
+label { display:block; font-size:13px; color:var(--muted); margin:0 0 6px; }
+input { width:100%; font:inherit; font-size:17px; padding:12px 14px; border:1px solid var(--line); border-radius:12px;
+        background:#fff; color:var(--ink); outline:none; }
+input:focus { border-color:var(--ink); }
+input.code { font-family:var(--mono); font-size:26px; letter-spacing:.35em; text-align:center; }
+.btn { display:block; width:100%; margin-top:12px; font:inherit; font-weight:600; font-size:16px; border:0; border-radius:12px;
+       padding:12px 16px; background:var(--accent); color:#fff; cursor:pointer; }
+.btn:hover { background:var(--accent-hover); } .btn:disabled { opacity:.6; cursor:default; }
+.link { background:none; border:0; color:var(--muted); font:inherit; font-size:14px; text-decoration:underline; cursor:pointer; padding:0; }
+.err { background:var(--stop-soft); color:var(--stop); border-radius:10px; padding:8px 12px; font-size:14px; margin-top:12px; }
+.wait { display:flex; gap:12px; align-items:center; background:var(--soft); border-radius:12px; padding:12px 14px; }
+.spin { width:20px; height:20px; border:3px solid var(--line); border-top-color:var(--go); border-radius:50%; animation:s 1s linear infinite; flex:none; }
+@keyframes s { to { transform:rotate(360deg); } }
+.ok { font-size:44px; line-height:1; margin-bottom:8px; }
+ul.said { list-style:none; padding:0; margin:0 0 14px; font-size:14px; }
+ul.said li { padding:6px 10px; background:var(--go-soft); color:var(--go); border-radius:8px; margin-bottom:6px; }
+.small { font-size:13px; color:var(--muted); }
+@media (prefers-reduced-motion: reduce) { .spin { animation:none; } }
+</style>
+</head>
+<body>
+<main class="card">
+  <div class="brand">Squid<span>brake</span></div>
+  <div class="steps" aria-hidden="true"><i class="on"></i><i id="st2"></i><i id="st3"></i></div>
+
+  <form id="emailStep">
+    <h1>Connect this computer</h1>
+    <p>Sign in with the email you used for your Squidbrake dashboard. No keys to copy.</p>
+    <label for="email">Your email</label>
+    <input id="email" type="email" autocomplete="email" required autofocus placeholder="you@company.com">
+    <button class="btn" id="sendBtn">Email me a code</button>
+    <div class="err" id="err1" hidden></div>
+  </form>
+
+  <form id="codeStep" hidden>
+    <h1>Check your email</h1>
+    <p>We sent a 6-digit code to <b id="sentTo"></b>.</p>
+    <label for="code">The code</label>
+    <input id="code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="10" required placeholder="••••••">
+    <button class="btn" id="codeBtn">Connect</button>
+    <div class="err" id="err2" hidden></div>
+    <p class="small" style="margin-top:12px"><button type="button" class="link" id="back">Use another email</button> ·
+      <button type="button" class="link" id="resend">Send a new code</button></p>
+  </form>
+
+  <section id="waitStep" hidden>
+    <h1>Connecting <span id="device"></span></h1>
+    <div class="wait"><div class="spin"></div><div id="say">One moment…</div></div>
+    <p class="small" style="margin-top:12px">You can close this tab: the Squidbrake icon keeps going on its own.</p>
+    <div class="err" id="err3" hidden></div>
+  </section>
+
+  <section id="doneStep" hidden>
+    <div class="ok">✅</div>
+    <h1>You're protected</h1>
+    <p>Every AI agent on this computer now goes through your dashboard. <b>Quit and reopen your agents</b>, then work as usual.</p>
+    <ul class="said" id="said"></ul>
+    <a class="btn" id="dash" style="text-align:center;text-decoration:none" target="_blank" rel="noopener">Open my dashboard</a>
+    <p class="small" style="margin-top:12px">The Squidbrake icon in your menu bar shows it's working, and starts with your computer.</p>
+  </section>
+</main>
+<script>
+(() => {
+  const base = location.pathname.replace(/\/?$/, "/");
+  const $ = (id) => document.getElementById(id);
+  const show = (id) => ["emailStep", "codeStep", "waitStep", "doneStep"].forEach((s) => ($(s).hidden = s !== id));
+  $("device").textContent = __DEVICE__;
+  const call = async (path, body) => {
+    const r = await fetch(base + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.detail || "Something went wrong: try again.");
+    return j;
+  };
+  const err = (id, e) => { $(id).textContent = e ? e.message || e : ""; $(id).hidden = !e; };
+  const busy = (b, on, text) => { b.disabled = on; if (text) b.textContent = text; };
+
+  const sendCode = async () => {
+    await call("code", { email: $("email").value.trim() });
+    $("sentTo").textContent = $("email").value.trim();
+    $("st2").classList.add("on"); show("codeStep"); $("code").focus();
+  };
+  $("emailStep").onsubmit = async (e) => {
+    e.preventDefault(); err("err1"); busy($("sendBtn"), true, "Sending…");
+    try { await sendCode(); } catch (x) { err("err1", x); }
+    busy($("sendBtn"), false, "Email me a code");
+  };
+  $("back").onclick = () => { $("st2").classList.remove("on"); show("emailStep"); };
+  $("resend").onclick = async () => { err("err2"); try { await sendCode(); $("resend").textContent = "Sent ✓"; } catch (x) { err("err2", x); } };
+
+  const poll = async () => {
+    try {
+      const s = await call("poll");
+      if (s.state === "done") {
+        $("st3").classList.add("on");
+        $("said").innerHTML = (s.agents || []).map((a) => `<li>${a.replace(/[<>&]/g, "")}</li>`).join("");
+        $("dash").href = s.dashboard.replace(/\/$/, "") + "/dashboard";
+        show("doneStep"); return;
+      }
+      $("say").textContent = s.say || "One moment…";
+      setTimeout(poll, s.state === "waiting" ? 10000 : 3000);
+    } catch (x) { err("err3", x); setTimeout(poll, 8000); }
+  };
+  $("codeStep").onsubmit = async (e) => {
+    e.preventDefault(); err("err2"); busy($("codeBtn"), true, "Checking…");
+    try {
+      const s = await call("connect", { code: $("code").value.replace(/\s/g, "") });
+      $("say").textContent = s.say || "One moment…"; show("waitStep"); poll();
+    } catch (x) { err("err2", x); }
+    busy($("codeBtn"), false, "Connect");
+  };
+})();
+</script>
+</body>
+</html>

@@ -3,6 +3,9 @@ The `squidbrake` command (installed with pip):
 
   squidbrake                         start the gateway in the background: at every login, again if it stops, and
                                      updated to new versions on its own (see service.py)
+  squidbrake app                     the menu-bar / tray app: sign in with your email, and the agents here go
+                                     through your hosted dashboard (no keys to copy; starts at every login)
+  squidbrake login                   the same sign-in, in a terminal
   squidbrake setup                   everything at once: runs in the background, connects every agent here, checks
                                      them, and opens the dashboard signed in (the installers run this at the end)
   squidbrake start --foreground      run it in this window instead (debugging; nothing restarts it)
@@ -178,6 +181,12 @@ def main() -> int:
         import gateway_proxy
         gateway_proxy.main()
         return 0
+    if argv[:1] == ["app"]:        # the menu-bar / tray app for a hosted dashboard (desktop.py)
+        import desktop
+        return desktop.main(argv[1:])
+    if argv[:1] == ["login"]:      # the app's sign-in, in a terminal: this computer's agents to your hosted dashboard
+        import desktop
+        return desktop.main(argv)
     if argv[:1] == ["setup"]:      # everything at once: background, every agent connected, dashboard (onboard.py)
         import onboard
         return onboard.main(argv[1:])
