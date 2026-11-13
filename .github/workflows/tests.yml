@@ -53,6 +53,30 @@ jobs:
           psql -h localhost -U postgres -c "CREATE DATABASE gw_schema"
           pytest -q $TESTS
 
+  insights-reporting:
+    # The Insights adapter is distinct from the gateway's SQLAlchemy database.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ci-only
+          POSTGRES_DB: reporting
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_INSIGHTS_DATABASE_URL: postgresql://postgres:ci-only@localhost:5432/reporting
+      PGPASSWORD: ci-only
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt "psycopg[binary,pool]>=3.2" pytest
+      - run: psql -h localhost -U postgres -d reporting -c "CREATE ROLE anon; CREATE ROLE authenticated;"
+      - run: pytest -q tests/test_reporting_ingest.py tests/test_reporting_export.py
+
   package:
     # what `pip install squidbrake` gets: build the wheel, install it on its own, start it, block something
     runs-on: ubuntu-latest

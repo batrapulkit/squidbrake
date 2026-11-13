@@ -1,5 +1,10 @@
 # Squidbrake Insights (squidbrake.com)
 
+The optional [versioned reporting collector](../docs/reporting-v2.md) adds typed,
+authenticated ingestion alongside the legacy pilot API. It is disabled by default
+(`INSIGHTS_REPORTING_V2=1` enables it). Existing clients continue using the legacy
+protocol until the separate producer/delivery cycles are implemented.
+
 The one website: the pages people read (`/`, `/pricing`, `/docs`, `/security`, `/changelog`, from [`site/`](site)),
 sign-up, the setup guides, the demo form and your admin. A visitor signs up (`/signup`, email link through Supabase
 Auth), picks **on my computer** or **on our server (hosted)**, and lands on a setup guide with a checklist for that

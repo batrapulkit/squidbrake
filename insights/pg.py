@@ -15,6 +15,22 @@ from decimal import Decimal
 # the tables the code writes with INSERT OR REPLACE, and their primary keys
 REPLACE_KEYS = {"settings": ("key",), "days": ("install_id", "day")}
 
+# Used by live migrations and SQLite exports, including tables that already have RLS.
+# Ordinary Postgres installations need not have Supabase's public-facing roles.
+PROTECT_TABLES = """DO $$ DECLARE t record; r text; BEGIN
+  FOR t IN SELECT tablename, rowsecurity FROM pg_tables WHERE schemaname = current_schema() ORDER BY tablename LOOP
+    IF NOT t.rowsecurity THEN
+      EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t.tablename);
+    END IF;
+    FOREACH r IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+      IF EXISTS (SELECT 1 FROM information_schema.table_privileges
+                 WHERE table_schema=current_schema() AND table_name=t.tablename AND grantee=r) THEN
+        EXECUTE format('REVOKE ALL ON %I FROM %I', t.tablename, r);
+      END IF;
+    END LOOP;
+  END LOOP;
+END $$"""
+
 
 def translate(q: str, has_params: bool) -> str:
     """SQLite's dialect, as this app uses it, in Postgres's."""
@@ -102,15 +118,14 @@ class Conn:
         return cur
 
     def executescript(self, script: str):
-        self.c.execute(translate(script, False))
-        # every table here: row level security on, with no policies, so only this server's own login reaches them
-        self.c.execute("""DO $$ DECLARE t text; BEGIN
-            FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = current_schema() AND NOT rowsecurity LOOP
-              EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
-              IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN
-                EXECUTE format('REVOKE ALL ON %I FROM anon, authenticated', t);
-              END IF;
-            END LOOP; END $$""")
+        # Serialize process startup. Repeated protection avoids ALTER/REVOKE when
+        # already configured, so it need not lock tables used by a running ingest.
+        self.c.execute("SELECT pg_advisory_lock(hashtextextended(current_schema(), 731209))")
+        try:
+            self.c.execute(translate(script, False))
+            self.c.execute(PROTECT_TABLES)
+        finally:
+            self.c.execute("SELECT pg_advisory_unlock(hashtextextended(current_schema(), 731209))")
 
 
 def pool(url: str, schema: str):
@@ -118,7 +133,8 @@ def pool(url: str, schema: str):
     from psycopg import sql as pgsql
     from psycopg_pool import ConnectionPool
 
-    with psycopg.connect(url, autocommit=True) as conn:        # once, before the pool's connections race to it
+    with psycopg.connect(url) as conn:        # once, before the pool's connections race to it
+        conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 731209))", (schema,))
         conn.execute(pgsql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(pgsql.Identifier(schema)))
 
     def configure(conn):

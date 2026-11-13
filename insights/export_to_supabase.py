@@ -13,7 +13,7 @@ import re
 import sqlite3
 import sys
 
-from pg import translate
+from pg import PROTECT_TABLES, translate
 
 SCHEMA = os.getenv("INSIGHTS_PG_SCHEMA", "squidbrake")
 
@@ -49,12 +49,8 @@ def export(path: str, out=sys.stdout) -> None:
               " AND ".join(f"a.{c} IS NOT DISTINCT FROM b.{c}" for c in cols.split(", ")) + ";")
         if re.search(r"(?i)\bid INTEGER PRIMARY KEY AUTOINCREMENT", ddl):
             w(f"SELECT setval(pg_get_serial_sequence('{SCHEMA}.{name}', 'id'), COALESCE((SELECT MAX(id) FROM {name}), 0) + 1, false);")
-    w("""DO $$ DECLARE t text; BEGIN
-  FOR t IN SELECT tablename FROM pg_tables WHERE schemaname = current_schema() LOOP
-    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
-    EXECUTE format('REVOKE ALL ON %I FROM anon, authenticated', t);
-  END LOOP; END $$;
-COMMIT;""")
+    w(PROTECT_TABLES + ";\nCOMMIT;")
+    src.close()
 
 
 if __name__ == "__main__":
