@@ -4,58 +4,164 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Get started with Squidbrake</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Host+Grotesk:wght@300..700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-:root { --bg:#fafaf9; --card:#fff; --ink:#18181b; --muted:#71717a; --line:#e4e4e7; --code:#f4f4f5; --accent:#dc2626;
-        --ok:#16a34a; --warn:#b45309; }
-@media (prefers-color-scheme: dark) { :root { --bg:#111114; --card:#1a1a1f; --ink:#f4f4f5; --muted:#a1a1aa; --line:#2e2e35;
-        --code:#232329; --accent:#ef4444; --ok:#22c55e; --warn:#f59e0b; } }
+/* the squidbrake.com palette (same as /signup) */
+:root { --bg:#E6EBE2; --surface:#F4F6F1; --paper:#FBFCF9; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5; --soft:#DCE3D8;
+        --go:#237447; --go-soft:#DCEFE2; --stop:#C0301C; --stop-soft:#F7DFDA; --hold:#A5560C; --hold-soft:#F6E7D3;
+        --accent:#F2622E; --accent-hover:#E4541F; --term:#17211B;
+        --sans:"Host Grotesk","Helvetica Neue",Helvetica,Arial,sans-serif;
+        --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace; color-scheme:light; }
 * { box-sizing:border-box; }
-body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
-main { max-width:760px; margin:0 auto; padding:40px 16px 64px; }
-.brand { font-weight:800; font-size:20px; letter-spacing:-.01em; }
+[hidden] { display:none !important; }
+body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 var(--sans); -webkit-font-smoothing:antialiased; }
+main { max-width:760px; margin:0 auto; padding:24px 16px 72px; }
+a { color:var(--ink); }
+code { font-family:var(--mono); background:var(--soft); padding:1px 6px; border-radius:6px; font-size:.88em; }
+.top { display:flex; justify-content:space-between; align-items:center; }
+.brand { font-weight:700; font-size:20px; letter-spacing:-.02em; }
 .brand span { color:var(--accent); }
-h1 { font-size:32px; line-height:1.2; margin:18px 0 8px; letter-spacing:-.02em; }
-.lead { color:var(--muted); margin:0 0 28px; font-size:17px; }
-.step { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px 20px 18px; margin:0 0 14px; }
-.step h2 { font-size:18px; margin:0 0 6px; display:flex; gap:10px; align-items:center; }
-.n { display:inline-grid; place-items:center; width:26px; height:26px; border-radius:50%; background:var(--accent); color:#fff;
-     font-size:14px; flex:none; }
+.help { font-size:14px; color:var(--muted); text-decoration:none; border:1px solid var(--line); border-radius:99px; padding:5px 12px; }
+h1 { font-size:36px; line-height:1.12; font-weight:500; letter-spacing:-.035em; margin:26px 0 8px; }
+.lead { color:var(--muted); margin:0 0 16px; font-size:17px; }
+.verdicts { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 22px; }
+.v { display:inline-flex; align-items:center; gap:7px; font-size:13.5px; border-radius:99px; padding:5px 12px; font-weight:500; }
+.v b { font-family:var(--mono); font-size:12px; }
+.v-go { background:var(--go-soft); color:var(--go); } .v-hold { background:var(--hold-soft); color:var(--hold); }
+.v-stop { background:var(--stop-soft); color:var(--stop); }
+
+/* overall progress */
+.progress { background:var(--paper); border:1px solid var(--line); border-radius:16px; padding:16px 18px 14px; margin:0 0 14px; }
+.progress .row { display:flex; justify-content:space-between; align-items:baseline; gap:12px; font-size:14px; }
+.progress .row b { font-size:15px; } .progress .row span { color:var(--muted); }
+.meter { height:8px; background:var(--soft); border-radius:99px; overflow:hidden; margin:10px 0 14px; }
+.meter i { display:block; height:100%; width:0; border-radius:99px; background:linear-gradient(90deg, var(--go), #36a066);
+           transition:width .7s cubic-bezier(.2,.8,.2,1); }
+.stepper { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; }
+.stepper li { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); min-width:0; }
+.stepper .dot { flex:none; width:22px; height:22px; border-radius:50%; border:2px solid var(--line); background:var(--paper);
+                display:grid; place-items:center; font-size:11px; font-weight:700; color:#fff; transition:all .3s; }
+.stepper li.done .dot { background:var(--go); border-color:var(--go); }
+.stepper li.now { color:var(--ink); font-weight:600; }
+.stepper li.now .dot { border-color:var(--accent); box-shadow:0 0 0 4px rgba(242,98,46,.18); }
+@media (max-width:520px) { .stepper li span.t { display:none; } .stepper li.now span.t { display:inline; } h1 { font-size:29px; } }
+
+/* step cards */
+.step { background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:20px; margin:0 0 12px;
+        transition:opacity .3s, box-shadow .3s, border-color .3s; }
+.step.active { border-color:var(--ink); box-shadow:0 14px 30px -18px rgba(30,42,35,.45); background:var(--paper); }
+.step h2 { font-size:19px; font-weight:600; letter-spacing:-.015em; margin:0 0 8px; display:flex; gap:10px; align-items:center; }
+.step h2 .sub { margin-left:auto; font-size:12.5px; font-weight:500; color:var(--muted); font-family:var(--mono); }
+.n { display:inline-grid; place-items:center; width:28px; height:28px; border-radius:50%; background:var(--ink); color:var(--surface);
+     font:600 13px var(--mono); flex:none; transition:background .3s; }
+.n.ok { background:var(--go); }
 .step p { margin:6px 0; color:var(--muted); }
-.tabs { display:flex; gap:6px; margin:10px 0 8px; }
-.tabs button { border:1px solid var(--line); background:var(--code); color:var(--ink); border-radius:999px; padding:5px 12px;
-               font:inherit; font-size:14px; cursor:pointer; }
-.tabs button[aria-selected="true"] { background:var(--ink); color:var(--bg); border-color:var(--ink); }
-.cmd { position:relative; background:var(--code); border:1px solid var(--line); border-radius:10px; margin:8px 0;
-       padding:12px 84px 12px 14px; font:14px/1.5 ui-monospace,"Cascadia Code",Consolas,monospace; overflow-x:auto;
-       white-space:pre-wrap; word-break:break-all; }
-.copy { position:absolute; top:8px; right:8px; border:1px solid var(--line); background:var(--card); color:var(--ink);
-        border-radius:8px; padding:4px 10px; font:13px system-ui,sans-serif; cursor:pointer; }
+.locked { opacity:.5; }
+.lockmsg { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:14.5px; }
 .note { font-size:14px; }
-.privacy { border-left:4px solid var(--ok); }
+.chip { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; background:var(--soft); color:var(--muted);
+        border-radius:99px; padding:3px 10px; margin-top:8px; }
+.btn { display:inline-flex; align-items:center; gap:8px; border:0; background:var(--accent); color:#fff; border-radius:12px;
+       padding:13px 22px; font:600 16px var(--sans); cursor:pointer; text-decoration:none; transition:background .15s, transform .1s; }
+.btn:hover { background:var(--accent-hover); } .btn:active { transform:translateY(1px); }
+.btn.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); }
+.btn.ghost:hover { background:var(--soft); }
+.btn.small { padding:8px 14px; font-size:14px; border-radius:10px; }
+.btns { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin:12px 0 4px; }
+
+/* dashboard starting */
+.boot .meter i { background:linear-gradient(90deg, var(--accent), #F59A62); }
+.tasks { list-style:none; padding:0; margin:4px 0 0; }
+.tasks li { display:flex; gap:10px; align-items:center; padding:4px 0; color:var(--muted); font-size:15px; transition:color .3s; }
+.tasks .ic { flex:none; width:18px; height:18px; border-radius:50%; border:2px solid var(--line); display:grid; place-items:center;
+             font-size:10px; color:#fff; }
+.tasks li.doing { color:var(--ink); } .tasks li.doing .ic { border-color:var(--accent); border-top-color:transparent; animation:spin .8s linear infinite; }
+.tasks li.done { color:var(--ink); } .tasks li.done .ic { background:var(--go); border-color:var(--go); }
+.tasks li.done .ic::after { content:"✓"; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* in line */
+.queue { display:flex; gap:18px; align-items:center; }
+.queue .pos { font-size:52px; font-weight:600; letter-spacing:-.04em; line-height:1; }
+.queue .pos small { font-size:16px; color:var(--muted); font-weight:500; letter-spacing:0; display:block; margin-top:4px; }
+.people { display:flex; gap:5px; margin:8px 0 2px; flex-wrap:wrap; } .people i { width:12px; height:12px; border-radius:50%; background:var(--line); }
+.people i.you { background:var(--accent); animation:pulse 1.6s infinite; }
+
+/* keys */
+.ready { display:flex; gap:14px; align-items:center; }
+.ready .big { font-size:34px; }
+.keyrow { display:grid; grid-template-columns:110px 1fr auto; gap:10px; align-items:center; background:#fff; border:1px solid var(--line);
+          border-radius:12px; padding:10px 12px; margin:8px 0; }
+.keyrow .lbl { font-weight:600; font-size:14px; } .keyrow .lbl small { display:block; color:var(--muted); font-weight:400; font-size:12px; }
+.keyrow .val { font-family:var(--mono); font-size:13px; word-break:break-all; }
+.mini { border:1px solid var(--line); background:var(--surface); color:var(--ink); border-radius:8px; padding:5px 10px;
+        font:500 13px var(--sans); cursor:pointer; white-space:nowrap; }
+.warnbar { display:flex; gap:8px; align-items:center; background:var(--hold-soft); color:var(--hold); border-radius:10px; padding:8px 12px;
+           font-size:14px; font-weight:500; margin:10px 0 0; }
+@media (max-width:520px) { .keyrow { grid-template-columns:1fr auto; } .keyrow .val { grid-column:1 / -1; grid-row:2; } }
+
+/* connect */
+.howto { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin:8px 0 12px; counter-reset:h; }
+.howto div { background:#fff; border:1px solid var(--line); border-radius:12px; padding:10px 12px; font-size:14px; }
+.howto div b { display:block; font-size:15px; margin-top:2px; }
+.howto div span { font-family:var(--mono); font-size:12px; color:var(--muted); }
+@media (max-width:520px) { .howto { grid-template-columns:1fr; gap:6px; }
+  .howto div { display:flex; gap:8px; align-items:baseline; padding:8px 12px; } .howto div b { display:inline; margin:0; } }
+.tabs { display:inline-flex; gap:2px; background:var(--soft); border-radius:10px; padding:3px; margin:4px 0 8px; }
+.tabs button { border:0; background:transparent; color:var(--muted); border-radius:8px; padding:6px 13px; font:500 14px var(--sans); cursor:pointer; }
+.tabs button[aria-selected="true"] { background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(30,42,35,.15); }
+.cmd { position:relative; background:var(--term); color:#E6EBE2; border-radius:12px; margin:8px 0; padding:16px 100px 16px 16px;
+       font:13.5px/1.6 var(--mono); overflow-x:auto; white-space:pre-wrap; word-break:break-all; }
+.cmd::before { content:"$ "; color:#7FBF95; }
+.copy { position:absolute; top:10px; right:10px; border:0; background:var(--accent); color:#fff; border-radius:8px; padding:6px 13px;
+        font:600 13px var(--sans); cursor:pointer; }
+.copy:hover { background:var(--accent-hover); }
+.live { display:flex; gap:10px; align-items:center; background:var(--soft); border-radius:12px; padding:11px 14px; margin:12px 0 0;
+        font-size:14.5px; color:var(--ink); transition:background .3s; }
+.live .pulse { flex:none; width:10px; height:10px; border-radius:50%; background:var(--accent); animation:pulse 1.4s infinite; }
+.live.ok { background:var(--go-soft); color:var(--go); font-weight:600; } .live.ok .pulse { background:var(--go); animation:none; }
+@keyframes pulse { 0% { box-shadow:0 0 0 0 rgba(242,98,46,.5); } 70% { box-shadow:0 0 0 9px rgba(242,98,46,0); } 100% { box-shadow:0 0 0 0 rgba(242,98,46,0); } }
+
+/* done */
+.done-box { border:2px solid var(--go); background:linear-gradient(180deg, var(--go-soft), var(--paper) 70%); }
+.done-box h2 { color:var(--go); font-size:22px; }
+.tries { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin:10px 0 4px; }
+.tries div { background:#fff; border:1px solid var(--line); border-radius:12px; padding:10px 12px; font-size:14px; }
+.tries div em { display:block; font-style:normal; font-size:12.5px; margin-top:4px; font-weight:600; }
+@media (max-width:520px) { .tries { grid-template-columns:1fr; } }
+.confetti { position:fixed; top:-12px; width:9px; height:14px; border-radius:2px; z-index:50; pointer-events:none; animation:fall 2.6s ease-in forwards; }
+@keyframes fall { to { transform:translate3d(var(--dx), 105vh, 0) rotate(var(--r)); opacity:.9; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } .confetti { display:none; } }
+
+/* folded details */
+details.step { padding:0; } details.step > summary { cursor:pointer; list-style:none; padding:15px 20px; font-weight:600; font-size:16px;
+  display:flex; justify-content:space-between; align-items:center; }
+details.step > summary::-webkit-details-marker { display:none; }
+details.step > summary::after { content:"+"; font:400 22px var(--sans); color:var(--muted); }
+details.step[open] > summary::after { content:"–"; }
+details.step > :not(summary) { margin-left:20px; margin-right:20px; }
+details.step > :last-child { margin-bottom:16px; }
+details.step ul { color:var(--muted); padding-left:20px; } details.step li { margin:4px 0; }
+
+/* shared with the local setup page */
+.privacy { border-left:4px solid var(--go); }
 .privacy ul { margin:8px 0 0; padding-left:20px; color:var(--muted); }
-.privacy li b { color:var(--ink); }
-.try li { margin:4px 0; }
+.privacy li b, .try li b { color:var(--ink); }
+.try li { margin:4px 0; color:var(--muted); }
 .foot { color:var(--muted); font-size:14px; margin-top:26px; }
-code { background:var(--code); padding:1px 6px; border-radius:6px; font-size:.92em; }
-a { color:var(--accent); }
 .missing { text-align:center; margin-top:80px; }
-.locked { opacity:.55; }
-.n.ok { background:var(--ok); }
-.live { color:var(--ink); }
-.done-box { border-left:4px solid var(--ok); }
-details.step summary { cursor:pointer; font-weight:650; font-size:16px; }
-details.step ul { color:var(--muted); padding-left:20px; margin:10px 0 0; } details.step li { margin:4px 0; }
-details.step table { margin-top:8px; }
-table.cover { width:100%; border-collapse:collapse; font-size:14.5px; }
+table.cover { width:100%; border-collapse:collapse; font-size:14.5px; margin-top:6px; }
 table.cover td { padding:7px 6px; border-top:1px solid var(--line); vertical-align:top; color:var(--muted); }
 table.cover td:first-child { color:var(--ink); white-space:nowrap; width:1%; padding-right:14px; }
 table.cover tr:first-child td { border-top:0; }
 .check ul { list-style:none; padding:0; margin:8px 0 0; }
 .check li { margin:2px 0; } .check label { display:flex; gap:10px; align-items:flex-start; cursor:pointer; padding:5px 0; }
-.check input { width:18px; height:18px; margin-top:3px; accent-color:var(--ok); flex:none; }
+.check input { width:18px; height:18px; margin-top:3px; accent-color:var(--go); flex:none; }
 .check input:checked + span { color:var(--muted); text-decoration:line-through; }
-.check .bar { height:6px; border-radius:3px; background:var(--code); overflow:hidden; margin-top:6px; }
-.check .bar i { display:block; height:100%; background:var(--ok); width:0; transition:width .2s; }
+.check .bar { height:8px; border-radius:99px; background:var(--soft); overflow:hidden; margin-top:6px; }
+.check .bar i { display:block; height:100%; background:var(--go); width:0; transition:width .3s; }
 </style>
 </head>
 <body>
@@ -156,51 +262,69 @@ if (D.hosted && !D.missing) {
 }
 
 function hostedPage() {
-  // Two steps, each unlocked by the one before, and the page sees for itself when they're done: (1) keys, (2) the
-  // install line with the agent key filled in, then the first agent action arriving (polled from /status).
-  const keyless = "gw_YOUR_AGENT_KEY", R = D.reclaim;
+  // The page walks the founder through: account (done) -> dashboard starting -> keys -> agent connected. Each card
+  // unlocks the next, a progress bar shows how far along they are, and the page sees for itself when each step is
+  // done (it polls /status): no "did it work?" guessing.
+  const keyless = "gw_YOUR_AGENT_KEY", R = D.reclaim, host = (D.dashboard || "").replace(/^https?:\/\//, "");
   const cmds = (key) => ({
     win: `$env:SQUIDBRAKE_URL="${D.dashboard}"; $env:SQUIDBRAKE_AGENT_KEY="${key}"; irm ${D.server}/install.ps1 | iex`,
     mac: `curl -fsSL ${D.server}/install.sh | SQUIDBRAKE_URL=${D.dashboard} SQUIDBRAKE_AGENT_KEY=${key} sh`,
     manual: `pipx install squidbrake\nsquidbrake connect claude-code --url ${D.dashboard} --key ${key} --hook-only`,
   });
+  const STEPS = ["Account", "Dashboard", "Keys", "Agent connected"];
   app.innerHTML = `
-    <div class="brand">Squid<span>brake</span></div>
-    <h1>Hi ${esc(D.company)}: two steps, about 2 minutes</h1>
-    <p class="lead">Squidbrake checks every action your AI agent takes before it runs: reading code runs on its own,
-      changes wait for your OK, and dangerous commands are blocked. Your dashboard runs on our server, so there's
-      nothing to keep open on your laptop.</p>
+    <header class="top"><div class="brand">Squid<span>brake</span></div><a class="help" href="#help">Need help?</a></header>
+    <h1>Hi ${esc(D.company)}, let's get you set up</h1>
+    <p class="lead">Two steps, about 2 minutes. Then every action your AI agent takes is checked before it runs:</p>
+    <div class="verdicts">
+      <span class="v v-go"><b>✓</b> Reading code runs on its own</span>
+      <span class="v v-hold"><b>❚❚</b> Changes wait for your OK</span>
+      <span class="v v-stop"><b>✕</b> Dangerous commands are blocked</span>
+    </div>
 
-    ${D.plan === "team" ? `<section class="step" style="border-left:4px solid var(--ok)"><h2>Your Team trial</h2>
-      <p>Free until <b>${esc(D.trial_ends || "")}</b>: shared approvals from the dashboard, your phone or Slack, for your
-        whole team. Then $499 a month for one team, cancel any month.
+    <section class="progress" aria-label="Your progress">
+      <div class="row"><b id="pLabel">Getting started</b><span id="pEta"></span></div>
+      <div class="meter"><i id="pBar"></i></div>
+      <ol class="stepper">${STEPS.map((t, i) => `<li data-i="${i}"><span class="dot"></span><span class="t">${t}</span></li>`).join("")}</ol>
+    </section>
+
+    ${D.plan === "team" ? `<section class="step" style="border-left:4px solid var(--go)"><h2>🎁 Your Team trial is on</h2>
+      <p>Free until <b>${esc(D.trial_ends || "")}</b> for your whole team, then $499 a month for one team, cancel any month.
         ${D.checkout ? `<a href="${esc(D.checkout)}" target="_blank" rel="noopener">Add a card now</a> so it keeps running.` : "We'll email you before it ends."}</p>
     </section>` : ""}
-    <section class="step" id="s1"><h2><span class="n">1</span> Get your keys</h2>
+
+    <section class="step active" id="s1"><h2><span class="n">1</span> Get your keys <span class="sub" id="s1sub"></span></h2>
       <div id="keys"></div>
     </section>
 
-    <section class="step locked" id="s2"><h2><span class="n">2</span> Connect your AI agent</h2>
-      <p class="note" id="lockedNote">Do step 1 first: your agent key goes into this step.</p>
+    <section class="step locked" id="s2"><h2><span class="n">2</span> Connect your AI agent <span class="sub">~1 min</span></h2>
+      <p class="lockmsg" id="lockedNote">🔒 Unlocks after step 1: your agent key goes in here.</p>
       <div id="connect" hidden>
-        <p>Open a terminal (on Windows: <b>PowerShell</b>), paste this line and press Enter. It finds the coding agents
-          on this computer and connects each one to your dashboard.</p>
+        <div class="howto">
+          <div><span>1</span><b>Copy the line</b>below, for your system</div>
+          <div><span>2</span><b>Paste it in a terminal</b>Windows: PowerShell</div>
+          <div><span>3</span><b>Reopen your agent</b>and ask it anything</div>
+        </div>
         <div class="tabs" role="tablist">
           <button role="tab" data-os="win">Windows</button><button role="tab" data-os="mac">macOS / Linux</button>
           <button role="tab" data-os="manual">Manual</button></div>
         <div class="cmd" id="installCmd"></div>
         <p class="note" id="keyNote"></p>
-        <p>Then <b>quit and reopen your agent</b> (Claude Code, Cursor, ...) and ask it anything.</p>
-        <p class="live" id="live"></p>
+        <div class="live" id="live"><span class="pulse"></span><span id="liveText">Listening for your agent's first action…</span></div>
       </div>
     </section>
 
-    <section class="step done-box" id="done" hidden><h2>✓ You're set</h2>
-      <p>Your agent's actions now go through your dashboard. Try asking it to <b>print your .env file</b> (blocked, and
-        the agent is told why) or to <b>change a file</b> (it waits for your OK in the dashboard).</p>
+    <section class="step done-box" id="done" hidden><h2>🎉 You're set</h2>
+      <p>Your agent's actions now go through your dashboard. Try one of these in your agent:</p>
+      <div class="tries">
+        <div>"Print my .env file"<em style="color:var(--stop)">✕ Blocked, and it's told why</em></div>
+        <div>"Fix the failing test"<em style="color:var(--hold)">❚❚ Waits for your OK</em></div>
+        <div>"Read the README"<em style="color:var(--go)">✓ Just runs</em></div>
+      </div>
+      <div class="btns"><a class="btn" href="${esc(D.dashboard)}/dashboard" target="_blank" rel="noopener">Open my dashboard ↗</a></div>
     </section>
 
-    <details class="step"><summary>Next: approve from your phone, add your team</summary>
+    <details class="step"><summary>📱 Next: approve from your phone, add your team</summary>
       <ul>
         <li>In the dashboard, click <b>Phone</b> and scan the QR code: held actions reach you with one-tap Approve / Reject.</li>
         <li>Add teammates from the dashboard's <b>Team</b> page.</li>
@@ -209,7 +333,7 @@ function hostedPage() {
       </ul>
     </details>
 
-    <details class="step"><summary>What gets checked, per agent</summary>
+    <details class="step"><summary>🔍 What gets checked, per agent</summary>
       <table class="cover">
         <tr><td><b>Claude Code</b></td><td>everything: commands, edits, file reads, web fetches, MCP tools</td></tr>
         <tr><td><b>Cursor</b></td><td>terminal commands, file reads, MCP tools</td></tr>
@@ -221,7 +345,7 @@ function hostedPage() {
       </table>
     </details>
 
-    <details class="step privacy"><summary>Where your data lives</summary>
+    <details class="step"><summary>🔒 Where your data lives</summary>
       <ul>
         <li><b>Your dashboard runs on a server we operate</b> (in India). Every action your agent takes is sent there to be
           checked and recorded: the command or tool, its inputs (which can include the text of an edit) and its result.
@@ -236,8 +360,20 @@ function hostedPage() {
       </ul>
     </details>
 
-    <p class="foot">Stuck? ${D.contact ? "Reach me: " + esc(D.contact) + "." : "Reply to the message this link came in."}
+    <p class="foot" id="help">Stuck? ${D.contact ? "Reach me: " + esc(D.contact) + "." : "Reply to the message this link came in."}
       To disconnect: <code>squidbrake connect claude-code --remove</code>. Squidbrake is free.</p>`;
+
+  // ---- overall progress: how many of the 4 milestones are done, which one is next, and roughly how long is left
+  const progress = (done, label, eta) => {
+    document.getElementById("pBar").style.width = `${Math.max(6, (100 * done) / STEPS.length)}%`;
+    document.getElementById("pLabel").textContent = label;
+    document.getElementById("pEta").textContent = eta || "";
+    document.querySelectorAll(".stepper li").forEach((li) => {
+      const i = Number(li.dataset.i);
+      li.className = i < done ? "done" : i === done ? "now" : "";
+      li.querySelector(".dot").textContent = i < done ? "✓" : "";
+    });
+  };
 
   let current = cmds(keyless);
   const box = document.getElementById("installCmd");
@@ -248,24 +384,34 @@ function hostedPage() {
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => show(b.dataset.os)));
   show(/Mac|Linux|X11/.test(navigator.userAgent) && !/Windows/.test(navigator.userAgent) ? "mac" : "win");
 
-  const done = (id) => { const n = document.querySelector(`#${id} .n`); n.textContent = "✓"; n.classList.add("ok"); };
+  const done = (id) => {
+    const sec = document.getElementById(id), n = sec.querySelector(".n");
+    n.textContent = "✓"; n.classList.add("ok"); sec.classList.remove("active");
+  };
   // step 2 opens once the keys are in hand: with the agent key filled in, or (keys shown on an earlier visit) a slot for it
   const unlock = (agentKey) => {
-    document.getElementById("s2").classList.remove("locked");
+    const s2 = document.getElementById("s2");
+    s2.classList.remove("locked"); s2.classList.add("active");
     document.getElementById("lockedNote").hidden = true;
     document.getElementById("connect").hidden = false;
     if (agentKey) current = cmds(agentKey);
     show(box.dataset.os);
-    document.getElementById("keyNote").innerHTML = agentKey ? "Your agent key is already in the line: copy the whole line."
+    document.getElementById("keyNote").innerHTML = agentKey ? "✓ Your agent key is already in the line: copy it as it is."
       : `Put your <b>agent</b> key in place of <code>${keyless}</code>.`;
+    progress(3, "Step 2 of 2: connect your agent", "about 1 minute left");
     watch();
   };
   let watching = false;
-  const live = document.getElementById("live");
+  const live = document.getElementById("live"), liveText = document.getElementById("liveText");
   const connected = () => {
     done("s2");
-    live.innerHTML = `<span style="color:var(--ok)">✓ Connected: your agent's first action reached your dashboard.</span>`;
+    live.classList.add("ok");
+    liveText.textContent = "Connected: your agent's first action reached your dashboard.";
+    document.querySelector("#connect .howto").hidden = true;
     document.getElementById("done").hidden = false;
+    progress(4, "All done", "you're set");
+    confetti();
+    document.getElementById("done").scrollIntoView({ behavior: "smooth", block: "center" });
   };
   const watch = async () => {
     if (watching) return;
@@ -274,43 +420,87 @@ function hostedPage() {
       let s = null;
       try { s = await (await fetch(`/v1/pilot/${encodeURIComponent(D.code)}/status`)).json(); } catch {}
       if (s && s.connected) return connected();
-      live.innerHTML = `⏳ Waiting for your agent's first action. This turns green by itself.` +
-        (R ? ` <span class="note">(Connect within ${R.idle_hours} hours to keep this dashboard.)</span>` : "");
+      if (R) liveText.textContent = `Listening for your agent's first action… (connect within ${R.idle_hours} h to keep this dashboard)`;
       await new Promise((r) => setTimeout(r, 5000));
     }
   };
 
-  const keys = document.getElementById("keys");
-  const big = "border:0;background:var(--accent);color:#fff;border-radius:10px;padding:12px 20px;font:inherit;font-weight:650;cursor:pointer;text-decoration:none;display:inline-block";
+  // ---- step 1: the dashboard starting, then the keys
+  const keys = document.getElementById("keys"), s1sub = document.getElementById("s1sub");
+  const lost = D.self_serve_keys
+    ? `Lost them? <a href="/signup?new_keys=1">Sign in again for new keys</a> (your agents keep working).`
+    : `Lost them? Reply to the message this link came in and we'll issue new ones.`;
+  // What provision.py does to start a gateway, shown as it goes (timed here; all ticked when the keys arrive)
+  const TASKS = [[0, `Reserving <b>${esc(host)}</b>`], [5, "Starting your private gateway"],
+                 [16, "Creating your keys"], [28, "Checking your keys open it"]];
+  let booting = null;
+  const boot = () => {
+    if (booting) return;
+    keys.innerHTML = `<div class="boot">
+        <p style="color:var(--ink);font-weight:500">Starting your dashboard. Keep this tab open: it updates by itself.</p>
+        <div class="meter"><i id="bootBar"></i></div>
+        <ul class="tasks">${TASKS.map(([, t], i) => `<li data-i="${i}"><span class="ic"></span><span>${t}</span></li>`).join("")}</ul>
+      </div>`;
+    const t0 = Date.now();
+    const tick = () => {
+      const t = (Date.now() - t0) / 1000;
+      // eases toward 92% over about a minute; the last bit fills when the keys really arrive
+      document.getElementById("bootBar").style.width = `${Math.min(92, 8 + 84 * (1 - Math.exp(-t / 22)))}%`;
+      document.querySelectorAll(".tasks li").forEach((li) => {
+        const i = Number(li.dataset.i), next = TASKS[i + 1];
+        li.className = t >= TASKS[i][0] ? (next && t >= next[0] ? "done" : "doing") : "";
+      });
+    };
+    tick();
+    booting = setInterval(tick, 500);
+    s1sub.textContent = "~1 min";
+    progress(1, "Starting your dashboard", "about 2 minutes left");
+  };
+  const booted = (then) => {
+    if (!booting) return then();
+    clearInterval(booting); booting = null;
+    document.getElementById("bootBar").style.width = "100%";
+    document.querySelectorAll(".tasks li").forEach((li) => (li.className = "done"));
+    setTimeout(then, 700);
+  };
+
   const render = (s) => {
-    // new keys only after signing in again with the email on file: this page's link alone isn't proof enough
-    const lost = D.self_serve_keys
-      ? `Lost them? <a href="/signup?new_keys=1">Sign in again for new keys</a> (your agents keep working).`
-      : `Lost them? Reply to the message this link came in and we'll issue new ones.`;
     if (s.rekey) {
-      keys.innerHTML = `<p>⏳ Making new keys for <b>${esc(D.dashboard)}</b>. This page updates by itself (under a minute).</p>`;
+      keys.innerHTML = `<p style="color:var(--ink)">⏳ Making new keys for <b>${esc(host)}</b>. This updates by itself (under a minute).</p>`;
+      progress(2, "Making new keys", "under a minute");
       setTimeout(poll, 4000);
     } else if (s.keys_shown && !s.revealed) {
-      keys.innerHTML = `<p>Your keys were shown on this page before. <a href="${esc(D.dashboard)}/dashboard" target="_blank" rel="noopener">Open your dashboard</a>
-        and sign in with your <b>admin</b> key. ${lost}</p>`;
-      done("s1"); unlock(null);
+      booted(() => {
+        keys.innerHTML = `<p>✓ Keys taken. <a href="${esc(D.dashboard)}/dashboard" target="_blank" rel="noopener">Open your dashboard ↗</a>
+          and sign in with your <b>admin</b> key.</p><p class="note">${lost}</p>`;
+        s1sub.textContent = "";
+        done("s1"); unlock(null);
+      });
     } else if (s.state === "waiting") {
-      keys.innerHTML = `<p>✓ You're in line: every hosted dashboard is taken right now.
-        ${s.ahead ? `<b>${s.ahead}</b> ${s.ahead === 1 ? "person is" : "people are"} ahead of you.` : "<b>You're next.</b>"}
-        Yours starts on its own as soon as a slot frees up. Keep this page open, or come back to this link: it updates by itself.</p>`;
+      const ahead = s.ahead || 0;
+      keys.innerHTML = `<div class="queue">
+          <div class="pos">#${ahead + 1}<small>in line</small></div>
+          <div><p style="color:var(--ink);margin:0;font-weight:500">Every dashboard is in use right now.
+            ${ahead ? `${ahead} ${ahead === 1 ? "person is" : "people are"} ahead of you.` : "You're next."}</p>
+            <div class="people">${"<i></i>".repeat(Math.min(ahead, 20))}<i class="you" title="you"></i></div>
+            <p class="note">Yours starts on its own as soon as a slot frees up. Keep this tab open, or come back to this link.</p></div>
+        </div>`;
+      progress(1, "In line for a dashboard", ahead ? `${ahead} ahead of you` : "you're next");
       setTimeout(poll, 15000);
-    } else if (s.state === "failed") {
-      keys.innerHTML = `<p>⏳ Setting up your dashboard is taking longer than usual. We're on it and retry on our own:
-        this page updates by itself.</p>`;
-      setTimeout(poll, 10000);
-    } else if (!s.keys_ready) {
-      keys.innerHTML = `<p>⏳ Starting your dashboard. Usually under a minute: keep this page open, it updates by itself.</p>`;
+    } else if (s.state === "failed" || !s.keys_ready) {
+      boot();
       setTimeout(poll, 3000);
     } else {
-      keys.innerHTML = `<p>Your dashboard is ready. Your keys are shown <b>once</b>, then this page forgets them.</p>
-        <button id="reveal" style="${big}">Get my keys</button>
-        ${R ? `<p class="note">Take them within ${R.keys_minutes} minutes of the start: unused dashboards are freed for the next person.</p>` : ""}`;
-      document.getElementById("reveal").onclick = reveal;
+      booted(() => {
+        keys.innerHTML = `<div class="ready"><div class="big">🔑</div><div>
+            <p style="color:var(--ink);margin:0;font-weight:600">Your dashboard is ready at ${esc(host)}</p>
+            <p style="margin:2px 0 0">Your two keys are shown <b>once</b>, then this page forgets them.</p></div></div>
+          <div class="btns"><button id="reveal" class="btn">Reveal my keys</button></div>
+          ${R ? `<span class="chip">⏱ Take them within ${R.keys_minutes} min of the start, or the dashboard is freed for the next person</span>` : ""}`;
+        document.getElementById("reveal").onclick = reveal;
+        s1sub.textContent = "";
+        progress(2, "Step 1 of 2: get your keys", "under 2 minutes left");
+      });
     }
   };
   const poll = async () => {
@@ -318,23 +508,47 @@ function hostedPage() {
     catch { setTimeout(poll, 6000); }
   };
   const reveal = async () => {
+    const b = document.getElementById("reveal"); b.disabled = true; b.textContent = "One moment…";
     const r = await fetch(`/v1/pilot/${encodeURIComponent(D.code)}/keys`, { method: "POST" });
     if (!r.ok) { keys.innerHTML = `<p>${esc((await r.json().catch(() => ({}))).detail || "Couldn't fetch the keys.")}</p>`; return; }
     const k = await r.json();
-    const both = `Squidbrake dashboard: ${k.dashboard}/dashboard\nAdmin key (sign in, approve): ${k.admin_key}\nAgent key (Claude Code): ${k.agent_key}`;
+    const both = `Squidbrake dashboard: ${k.dashboard}/dashboard\nAdmin key (sign in, approve): ${k.admin_key}\nAgent key (your agents): ${k.agent_key}`;
+    const row = (lbl, sub, val) => `<div class="keyrow"><div class="lbl">${lbl}<small>${sub}</small></div>
+      <div class="val">${esc(val)}</div><button class="mini" data-v="${esc(val)}">Copy</button></div>`;
     keys.innerHTML = `
-      <p><button id="copyBoth" style="${big}">Copy both keys</button>
-        <span class="note" style="color:var(--warn)"> then save them in your password manager: this page won't show them again.</span></p>
-      <p><b>Admin key</b>: signs you in to the dashboard and approves actions.</p><div class="cmd">${esc(k.admin_key)}</div>
-      <p><b>Agent key</b>: for your agents. Already filled into step 2.</p><div class="cmd">${esc(k.agent_key)}</div>
-      <p><a href="${esc(k.dashboard)}/dashboard#key=${encodeURIComponent(k.admin_key)}" target="_blank" rel="noopener">Open my dashboard (signed in) ↗</a></p>`;
-    keys.querySelectorAll(".cmd").forEach(addCopy);
+      ${row("Admin key", "signs you in, approves", k.admin_key)}
+      ${row("Agent key", "for your agents (in step 2)", k.agent_key)}
+      <div class="warnbar">⚠ Save both in your password manager now: this page won't show them again.</div>
+      <div class="btns"><button id="copyBoth" class="btn">Copy both keys</button>
+        <a class="btn ghost" href="${esc(k.dashboard)}/dashboard#key=${encodeURIComponent(k.admin_key)}" target="_blank" rel="noopener">Open my dashboard ↗</a></div>`;
+    keys.querySelectorAll(".mini").forEach((m) => m.onclick = async () => {
+      try { await navigator.clipboard.writeText(m.dataset.v); m.textContent = "Copied ✓"; } catch { m.textContent = "Select it"; }
+    });
     document.getElementById("copyBoth").onclick = async (e) => {
       try { await navigator.clipboard.writeText(both); e.target.textContent = "Copied ✓"; } catch { prompt("Copy this:", both); }
     };
     done("s1"); unlock(k.agent_key);
   };
-  render({ state: D.state, keys_ready: D.keys_ready, keys_shown: D.keys_shown, rekey: D.rekey });
+  // in line: ask for the place in line straight away (the page's own data doesn't carry it)
+  if (D.state === "waiting") poll();
+  else render({ state: D.state, keys_ready: D.keys_ready, keys_shown: D.keys_shown, rekey: D.rekey });
+}
+
+// a short burst of confetti when the agent connects (nothing with reduced motion)
+function confetti() {
+  if (window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const colors = ["#F2622E", "#237447", "#1E2A23", "#A5560C", "#F5C04A", "#36a066"];
+  for (let i = 0; i < 70; i++) {
+    const c = document.createElement("i");
+    c.className = "confetti";
+    c.style.left = `${Math.random() * 100}vw`;
+    c.style.background = colors[i % colors.length];
+    c.style.setProperty("--dx", `${(Math.random() - .5) * 200}px`);
+    c.style.setProperty("--r", `${Math.random() * 720 - 360}deg`);
+    c.style.animationDelay = `${Math.random() * .4}s`;
+    document.body.appendChild(c);
+    setTimeout(() => c.remove(), 3400);
+  }
 }
 
 // the setup checklist: ticks are kept in this browser only (a convenience; nothing is sent)
