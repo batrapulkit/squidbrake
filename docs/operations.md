@@ -107,8 +107,55 @@ asks, optionally, where you heard about Squidbrake (pick from a list, or Enter t
 named link, that name (`SQUIDBRAKE_REF`, e.g. `linkedin`) answers it instead. The agent hooks never send anything,
 and scripts, CI and `--yes` send nothing until that first run in a terminal has happened. A gateway that starts
 without one (Docker, a background service) writes the same notice to its log, then shares its counts; turn it off
-before starting it with `SQUIDBRAKE_TELEMETRY=0` or `DO_NOT_TRACK=1`. `squidbrake telemetry
-status` shows exactly what is sent.
+with `squidbrake telemetry off`, `SQUIDBRAKE_TELEMETRY=0` or `DO_NOT_TRACK=1`.
+`squidbrake telemetry status` shows the current settings.
+
+```bash
+squidbrake telemetry off          # persistent; CLI and enrolled pilots; no network request
+squidbrake telemetry on           # enables usage again; environment overrides still win
+squidbrake telemetry status       # usage, contact identification and diagnostics settings
+squidbrake telemetry contact-off  # stops future identification; usage can remain enabled
+```
+
+The saved preference is checked by CLI sends, gateway enrollment, scheduled reports,
+retries and shutdown flushes. `off` waits for an in-flight send to finish before
+returning; threads queued before it must check the preference again. Another
+process sees the saved preference without a restart. Environment overrides apply
+to the process in which they are set; restart a service after changing its environment.
+CI sends nothing. If the local reporting settings cannot be read, reporting stays off.
+There is no durable outbound usage queue in this release; queued CLI threads are
+discarded at their send boundary when disabled. A future outbox must honor the same policy.
+
+`telemetry on` does not register your contact details, enable diagnostics, or rejoin
+a pilot you explicitly left. A fresh enrollment can occur on the next normal CLI
+command or gateway restart. `pilot leave` is local and works offline: it prevents
+automatic re-enrollment and stops pilot sends, while CLI usage remains separately
+controlled by `telemetry off`. An explicit `pilot join` can rejoin later. Leaving or
+turning reporting off does not delete existing server data or revoke its enrollment.
+
+**Identity on upgrade.** `data/reporting.db` stores one canonical installation ID,
+the existing CLI/pilot ID mapping, and reporting preferences. Concurrent processes
+share a SQLite lock for settings and sends. Existing IDs are preserved at their
+current destinations, and named pilots are not moved to the community pilot. The
+CLI adds the canonical `installation_id` to its events; the mapping is retained
+locally pending versioned collector support. Restore this file with the installation
+if you want to retain its identity. Do not copy it to unrelated installations.
+
+Usage summaries include a dataset epoch stored in the gateway database. Restarts
+preserve it; a new database gets a new epoch. Before enabling reporting on an
+independently operated restored/cloned gateway, rotate the epoch with
+`squidbrake telemetry rotate-epoch`. Replicas sharing one database retain one epoch.
+This command changes only the reporting epoch, not the audit trail or action records.
+
+Contact registration is optional and records what you supplied; an email or company
+name does not verify account ownership or organization membership. No organization
+link is inferred. Diagnostics are off and no diagnostics sender is implemented.
+`contact-off` stops future identification but does not delete previously submitted
+contact data or anonymize subsequent usage under an already identified ID. To stop
+that usage too, use `telemetry off`; server-side deletion/unlinking is separate.
+Re-enable contact submissions by explicitly registering again while usage reporting
+is enabled. Upgrade defaults remain unchanged; earlier refusals are honored.
+
 **Update check.** Once a day, running `squidbrake` in a terminal asks pypi.org for the newest version number, and
 the next time says if there's a newer one. That request carries nothing about you beyond the request itself; never
 in hooks, scripts or CI; off with `SQUIDBRAKE_NO_UPDATE_CHECK=1` or `DO_NOT_TRACK=1`.

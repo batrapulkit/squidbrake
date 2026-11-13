@@ -35,9 +35,10 @@ import logging
 import os
 import platform
 import re
+import sqlite3
 import sys
 import time
-import uuid
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import urlparse
@@ -46,6 +47,7 @@ import httpx
 from sqlalchemy import case, func, select
 
 import weekly
+import reporting
 
 log = logging.getLogger("gateway")
 # How often the counts are looked at; they are only sent when something changed since the last send, or HEARTBEAT
@@ -70,7 +72,13 @@ def load(home: Path) -> dict | None:
 
 def _save(home: Path, cfg: dict) -> None:
     home.mkdir(parents=True, exist_ok=True)
-    _path(home).write_text(json.dumps(cfg, indent=2), encoding="utf-8")
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=home, delete=False) as f:
+        name = f.name
+        json.dump(cfg, f, indent=2)
+    try:
+        os.replace(name, _path(home))
+    finally:
+        Path(name).unlink(missing_ok=True)
 
 
 SIZE = re.compile(r"(\d[\d,]*)\+?\s+(Kubernetes objects?|files?|rows?|commits?|resources?|objects?)\b", re.I)
@@ -192,6 +200,7 @@ def usage(engine, events, mode: str, rules: int, version: str, reasons: dict | N
         took = [ms for (ms,) in conn.execute(select(events.c.decision_ms).where(
             in_week, events.c.decision_ms.isnot(None)).limit(50000))]
     return {"version": version, "os": f"{platform.system()} {platform.release()}", "python": platform.python_version(),
+            "dataset_epoch": reporting.dataset_epoch(engine),
             "mode": mode, "rules": rules, "agents": {str(k): v for k, v in agents.items() if k},
             "days": days, "rules_hit": rules_hit, "total_events": total, "first_event": (first or "")[:10],
             "catches": held, "connected": connected, "latency_ms": weekly.percentiles(took)}
@@ -209,6 +218,18 @@ def _post(server: str, path: str, body: dict, timeout: float = 15) -> dict:
 
 
 def send(home: Path, payload: dict, timeout: float = 15) -> bool:
+    try:
+        if not reporting.enabled(home):
+            return False
+        reporting.identity(home)
+        with reporting.permit(home) as ok:
+            return _send_permitted(home, payload, timeout) if ok else False
+    except (OSError, ValueError, sqlite3.Error) as e:
+        log.info("pilot: reporting unavailable (%s)", type(e).__name__)
+        return False
+
+
+def _send_permitted(home: Path, payload: dict, timeout: float) -> bool:
     cfg = load(home)
     if not cfg:
         return False
@@ -223,11 +244,15 @@ def send(home: Path, payload: dict, timeout: float = 15) -> bool:
             # 403: the server doesn't know this install any more (e.g. its record was removed): join again, same id
             if not str(e).startswith("403") or not str(cfg["code"]).startswith("community-"):
                 raise
+            if reporting.environment_off():
+                return False
             _post(cfg["server"], "/v1/pilot/join", {"code": cfg["code"], "install_id": cfg["install_id"],
                                                     "version": str(payload.get("version", ""))[:40],
                                                     "os": f"{platform.system()} {platform.release()}"[:80]}, timeout)
+            if reporting.environment_off():
+                return False
             _post(cfg["server"], "/v1/ping", body, timeout)
-    except (httpx.HTTPError, RuntimeError) as e:
+    except (httpx.HTTPError, RuntimeError, OSError, ValueError, sqlite3.Error) as e:
         log.info("pilot: usage not sent (%s); will try again later", e)
         return False
     cfg["last_sent"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -241,7 +266,7 @@ def _fingerprint(payload: dict) -> str:
 
 def send_if_changed(home: Path, make_payload, timeout: float = 15) -> bool | None:
     """Send the counts if they changed since the last send (or HEARTBEAT went by). None: nothing needed sending."""
-    if not load(home):
+    if not reporting.enabled(home) or not load(home):
         return None
     payload = make_payload()
     fp, key = _fingerprint(payload), str(home)
@@ -277,13 +302,16 @@ def flush(home: Path, make_payload) -> None:
 # --------------------------------------------------------------------------- command line
 
 def join(home: Path, code: str, server: str | None, yes: bool, version: str, ref: str | None = None,
-         contact: tuple[str, str | None] | None = None) -> int:
+         contact: tuple[str, str | None] | None = None, automatic: bool = False) -> int:
     server = (server or os.getenv("SQUIDBRAKE_PILOT_SERVER") or "").rstrip("/")
     host = urlparse(server).hostname or ""
     # https, or plain http only to this machine or an internal name without dots (a hosted gateway's Docker network)
     if not (server.startswith("https://") or (server.startswith("http://") and (host in ("localhost", "127.0.0.1") or "." not in host))):
         print("Give the pilot server you were sent, e.g. --server https://...  (https only)", file=sys.stderr)
         return 2
+    if not reporting.enabled(home) or (automatic and not reporting.automatic_join_allowed(home)):
+        print("Reporting is off or this pilot was left; nothing was sent.")
+        return 1
     print(f"\nJoining the Squidbrake pilot with code {code}.\nThis sends usage counts to {server}:\n")
     print("  " + WHAT_IS_SENT.replace("\n", "\n  ") + "\n")
     if not yes:
@@ -296,34 +324,48 @@ def join(home: Path, code: str, server: str | None, yes: bool, version: str, ref
             print("Not joined. Nothing is shared.")
             return 1
     cfg = load(home) or {}
-    install_id = cfg.get("install_id") or uuid.uuid4().hex
+    ident = reporting.identity(home)
+    install_id = cfg.get("install_id") or ident.get("legacy_pilot_id") or ident["installation_id"]
     try:
-        r = _post(server, "/v1/pilot/join", {"code": code, "install_id": install_id, "version": version,
-                                             "os": f"{platform.system()} {platform.release()}",
-                                             **({"ref": ref} if ref else {}),
-                                             **({"email": contact[0], "name": contact[1] or ""} if contact else {})})
-    except (httpx.HTTPError, RuntimeError) as e:
+        with reporting.transaction(home) as state:
+            if not reporting.allowed(state) or (automatic and state.get("pilot_left")):
+                return 1
+            current = load(home)
+            if automatic and current and current.get("code") != code:
+                return 1                     # a concurrent explicit join owns its pilot association
+            # A supplied contact is an explicit optional registration, not verified
+            # identity. Automatic retries only reuse previously enabled contact data.
+            if contact and not automatic:
+                state["contact"] = True
+            include_contact = contact and state.get("contact", False)
+            r = _post(server, "/v1/pilot/join", {"code": code, "install_id": install_id, "version": version,
+                                                 "os": f"{platform.system()} {platform.release()}"[:80],
+                                                 **({"ref": ref} if ref else {}),
+                                                 **({"email": contact[0], "name": contact[1] or ""} if include_contact else {})})
+            code = r.get("code") or code
+            state["pilot_left"] = False
+            state.setdefault("identity", {}).setdefault("legacy_pilot_id", install_id)
+            _save(home, {"code": code, "server": server, "install_id": install_id, "company": r.get("company"),
+                         "joined": datetime.now(timezone.utc).isoformat(timespec="seconds")})
+    except (httpx.HTTPError, RuntimeError, OSError, ValueError, sqlite3.Error) as e:
         print(f"Couldn't join: {e}", file=sys.stderr)
         return 1
-    code = r.get("code") or code      # an email on the community code gets its own pilot (insights/app.py)
-    _save(home, {"code": code, "server": server, "install_id": install_id, "company": r.get("company"),
-                 "joined": datetime.now(timezone.utc).isoformat(timespec="seconds")})
     print(f"Joined{(' as ' + r['company']) if r.get('company') else ''}. Thank you!"
           f"\nCounts are sent while the gateway runs (restart it if it's running). Stop anytime: squidbrake pilot leave")
     return 0
 
 
 def leave(home: Path) -> int:
-    cfg = load(home)
-    if not cfg:
-        print("Not in a pilot; nothing is shared.")
-        return 0
-    try:
-        _post(cfg["server"], "/v1/pilot/leave", {"code": cfg["code"], "install_id": cfg["install_id"]})
-    except (httpx.HTTPError, RuntimeError):
-        pass
-    _path(home).unlink(missing_ok=True)
-    print("Left the pilot. Nothing more is shared.")
+    # Local first, works offline, and waits for any in-flight send to finish.
+    with reporting.transaction(home) as state:
+        cfg = load(home)
+        if cfg:
+            state.setdefault("identity", {}).setdefault("legacy_pilot_id", cfg["install_id"])
+        state["pilot_left"] = True
+        _path(home).unlink(missing_ok=True)
+        (home / "community-asked").touch()
+    _last.pop(str(home), None)
+    print("Left the pilot locally. No network request was made; existing server data was not deleted.")
     return 0
 
 
@@ -332,6 +374,7 @@ def status(home: Path) -> int:
     if not cfg:
         print("Not in a pilot; nothing is shared.")
         return 0
-    print(f"In the pilot {cfg.get('company') or cfg['code']} (code {cfg['code']}), sharing usage counts with {cfg['server']}.")
+    state = "sharing usage counts" if reporting.enabled(home) else "reporting paused"
+    print(f"In the pilot {cfg.get('company') or cfg['code']} (code {cfg['code']}), {state} with {cfg['server']}.")
     print(f"Last sent: {cfg.get('last_sent') or 'not yet (sent while the gateway runs)'}.  Stop: squidbrake pilot leave")
     return 0
