@@ -1196,3 +1196,12 @@ def test_the_start_page_offers_the_app_only_when_it_is_switched_on(insights, mon
     assert '"app_downloads": "https://example.com/dl"' in insights.get("/start/app-page").text
     with insights_app.db() as c:
         insights_app._forget(c, "app-page")
+
+def test_every_page_the_app_serves_is_in_its_docker_image():
+    # a page missing from insights/Dockerfile's COPY works in tests and is a 500 in production (wake.html was)
+    import re
+    app_src = (ROOT / "insights" / "app.py").read_text(encoding="utf-8")
+    copy = " ".join(line for line in (ROOT / "insights" / "Dockerfile").read_text(encoding="utf-8").splitlines()
+                    if line.startswith("COPY"))
+    missing = [n for n in set(re.findall(r'PAGE\("([^"/]+)"\)', app_src)) if n not in copy.split()]
+    assert not missing, f"add to insights/Dockerfile COPY: {missing}"

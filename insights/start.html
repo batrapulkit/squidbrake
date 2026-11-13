@@ -178,16 +178,19 @@ const PRICES = { starter: 9, pro: 19, team: 299, scale: 499 };
 function planNote() {
   if (!D.hosted || !D.plan || D.paying) return "";
   const name = D.plan[0].toUpperCase() + D.plan.slice(1), price = PRICES[D.plan];
-  const pay = D.checkout ? ` <a href="${esc(D.checkout)}" target="_blank" rel="noopener">` : "";
-  const box = (title, body) => `<section class="step" style="border-left:4px solid var(--go)"><h2>${title}</h2><p>${body}</p></section>`;
+  const pay = (label) => D.checkout ? `<p><a class="btn small" href="${esc(D.checkout)}" target="_blank" rel="noopener">${label} →</a>
+    <span style="font-size:14px">Secure checkout by Stripe. Cancel any month.</span></p>` : "";
+  const box = (title, body, cta = "") => `<section class="step" style="border-left:4px solid var(--go)"><h2>${title}</h2><p>${body}</p>${cta}</section>`;
   if (D.plan === "free")
     return box("Free plan: watching only", `Every action your agents take is recorded, but nothing is blocked or held.
       <a href="/pricing" target="_blank" rel="noopener">Pick a plan</a> to turn blocking on.`);
   if (D.trial_ends)
-    return box(`Your ${name} trial`, `Free until <b>${esc(D.trial_ends)}</b>, then $${price} a month, cancel any month.
-      ${pay ? `${pay}Add a card now</a> so it keeps blocking.` : "We'll email you before it ends."}`);
+    return box(`Your ${name} trial`, `Free until <b>${esc(D.trial_ends)}</b>, then $${price} a month.
+      ${D.checkout ? "Add a card now so blocking keeps running after the trial." : "We'll email you before it ends."}`,
+      pay("Add a card"));
   return box(`Your ${name} plan: $${price} a month`, `Until it's paid, your dashboard watches only: every action is
-    recorded, nothing is blocked or held. ${pay ? `${pay}Pay $${price} a month</a> to turn blocking on.` : "Write to us to pay."}`);
+    recorded, nothing is blocked or held. ${D.checkout ? "Pay to turn blocking on." : "Write to us to pay."}`,
+    pay(`Pay $${price} a month`));
 }
 // a view counts only once the page runs in a browser: link previews fetch the page but don't run it
 if (!D.missing) fetch(`/v1/pilot/${encodeURIComponent(D.code)}/seen`, { method: "POST" }).catch(() => {});
@@ -393,7 +396,7 @@ function hostedPage() {
     </details>
 
     <p class="foot" id="help">Stuck? ${D.contact ? "Reach me: " + esc(D.contact) + "." : "Reply to the message this link came in."}
-      To disconnect: <code>squidbrake connect claude-code --remove</code>. Squidbrake is free.</p>`;
+      To disconnect: <code>squidbrake connect claude-code --remove</code>.${D.plan && D.plan !== "free" ? "" : " Squidbrake is free."}</p>`;
 
   // ---- overall progress: how many of the 4 milestones are done, which one is next, and roughly how long is left
   const progress = (done, label, eta) => {

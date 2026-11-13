@@ -871,6 +871,46 @@ def wake_page(sub: str):
     return HTMLResponse(PAGE("wake.html"), headers={"Cache-Control": "no-store"})
 
 
+@app.post("/v1/pilot/{code}/wake")
+def pilot_wake(code: str, request: Request):
+    """The start page, opened again for a dashboard that went to sleep: wake it."""
+    _guessing(request)
+    with _lock, db() as c:
+        if not c.execute("SELECT 1 FROM pilots WHERE code=? AND hosted=1", (code,)).fetchone():
+            _missed(request)
+            raise HTTPException(404)
+        _wake(c, code)
+    return pilot_status(code, request)
+
+
+def _by_subdomain(c, sub: str):
+    return c.execute("SELECT code, state, subdomain, COALESCE(queued_at, created_at) AS q FROM pilots "
+                     "WHERE subdomain=? AND hosted=1", (sub.lower(),)).fetchone() if SUB_RE.match(sub or "") else None
+
+
+@app.post("/v1/wake/{sub}")
+def wake_by_address(sub: str, request: Request):
+    """Someone opened <sub>.HOSTED_DOMAIN while its gateway sleeps (Caddy sends them to /wake/<sub>): wake it.
+    The address is public anyway (DNS, its certificate), so this only says how far along it is: never a key or the
+    start link. Waking a dashboard nobody uses costs a slot until the reclaim timers put it back to sleep."""
+    _guessing(request)
+    with _lock, db() as c:
+        p = _by_subdomain(c, sub)
+        if not p:
+            _missed(request)
+            raise HTTPException(404)
+        _wake(c, p["code"])
+        p = _by_subdomain(c, sub)
+        ahead = c.execute("SELECT COUNT(*) FROM pilots WHERE hosted=1 AND state='waiting' AND queued_at IS NOT NULL "
+                          "AND queued_at < ?", (p["q"],)).fetchone()[0] if p["state"] == "waiting" else 0
+    return {"state": p["state"], "ahead": ahead, "dashboard": dashboard_url(p["subdomain"])}
+
+
+@app.get("/wake/{sub}", include_in_schema=False)
+def wake_page(sub: str):
+    return HTMLResponse(PAGE("wake.html"), headers={"Cache-Control": "no-store"})
+
+
 PREVIEW_BOTS = re.compile(r"bot|crawl|spider|preview|facebookexternalhit|slack|whatsapp|telegram|discord|skype|"
                           r"linkedin|embedly|headless|lighthouse|python-|curl|wget|go-http|okhttp", re.I)
 

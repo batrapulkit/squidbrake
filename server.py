@@ -3810,10 +3810,25 @@ class SettingsIn(BaseModel):
     require_device_signature: bool | None = None                 # approvals need Face ID / fingerprint (a passkey)
 
 
+# Settings that work as passwords: anyone with a webhook URL can post into that channel. They are never sent back to
+# the browser; the page gets whether each is set and a short hint (the last 4 characters, and a URL's host).
+SECRET_SETTINGS = ("slack_webhook", "teams_webhook", "slack_signing_secret", "smtp_password", "siem_token",
+                   "telegram_bot_token")
+
+
+def _secret_hint(v: str) -> str:
+    tail = f"…{v[-4:]}" if len(v) > 8 else ""
+    host = urlsplit(v).hostname if re.match(r"^https?://", v) else None
+    return f"{host}/{tail}" if host and tail else tail
+
+
 def public_settings() -> dict:
-    """Settings as the dashboard sees them: the AI key is never sent back, only whether one is set."""
+    """Settings as the dashboard sees them: secrets are never sent back, only whether each is set and a hint."""
     s = settings()
     key = s.pop("ai_key", "") or ""
+    for k in SECRET_SETTINGS:
+        v = s.pop(k, "") or ""
+        s[f"{k}_set"], s[f"{k}_hint"] = bool(v), _secret_hint(v)
     # Channels someone set up that the plan switches off (settings() blanks them): the page says they're paused,
     # rather than showing empty fields as if they were never set
     saved = state_get("settings", {})
