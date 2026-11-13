@@ -851,12 +851,12 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
           <span class="inline"><input name="ntfy_topic" placeholder="leave empty to turn off" pattern="[A-Za-z0-9_-]{0,64}">
             <button type="button" class="btn" id="genTopic">Generate private topic</button></span></label>
         <label class="full">Slack or Discord incoming webhook
-          <span class="hint">Paste a Slack or Discord webhook URL. Discord formatting is detected automatically. Leave empty to turn off.</span>
+          <span class="hint">Paste a Slack or Discord webhook URL. Discord formatting is detected automatically. Remove turns it off.</span>
           <input name="slack_webhook" placeholder="Webhook URL"></label>
         <label class="full">Microsoft Teams
           <span class="hint">In the channel: Workflows → "Post to a channel when a webhook request is received" → copy its URL here.
             Each approval arrives as a card with a button to the one-tap page.</span>
-          <input name="teams_webhook" placeholder="https://…logic.azure.com/workflows/… (leave empty to turn off)"></label>
+          <input name="teams_webhook" placeholder="https://…logic.azure.com/workflows/…"></label>
         <details class="full" id="emailSetup">
           <summary>Email (approvals and the weekly report)</summary>
           <div class="form-grid wide" style="margin-top:10px">
@@ -2960,6 +2960,29 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
 
   // ---------- settings
   const sForm = $("#settingsForm");
+  // Secrets are never sent back by the gateway: each field stays empty, says whether one is set (with a hint), and
+  // has a Remove button. Typing a new value replaces it; leaving the field empty keeps what's saved.
+  const SECRET_FIELDS = ["slack_webhook", "teams_webhook", "slack_signing_secret", "smtp_password", "siem_token"];
+  const secretInput = (k) => (k === "siem_token" ? $("#siemForm") : sForm)[k];
+  function secretField(k, s) {
+    const inp = secretInput(k);
+    if (inp.dataset.ph === undefined) inp.dataset.ph = inp.placeholder;
+    const set = !!s[`${k}_set`];
+    inp.value = "";
+    inp.placeholder = set ? `Saved (${s[`${k}_hint`] || "hidden"}). Paste a new one to replace it.` : inp.dataset.ph;
+    let rm = inp.parentElement.querySelector(`button[data-forget="${k}"]`);
+    if (!rm) {
+      rm = el("button", { type: "button", class: "linkish", "data-forget": k, text: "Remove", style: "margin-left:8px",
+        onclick: async (ev) => {
+          ev.preventDefault();
+          try { await apiSend("PUT", "/v1/settings", { [k]: "" }); toast("Removed"); loadSettings(); }
+          catch (err) { toast(err.message); }
+        } });
+      inp.after(rm);
+    }
+    rm.hidden = !set;
+  }
+  const dropEmptySecrets = (body) => { for (const k of SECRET_FIELDS) if (k in body && !body[k]) delete body[k]; return body; };
   // one switch per agent on this computer (admins, and only when the gateway runs on this computer)
   function renderAgentsHere(list) {
     const box = $("#agentsList");
@@ -2992,13 +3015,14 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     loadAgentsHere();
     loadTeamAgents();
     const [s, team] = await Promise.all([api("/v1/settings"), api("/v1/team")]);
-    for (const k of ["public_url", "ntfy_topic", "slack_webhook", "slack_signing_secret", "teams_webhook", "email_to",
-                     "smtp_host", "smtp_port", "smtp_user", "smtp_password", "smtp_from"]) sForm[k].value = s[k] || "";
+    for (const k of ["public_url", "ntfy_topic", "email_to",
+                     "smtp_host", "smtp_port", "smtp_user", "smtp_from"]) sForm[k].value = s[k] || "";
+    for (const k of SECRET_FIELDS) secretField(k, s);
     if (s.smtp_host) $("#emailSetup").open = true;
-    for (const k of ["siem_url", "siem_token"]) $("#siemForm")[k].value = s[k] || "";
+    $("#siemForm").siem_url.value = s.siem_url || "";
     $("#siemForm").siem_format.value = s.siem_format || "json";
     loadRuleHelp();
-    if (s.slack_signing_secret) $("#slackSetup").open = true;
+    if (s.slack_signing_secret_set) $("#slackSetup").open = true;
     api("/v1/slack/manifest").then((m) => { $("#slackManifest").textContent = JSON.stringify(m.manifest, null, 2); }).catch(() => {});
     sForm.weekly_digest.checked = !!s.weekly_digest;
     sForm.second_person.checked = !!s.second_person;
@@ -3029,9 +3053,9 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
         act: () => $("#notifyBtn").click() },
       { k: "phone", icon: "📱", name: "Phone", sub: "ntfy app", st: s.ntfy_topic ? "on" : paused.has("phone") ? "paused" : plan ? "plan" : "off",
         act: () => focusField("ntfy_topic") },
-      { k: "slack", icon: "💬", name: "Slack / Discord", sub: "webhook", st: s.slack_webhook ? "on" : paused.has("slack") ? "paused" : plan ? "plan" : "off",
+      { k: "slack", icon: "💬", name: "Slack / Discord", sub: "webhook", st: s.slack_webhook_set ? "on" : paused.has("slack") ? "paused" : plan ? "plan" : "off",
         act: () => focusField("slack_webhook") },
-      { k: "teams", icon: "🟦", name: "Microsoft Teams", sub: "workflow", st: s.teams_webhook ? "on" : paused.has("teams") ? "paused" : plan ? "plan" : "off",
+      { k: "teams", icon: "🟦", name: "Microsoft Teams", sub: "workflow", st: s.teams_webhook_set ? "on" : paused.has("teams") ? "paused" : plan ? "plan" : "off",
         act: () => focusField("teams_webhook") },
       { k: "email", icon: "✉", name: "Email", sub: "SMTP", st: s.email_to && s.smtp_host ? "on" : paused.has("email") ? "paused" : plan ? "plan" : "off",
         act: () => { $("#emailSetup").open = true; focusField("email_to"); } },
@@ -3196,8 +3220,9 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     ev.preventDefault();
     const f = ev.target;
     try {
-      await apiSend("PUT", "/v1/settings", { siem_url: f.siem_url.value.trim(), siem_token: f.siem_token.value,
-                                             siem_format: f.siem_format.value });
+      const saved = await apiSend("PUT", "/v1/settings", dropEmptySecrets({ siem_url: f.siem_url.value.trim(), siem_token: f.siem_token.value,
+                                                              siem_format: f.siem_format.value }));
+      secretField("siem_token", saved);
       $("#siemMsg").textContent = f.siem_url.value.trim() ? "Saved ✓ Decisions now go there." : "Saved ✓ (off)";
     } catch (err) { $("#siemMsg").textContent = err.message; }
   });
@@ -3262,7 +3287,9 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
       const PAUSED_FIELDS = { phone: ["ntfy_topic"], slack: ["slack_webhook"], teams: ["teams_webhook"], email: ["email_to"] };
       for (const ch of (lastSettings && lastSettings.paused_channels) || [])
         for (const k of PAUSED_FIELDS[ch] || []) if (!body[k]) delete body[k];
-      renderChannels(await apiSend("PUT", "/v1/settings", body));
+      dropEmptySecrets(body);
+      const saved = await apiSend("PUT", "/v1/settings", body);
+      renderChannels(saved); for (const k of SECRET_FIELDS) secretField(k, saved);
       $("#settingsMsg").textContent = "Saved ✓"; setTimeout(() => ($("#settingsMsg").textContent = ""), 3000);
     } catch (err) { $("#settingsMsg").textContent = err.message; }
   });

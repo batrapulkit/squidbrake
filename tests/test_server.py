@@ -1596,6 +1596,28 @@ def test_settings(c, org):
     c.put("/v1/settings", headers=org["admin"], json={"ntfy_topic": "", "public_url": ""})
 
 
+def test_settings_never_send_secrets_back(c, org):
+    secrets_in = {"slack_webhook": "https://hooks.slack.com/services/T0/B0/abcdSECRETwxyz",
+                  "teams_webhook": "https://prod.logic.azure.com/workflows/x?sig=TEAMSsecret9876",
+                  "slack_signing_secret": "signing-secret-1234", "smtp_password": "smtp-pass-5678",
+                  "siem_token": "siem-token-4321", "smtp_host": "smtp.acme.test", "email_to": "ops@acme.test"}
+    put = c.put("/v1/settings", headers=org["admin"], json=secrets_in)
+    for r in (put, c.get("/v1/settings", headers=org["admin"])):
+        assert r.status_code == 200
+        for k in ("slack_webhook", "teams_webhook", "slack_signing_secret", "smtp_password", "siem_token"):
+            assert secrets_in[k] not in r.text and k not in r.json() and r.json()[f"{k}_set"] is True
+        s = r.json()
+        assert s["slack_webhook_hint"] == "hooks.slack.com/…wxyz" and s["smtp_password_hint"] == "…5678"
+        assert s["telegram_bot_token_set"] is False and s["smtp_host"] == "smtp.acme.test"    # plain settings still shown
+    assert server.settings()["slack_webhook"] == secrets_in["slack_webhook"]                 # still used to send
+    # saving other settings without the secrets keeps them; "" removes one
+    c.put("/v1/settings", headers=org["admin"], json={"public_url": "https://gw.acme.test"})
+    assert server.settings()["smtp_password"] == "smtp-pass-5678"
+    s = c.put("/v1/settings", headers=org["admin"], json={"slack_webhook": ""}).json()
+    assert s["slack_webhook_set"] is False and s["slack_webhook_hint"] == "" and s["teams_webhook_set"] is True
+    c.put("/v1/settings", headers=org["admin"], json={**{k: "" for k in secrets_in}, "public_url": ""})
+
+
 def test_channels_the_plan_switches_off_show_as_paused_not_empty(c, org, monkeypatch):
     # after the grace date, a free gateway sends no phone/Slack alerts: the page must say so instead of looking unset
     import license
