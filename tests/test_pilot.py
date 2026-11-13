@@ -606,6 +606,33 @@ def test_without_sign_in_a_hosted_sign_up_starts_at_once_but_one_address_gets_tw
     assert '"hosted": true' in insights.get("/signup").text
 
 
+def test_new_keys_never_get_a_dashboard_in_use_deleted(insights, monkeypatch):
+    # What happened to a real pilot: keys taken 36 min after its start, then "New keys" from the admin. Making new
+    # keys clears keys_revealed_at (so the start page shows them), and the next provision round freed the dashboard
+    # as "its keys weren't taken": container, data volume and pilot deleted.
+    import app as insights_app
+    from datetime import datetime, timedelta, timezone
+    monkeypatch.setattr(insights_app, "notify", lambda text: None)
+    monkeypatch.setattr(insights_app, "HOSTED_MAX", 1000)
+    admin = {"X-Admin-Key": "admin-test-key"}
+    ago = (datetime.now(timezone.utc) - timedelta(minutes=40)).isoformat(timespec="seconds")
+    with insights_app.db() as c:
+        c.execute("INSERT INTO pilots (code, company, created_at, email, hosted, subdomain, state, note, started_at, admin_key, agent_key) "
+                  "VALUES ('rk-google', 'Google', ?, 'rk@x.dev', 1, 'rkgoogle', 'running', 'signup (hosted)', ?, 'gw_a1', 'gw_b1')", (ago, ago))
+    assert insights.post("/v1/pilot/rk-google/keys").json()["admin_key"] == "gw_a1"          # the founder took them
+    state = lambda: next((p["state"] for p in insights.get("/v1/admin/provision", headers=admin).json()["pilots"]
+                          if p["code"] == "rk-google"), None)
+    assert insights.post("/v1/admin/pilots/rk-google/new-keys", headers=admin).status_code == 200
+    assert state() == "running"                                        # new keys asked for: not freed meanwhile
+    insights.post("/v1/admin/provisioned", headers=admin, json={"code": "rk-google", "state": "running",
+                                                                "admin_key": "gw_a2", "agent_key": "gw_b2"})
+    assert insights.get("/v1/pilot/rk-google/status").json()["keys_ready"] is True   # the start page offers them
+    assert state() == "running"                                        # and the dashboard is still there
+    assert insights.post("/v1/pilot/rk-google/keys").json()["admin_key"] == "gw_a2"
+    with insights_app.db() as c:
+        insights_app._forget(c, "rk-google")
+
+
 def test_an_unused_hosted_dashboard_is_freed_and_the_next_in_line_starts(insights, monkeypatch):
     import app as insights_app
     from datetime import datetime, timedelta, timezone
