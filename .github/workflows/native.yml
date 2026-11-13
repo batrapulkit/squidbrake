@@ -38,7 +38,8 @@ jobs:
           echo '{"tool_name":"Bash","tool_input":{"command":"ls"},"session_id":"ci"}' |
             GATEWAY_FAIL_OPEN=1 dist/squidbrake/squidbrake "$(python -c 'import pathlib,sys; print(next(pathlib.Path("dist/squidbrake").rglob("agent_hook.py")))')" codex --url http://127.0.0.1:9 --key x
           # the tray app is in it (signed out here: it says so and exits 1)
-          SQUIDBRAKE_HOME="$RUNNER_TEMP/sb" dist/squidbrake/squidbrake app --status | grep -q "Not signed in"
+          out=$(SQUIDBRAKE_HOME="$RUNNER_TEMP/sb" dist/squidbrake/squidbrake app --status || true)
+          echo "$out"; echo "$out" | grep -q "Not signed in"
           python -c "import pathlib,sys; sys.exit(0 if next(pathlib.Path('dist/squidbrake').rglob('app_signin.html'), None) else 'app_signin.html is missing')"
           if [ "$RUNNER_OS" = Windows ]; then test -f dist/squidbrake/squidbrake-app.exe; fi
 
