@@ -218,3 +218,17 @@ def test_a_sleeping_gateway_is_stopped_never_removed_and_wakes_as_it_was(monkeyp
     provision.start({**pilot, "state": "requested"})
     assert ("start", "sbp-coz") in calls_ and not any(c[0] in ("rm", "run") for c in calls_)
     assert reports_[-1] == ("/v1/admin/provisioned", {"code": "co-z", "state": "running"})
+
+
+def test_a_failing_setup_is_reported_and_tried_again_later(monkeypatch):
+    reports = []
+    pilot = {"code": "co-f", "subdomain": "cof", "state": "requested", "keys_ready": False, "dashboard": "https://cof.app.test"}
+    monkeypatch.setattr(provision, "api", lambda path, body=None: {"pilots": [pilot]} if path == "/v1/admin/provision"
+                        else reports.append(body) or {})
+
+    def broken(p):
+        raise RuntimeError("docker is down")
+    monkeypatch.setattr(provision, "start", broken)
+    provision.last_failure.clear()
+    provision.tick()
+    assert reports == [{"code": "co-f", "state": "failed", "error": "docker is down"}]

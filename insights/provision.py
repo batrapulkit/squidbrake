@@ -221,7 +221,7 @@ def sleep(p):
         _licensed.pop(name, None)       # set again (or checked) when it wakes
 
 
-   # code -> time: a failed setup is retried every 5 minutes, not every tick
+last_failure = {}   # code -> time: a failed setup is retried every 5 minutes, not every tick
 
 
 def tick():
