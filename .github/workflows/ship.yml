@@ -1,0 +1,135 @@
+name: ship
+# Every merge to main ships by itself once its tests and Docker image pass:
+#   1. a merge that didn't bump the version gets a "Release vX.Y.Z" commit with the next patch version (that commit
+#      then ships through here in turn)
+#   2. it is deployed to our server (the deploy key can only run the server's deploy script, for a main commit)
+#   3. it is released on GitHub, which runs PyPI, the native installers and the versioned Docker image
+#   4. the Homebrew formula gets the new sdist's url and sha256
+# Secrets: RELEASE_TOKEN (fine-grained token, Contents read/write on this repo), DEPLOY_SSH_KEY and
+# DEPLOY_KNOWN_HOSTS. Without them the steps that need them are skipped with a warning.
+on:
+  workflow_run:
+    workflows: [tests, docker]
+    types: [completed]
+    branches: [main]
+concurrency:
+  group: ship
+  cancel-in-progress: false
+permissions:
+  contents: read
+  actions: read
+jobs:
+  ship:
+    # our own pushes to main only, never a pull request (a fork's branch can be called main too)
+    if: >-
+      github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      R: ${{ github.repository }}
+    steps:
+      - name: Newest main, with tests and docker both green?
+        id: ready
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ "$(gh api "repos/$R/commits/main" --jq .sha)" = "$SHA" ] || { echo "main has moved on; the newer commit ships"; exit 0; }
+          for w in tests docker; do
+            n=$(gh run list -R "$R" -w "$w" -c "$SHA" -e push --json conclusion -q 'map(select(.conclusion == "success")) | length')
+            [ "$n" -gt 0 ] || { echo "$w hasn't passed for $SHA yet; its own run ships it"; exit 0; }
+          done
+          echo go=1 >> "$GITHUB_OUTPUT"
+
+      - name: Release token set?
+        if: steps.ready.outputs.go
+        id: token
+        env:
+          T: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if [ -n "$T" ]; then echo ok=1 >> "$GITHUB_OUTPUT"; else echo "::warning::RELEASE_TOKEN isn't set: deploying only, not releasing"; fi
+
+      - uses: actions/checkout@v4
+        if: steps.ready.outputs.go
+        with:
+          ref: ${{ env.SHA }}
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+
+      - name: Version, and is it released yet?
+        if: steps.ready.outputs.go
+        id: v
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' squidbrake/__init__.py)
+          tagged=$(gh api "repos/$R/commits/v$V" --jq .sha 2>/dev/null) || tagged=""   # gh prints a 422 body on stdout
+          echo "version $V, tag v$V at ${tagged:-nothing}"
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          if [ -z "$tagged" ]; then echo state=new >> "$GITHUB_OUTPUT"
+          elif [ "$tagged" = "$SHA" ]; then echo state=done >> "$GITHUB_OUTPUT"   # a second run for the same commit
+          else echo state=bump >> "$GITHUB_OUTPUT"; fi
+
+      - name: Bump to the next patch version
+        if: steps.ready.outputs.go && steps.token.outputs.ok && steps.v.outputs.state == 'bump'
+        env:
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          NEXT=$(echo "$V" | awk -F. '{print $1"."$2"."$3+1}')
+          python3 - "$V" "$NEXT" <<'EOF'
+          import pathlib, sys
+          old, new = sys.argv[1:]
+          for p in ("squidbrake/__init__.py", "server.json", "plugin/.claude-plugin/plugin.json"):
+              f = pathlib.Path(p)
+              text = f.read_text()
+              assert f'"{old}"' in text, p
+              f.write_text(text.replace(f'"{old}"', f'"{new}"'))
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -qam "Release v$NEXT"
+          # fails if main moved meanwhile; the newer commit's run bumps instead
+          git push origin HEAD:main
+
+      - name: Deploy to our server
+        if: steps.ready.outputs.go && steps.v.outputs.state != 'done' && (steps.v.outputs.state == 'new' || !steps.token.outputs.ok)
+        env:
+          KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          [ -n "$KEY" ] && [ -n "$KNOWN" ] || { echo "::warning::DEPLOY_SSH_KEY or DEPLOY_KNOWN_HOSTS isn't set: not deploying"; exit 0; }
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes ubuntu@pilots.squidbrake.com "$SHA"
+
+      - name: GitHub release (runs PyPI, native installers, versioned image)
+        if: steps.ready.outputs.go && steps.token.outputs.ok && steps.v.outputs.state == 'new'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}   # a release made with github.token wouldn't start those workflows
+          V: ${{ steps.v.outputs.version }}
+        run: gh release create "v$V" -R "$R" --target "$SHA" --title "v$V" --generate-notes
+
+      - name: Homebrew formula (url and sha256 of the PyPI sdist)
+        if: steps.ready.outputs.go && steps.token.outputs.ok && steps.v.outputs.state == 'new'
+        env:
+          V: ${{ steps.v.outputs.version }}
+        run: |
+          for _ in $(seq 60); do curl -fsS "https://pypi.org/pypi/squidbrake/$V/json" -o pypi.json && break; sleep 20; done
+          python3 - "$V" <<'EOF'
+          import json, pathlib, re, sys
+          sdist = next(u for u in json.load(open("pypi.json"))["urls"] if u["packagetype"] == "sdist")
+          f = pathlib.Path("packaging/homebrew/squidbrake.rb")
+          text = f.read_text()
+          # the formula's own url and the sha256 on the line after it, not a resource's hash
+          # ([^"]*: also drops stray characters, like the \r\r 0.14.21's hash got)
+          new, n = re.subn(r'(\n  url ")[^"]+("\r?\n  sha256 ")[0-9a-f]{64}[^"]*"',
+                           lambda m: f'{m[1]}{sdist["url"]}{m[2]}{sdist["digests"]["sha256"]}"', text, count=1)
+          assert n == 1 and sys.argv[1] in sdist["url"], "formula url/sha256 not found"
+          f.write_text(new)
+          EOF
+          grep -A1 '^  url "' packaging/homebrew/squidbrake.rb
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -qam "Homebrew formula: $V (url and sha256 from the PyPI sdist) [skip ci]"
+          for _ in 1 2 3; do git fetch -q origin main && git rebase -q origin/main && git push -q origin HEAD:main && exit 0; sleep 5; done
+          exit 1
