@@ -98,8 +98,8 @@ jobs:
         run: |
           [ -n "$KEY" ] && [ -n "$KNOWN" ] || { echo "::warning::DEPLOY_SSH_KEY or DEPLOY_KNOWN_HOSTS isn't set: not deploying"; exit 0; }
           install -d -m 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
-          printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          printf '%s\n' "$KEY" | tr -d '\r' > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy   # set from Windows, they carry \r
+          printf '%s\n' "$KNOWN" | tr -d '\r' > ~/.ssh/known_hosts
           ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes ubuntu@pilots.squidbrake.com "$SHA"
 
       - name: GitHub release (runs PyPI, native installers, versioned image)
