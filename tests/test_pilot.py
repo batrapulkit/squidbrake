@@ -606,6 +606,33 @@ def test_without_sign_in_a_hosted_sign_up_starts_at_once_but_one_address_gets_tw
     assert '"hosted": true' in insights.get("/signup").text
 
 
+def test_new_keys_never_get_a_dashboard_in_use_deleted(insights, monkeypatch):
+    # What happened to a real pilot: keys taken 36 min after its start, then "New keys" from the admin. Making new
+    # keys clears keys_revealed_at (so the start page shows them), and the next provision round freed the dashboard
+    # as "its keys weren't taken": container, data volume and pilot deleted.
+    import app as insights_app
+    from datetime import datetime, timedelta, timezone
+    monkeypatch.setattr(insights_app, "notify", lambda text: None)
+    monkeypatch.setattr(insights_app, "HOSTED_MAX", 1000)
+    admin = {"X-Admin-Key": "admin-test-key"}
+    ago = (datetime.now(timezone.utc) - timedelta(minutes=40)).isoformat(timespec="seconds")
+    with insights_app.db() as c:
+        c.execute("INSERT INTO pilots (code, company, created_at, email, hosted, subdomain, state, note, started_at, admin_key, agent_key) "
+                  "VALUES ('rk-google', 'Google', ?, 'rk@x.dev', 1, 'rkgoogle', 'running', 'signup (hosted)', ?, 'gw_a1', 'gw_b1')", (ago, ago))
+    assert insights.post("/v1/pilot/rk-google/keys").json()["admin_key"] == "gw_a1"          # the founder took them
+    state = lambda: next((p["state"] for p in insights.get("/v1/admin/provision", headers=admin).json()["pilots"]
+                          if p["code"] == "rk-google"), None)
+    assert insights.post("/v1/admin/pilots/rk-google/new-keys", headers=admin).status_code == 200
+    assert state() == "running"                                        # new keys asked for: not freed meanwhile
+    insights.post("/v1/admin/provisioned", headers=admin, json={"code": "rk-google", "state": "running",
+                                                                "admin_key": "gw_a2", "agent_key": "gw_b2"})
+    assert insights.get("/v1/pilot/rk-google/status").json()["keys_ready"] is True   # the start page offers them
+    assert state() == "running"                                        # and the dashboard is still there
+    assert insights.post("/v1/pilot/rk-google/keys").json()["admin_key"] == "gw_a2"
+    with insights_app.db() as c:
+        insights_app._forget(c, "rk-google")
+
+
 def test_an_unused_hosted_dashboard_is_freed_and_the_next_in_line_starts(insights, monkeypatch):
     import app as insights_app
     from datetime import datetime, timedelta, timezone
@@ -626,6 +653,7 @@ def test_an_unused_hosted_dashboard_is_freed_and_the_next_in_line_starts(insight
         add("rc-admin", "made by hand", ago(hours=25))                             # from the admin: never freed
         add("rc-paid", "signup (team)", ago(hours=25), mrr=499)                    # paying: never freed
         add("rc-next", "signup (hosted)", None, state="waiting")                   # in line
+        c.execute("UPDATE pilots SET queued_at=? WHERE code='rc-next'", (ago(minutes=2),))
         c.execute("INSERT INTO installs (install_id, code, joined_at, total_events) VALUES (?, 'rc-used', ?, 3)",
                   ("5ec1a1" + "0" * 26, insights_app.now()))
     monkeypatch.setattr(insights_app, "HOSTED_MAX", live + 6)                       # full until something is freed
@@ -640,6 +668,28 @@ def test_an_unused_hosted_dashboard_is_freed_and_the_next_in_line_starts(insight
     with insights_app.db() as c:
         for code in ("rc-nokeys", "rc-fresh", "rc-idle", "rc-used", "rc-admin", "rc-paid", "rc-next"):
             insights_app._forget(c, code)
+
+
+def test_an_old_hosted_request_never_starts_on_its_own_until_you_put_it_in_line(insights, monkeypatch):
+    # requests from before self-serve sign-up (no queued_at) were never approved and their email never proven
+    import app as insights_app
+    admin = {"X-Admin-Key": "admin-test-key"}
+    with insights_app.db() as c:
+        c.execute("INSERT INTO pilots (code, company, created_at, email, hosted, subdomain, state, note) "
+                  "VALUES ('old-req', 'Old', '2026-10-01T00:00:00+00:00', 'old@req.dev', 1, 'oldreq', 'waiting', 'signup (hosted)')")
+        live = c.execute(f"SELECT COUNT(*) FROM pilots WHERE {insights_app.LIVE}").fetchone()[0]
+    monkeypatch.setattr(insights_app, "HOSTED_MAX", live + 5)                     # plenty of free slots
+    state = lambda: next(p["state"] for p in insights.get("/v1/admin/provision", headers=admin).json()["pilots"]
+                         if p["code"] == "old-req")
+    assert state() == "waiting"                                                  # a free slot doesn't start it
+    stage = next(p["stage"] for p in insights.get("/v1/admin/overview", headers=admin).json()["pilots"] if p["code"] == "old-req")
+    assert stage == "old hosted request"
+    assert insights.post("/v1/admin/pilots/old-req/queue").status_code == 401
+    assert insights.post("/v1/admin/pilots/old-req/queue", headers=admin).status_code == 200
+    assert state() == "requested"                                                # in line, and a slot is free
+    assert insights.post("/v1/admin/pilots/old-req/queue", headers=admin).status_code == 404
+    with insights_app.db() as c:
+        insights_app._forget(c, "old-req")
 
 
 def test_hosted_sign_ups_start_on_their_own_and_wait_in_line_when_full(insights, monkeypatch):
@@ -658,7 +708,7 @@ def test_hosted_sign_ups_start_on_their_own_and_wait_in_line_when_full(insights,
     assert "started on its own" in told[0] and "mei@gamma.io" in told[0]
     second, third = sign("li@gamma.io"), sign("wu@gamma.io")                           # no slot left: in line
     page = insights.get(f"/start/{second}").text
-    assert '"hosted": true' in page and '"state": "waiting"' in page and "two steps, about 2 minutes" in page
+    assert '"hosted": true' in page and '"state": "waiting"' in page and "let's get you set up" in page and "Reveal my keys" in page
     assert insights.get(f"/v1/pilot/{third}/status").json()["ahead"] == 1          # first in, first out
     assert "in line" in told[1] and "starts when one frees up" in told[1]
     assert insights.post(f"/v1/admin/pilots/{second}/approve", headers=admin).status_code in (404, 405)   # nobody approves

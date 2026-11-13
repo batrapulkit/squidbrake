@@ -1,0 +1,45 @@
+# Example policy for the reference Filesystem MCP server
+# (@modelcontextprotocol/server-filesystem, tool list checked against
+# version 2.3.0 of https://github.com/modelcontextprotocol/servers).
+# Tool names use the <app>.<tool> form produced by `connect.py wrap --app filesystem`.
+default: review
+default_reason: Filesystem changes require approval
+
+rules:
+  # The server has no delete tool in the version checked above, so nothing
+  # needs blocking today. This rule stays as a backstop: if a future server
+  # version adds a delete or remove tool, it is denied outright instead of
+  # falling through to the default review.
+  - id: block-filesystem-deletes
+    action: deny
+    reason: Deleting files or directories is not allowed
+    match:
+      name: ["filesystem.*delete*", "filesystem.*remove*"]
+
+  - id: allow-filesystem-reads
+    action: allow
+    reason: Read-only filesystem operation
+    match:
+      name:
+        - "filesystem.read_file"
+        - "filesystem.read_text_file"
+        - "filesystem.read_media_file"
+        - "filesystem.read_multiple_files"
+        - "filesystem.list_directory"
+        - "filesystem.list_directory_with_sizes"
+        - "filesystem.directory_tree"
+        - "filesystem.search_files"
+        - "filesystem.get_file_info"
+        - "filesystem.list_allowed_directories"
+
+  - id: review-filesystem-changes
+    action: review
+    reason: Writing, editing, moving or copying a file, or creating a directory, changes the filesystem and requires approval
+    match:
+      name:
+        - "filesystem.write_file"
+        - "filesystem.append_file"
+        - "filesystem.edit_file"
+        - "filesystem.move_file"
+        - "filesystem.copy_file"
+        - "filesystem.create_directory"

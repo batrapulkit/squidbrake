@@ -821,6 +821,7 @@ const STAGE = { "active": ["Active", "s-active"], "installed": ["Installed, no a
   "left": ["Left the pilot", "s-left"], "setting up": ["Setting up", "s-installed"], "keys taken": ["Took keys, not connected yet", "s-opened"],
   "setup failed": ["Setup failed", "s-quiet"], "deleting": ["Deleting", "s-left"],
   "in line for a slot": ["Hosted, in line: starts when a slot frees", "s-opened"],
+  "old hosted request": ["Old hosted request (email not verified): delete it, or put it in line", "s-quiet"],
   "installed · agent not connected": ["Installed · agent not connected", "s-quiet"],
   "agent connected": ["Agent connected, no actions yet", "s-installed"] };
 
@@ -984,6 +985,10 @@ async function load() {
       try { await navigator.clipboard.writeText(text); b.textContent = "Copied"; } catch { prompt("Copy this:", text); }
     } catch (e) { if (e.message !== "unauthorized") alert(e.message); }
   });
+  document.querySelectorAll("[data-queue]").forEach((b) => b.onclick = async () => {
+    try { await api(`/v1/admin/pilots/${encodeURIComponent(b.dataset.queue)}/queue`, { method: "POST" }); load(); }
+    catch (e) { if (e.message !== "unauthorized") alert(e.message); }
+  });
   document.querySelectorAll("[data-del]").forEach((b) => b.onclick = async () => {
     if (!confirm(b.dataset.warn)) return;
     await api(`/v1/admin/pilots/${encodeURIComponent(b.dataset.del)}`, { method: "DELETE" }); load();
@@ -991,7 +996,12 @@ async function load() {
   document.querySelectorAll("[data-newkeys]").forEach((b) => b.onclick = async () => {
     if (!confirm(`New keys for ${b.dataset.name}?\n\nTheir old admin key stops working. Agents already connected keep working. ` +
                  `In about a minute the new keys show once on their start page: send them their link again.`)) return;
-    try { await api(`/v1/admin/pilots/${encodeURIComponent(b.dataset.newkeys)}/new-keys`, { method: "POST" }); load(); }
+    try {
+      await api(`/v1/admin/pilots/${encodeURIComponent(b.dataset.newkeys)}/new-keys`, { method: "POST" }); load();
+      // where the new keys are: once, on their start page (this admin never sees them)
+      if (b.dataset.link) prompt(`New keys for ${b.dataset.name} are being made. They show once on this start page ` +
+                                 `(about a minute): open it yourself or send it to them.`, b.dataset.link);
+    }
     catch (e) { if (e.message !== "unauthorized") alert(e.message); }
   });
   document.querySelectorAll("[data-copy]").forEach((b) => b.onclick = () => copy(b.dataset.copy, b));
@@ -1434,12 +1444,12 @@ function row(p) {
       ${p.latency_ms && p.latency_ms.p50 != null ? `<div class="mini">gateway p50 ${p.latency_ms.p50} ms · p95 ${p.latency_ms.p95} ms</div>` : ""}
       ${p.trend !== null && p.trend !== undefined ? `<div class="mini"><span class="${p.trend >= 0 ? "up" : "down"}">${p.trend > 0 ? "+" : ""}${p.trend}%</span> vs last week</div>` : ""}</td>
     <td>${agents}</td><td>${hits}</td>
-    <td><div class="acts">${followUp(p) ? `<button class="btn" data-copy="${esc(followUp(p))}" title="A message for where they are now">Follow-up</button>` : ""}
+    <td><div class="acts">${p.stage === "old hosted request" ? `<button class="btn" data-queue="${esc(p.code)}" title="Starts it on its own when a slot frees">Put in line</button>` : ""}${followUp(p) ? `<button class="btn" data-copy="${esc(followUp(p))}" title="A message for where they are now">Follow-up</button>` : ""}
       <button class="btn" data-copy="${esc(p.link)}">Copy link</button>
       <button class="btn" data-license="${esc(p.code)}" title="A Team plan license for their own gateway (one year)">License</button>
       ${p.mrr ? "" : `<button class="btn" data-copy="${esc(payMessage(p))}" title="A message with the $999 paid pilot link">Paid pilot</button>`}
       <button class="btn" data-mrr="${p.mrr || ""}" data-code="${esc(p.code)}" data-name="${esc(p.company)}" title="Monthly revenue from this pilot">${p.mrr ? "$" + Number(p.mrr).toLocaleString() + "/mo" : "Set revenue"}</button>
-      ${p.hosted && p.state === "running" ? `<button class="btn" data-newkeys="${esc(p.code)}" data-name="${esc(p.company)}" title="They lost their keys: new ones appear once more on their start page">${p.rekey ? "New keys coming…" : "New keys"}</button>` : ""}
+      ${p.hosted && p.state === "running" ? `<button class="btn" data-newkeys="${esc(p.code)}" data-name="${esc(p.company)}" data-link="${esc(p.link || "")}" title="They lost their keys: new ones appear once more on their start page">${p.rekey ? "New keys coming…" : "New keys"}</button>` : ""}
       <button class="icon-btn" title="Delete pilot" data-del="${esc(p.code)}" data-warn="${esc(deleteWarning(p))}">Delete</button></div></td></tr>
     ${p.catches && p.catches.length ? `<tr class="catches"><td colspan="7"><details data-k="pilot:${esc(p.code)}"${opened.has("pilot:" + p.code) ? " open" : ""}><summary>What it held or blocked · ${p.catches.length}</summary>
       ${catchList(p.catches, { n: 5, key: "pilot:" + p.code })}

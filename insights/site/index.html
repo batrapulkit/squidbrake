@@ -130,6 +130,7 @@ a{color:inherit}
 .cta-row{display:flex;flex-wrap:wrap;gap:10px}
 .cta-pick{display:flex;flex-direction:column;gap:6px}
 .cta-pick span{font-size:.82rem;color:var(--h-muted)}
+.try-link{display:inline-block;margin-top:12px;font-size:.9rem;color:inherit;text-decoration:underline;text-underline-offset:3px;opacity:.85}.try-link:hover{opacity:1}
 .ph-badge{display:inline-block;margin-top:16px;line-height:0}.ph-badge img{max-width:100%;height:auto}
 .hero-controls{position:absolute;left:0;right:0;bottom:22px;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:16px;pointer-events:none}
 .hero-controls>*{pointer-events:auto}
@@ -744,6 +745,7 @@ section .fine code,.faq code{font:400 .92em var(--mono)}
           <div class="cta-pick"><a class="btn" href="/signup">Sign up free</a><span>Building with agents yourself</span></div>
           <div class="cta-pick"><a class="btn ghost" href="#demo" data-demo>Book a demo</a><span>Security or platform team</span></div>
         </div>
+        <a class="try-link" href="#try">Or try a command first, nothing to install ↓</a>
         <a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a>
         <p class="spec speed"><strong>The check takes 9 ms at p95.</strong> <span class="spec-more">Your model takes seconds to decide. The check is the cheap part.</span><span class="live" aria-hidden="true"><i></i>last check <b id="lastMs">4</b> ms</span></p>
       </div>
@@ -775,6 +777,8 @@ section .fine code,.faq code{font:400 .92em var(--mono)}
 </div>
 
 <div class="wrap">
+  <div id="try" data-try data-no-bar></div>
+
   <section id="proof" class="trust">
     <div class="used-at">
       <p class="kicker">5,000+ downloads, including by engineers at</p>
@@ -2031,5 +2035,6 @@ window.SQUIDBRAKE_WAITLIST={
 })();
 </script>
 <script src="assets/booking.js" defer></script>
+<script src="/assets/try.js" defer></script>
 </body>
 </html>

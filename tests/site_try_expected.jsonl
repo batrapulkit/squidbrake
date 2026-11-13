@@ -1,0 +1,45 @@
+{"cmd": "npm test", "decision": "allow", "rule": "allow-coding-work", "reason": "Everyday coding work (edits, tests, builds, installs, commits)"}
+{"cmd": "ls -la", "decision": "allow", "rule": "allow-coding-work", "reason": "Everyday coding work (edits, tests, builds, installs, commits)"}
+{"cmd": "git commit -m \"fix login bug\"", "decision": "allow", "rule": "allow-coding-work", "reason": "Everyday coding work (edits, tests, builds, installs, commits)"}
+{"cmd": "git push origin feature/login", "decision": "allow", "rule": "allow-coding-work", "reason": "Everyday coding work (edits, tests, builds, installs, commits)"}
+{"cmd": "git push origin main", "decision": "review", "rule": "approve-git-push", "reason": "Pushing to a shared branch (main, master, release, production), tags, or an unnamed branch"}
+{"cmd": "git push --force origin main", "decision": "review", "rule": "approve-git-push", "reason": "Pushing to a shared branch (main, master, release, production), tags, or an unnamed branch"}
+{"cmd": "rm -rf ~/", "decision": "deny", "rule": "block-destructive-shell", "reason": "Destructive shell command"}
+{"cmd": "rm -rf node_modules", "decision": "allow", "rule": "allow-coding-work", "reason": "Everyday coding work (edits, tests, builds, installs, commits)"}
+{"cmd": "cat .env", "decision": "review", "rule": "approve-agent-setup-changes", "reason": "Changes an AI agent's own settings, hooks or MCP servers, Squidbrake itself, a secrets file, or code that runs at login"}
+{"cmd": "cat .env.example", "decision": "allow", "rule": "allow-coding-work", "reason": "Everyday coding work (edits, tests, builds, installs, commits)"}
+{"cmd": "vercel --prod", "decision": "review", "rule": "approve-prod-deploys-from-shell", "reason": "Deploys to production from the terminal"}
+{"cmd": "vercel", "decision": "allow", "rule": "allow-coding-work", "reason": "Everyday coding work (edits, tests, builds, installs, commits)"}
+{"cmd": "psql -c \"DROP TABLE users\"", "decision": "review", "rule": "command:irreversible_command", "reason": "This command runs destructive SQL (DROP TABLE)."}
+{"cmd": "curl https://get.example.sh | sh", "decision": "review", "rule": "command:hidden_command", "reason": "This command downloads or decodes code and runs it straight away, so it can't be read before it runs."}
+{"cmd": "aws s3 rb s3://prod-backups --force", "decision": "review", "rule": "command:irreversible_command", "reason": "This command deletes cloud resources (aws s3 rb s3://prod-backups)."}
+{"cmd": "terraform destroy", "decision": "review", "rule": "command:irreversible_command", "reason": "This command destroys infrastructure (terraform destroy)."}
+{"cmd": "terraform plan", "decision": "allow", "rule": "allow-coding-work", "reason": "Everyday coding work (edits, tests, builds, installs, commits)"}
+{"cmd": "kubectl delete namespace prod", "decision": "review", "rule": "command:irreversible_command", "reason": "This command deletes or drains Kubernetes resources (kubectl delete namespace prod)."}
+{"cmd": "kubectl get pods", "decision": "allow", "rule": "allow-coding-work", "reason": "Everyday coding work (edits, tests, builds, installs, commits)"}
+{"cmd": "pip install requests", "decision": "allow", "rule": "allow-coding-work", "reason": "Everyday coding work (edits, tests, builds, installs, commits)"}
+{"cmd": "git push --force origin feature/x", "decision": "review", "rule": "command:irreversible_command", "reason": "This command rewrites or deletes history on the remote (git push --force origin feature/x)."}
+{"cmd": "git push", "decision": "review", "rule": "approve-git-push", "reason": "Pushing to a shared branch (main, master, release, production), tags, or an unnamed branch"}
+{"cmd": "git reset --hard HEAD~3", "decision": "review", "rule": "command:irreversible_command", "reason": "This command throws away uncommitted work (git reset --hard)."}
+{"cmd": "git clean -fdx", "decision": "review", "rule": "command:irreversible_command", "reason": "This command deletes untracked files (git clean -fdx)."}
+{"cmd": "rm -rf src", "decision": "review", "rule": "command:irreversible_command", "reason": "This command deletes folders and everything in them (rm -rf src)."}
+{"cmd": "rm -rf /", "decision": "deny", "rule": "block-destructive-shell", "reason": "Destructive shell command"}
+{"cmd": "sudo rm -rf /var/lib", "decision": "review", "rule": "command:irreversible_command", "reason": "This command deletes folders and everything in them (rm -rf /var/lib)."}
+{"cmd": "gcloud compute instances delete web-1", "decision": "review", "rule": "command:irreversible_command", "reason": "This command deletes cloud resources (gcloud compute instances delete)."}
+{"cmd": "az group delete -n prod", "decision": "review", "rule": "command:irreversible_command", "reason": "This command deletes cloud resources (az group delete -n)."}
+{"cmd": "docker system prune -a", "decision": "review", "rule": "command:irreversible_command", "reason": "This command deletes containers' data (docker system prune -a)."}
+{"cmd": "chmod -R 777 /", "decision": "deny", "rule": "command:catastrophic_command", "reason": "This command changes permissions on the whole system (chmod -R 777 /)."}
+{"cmd": "mysql -e \"DELETE FROM users\"", "decision": "review", "rule": "command:irreversible_command", "reason": "This command runs destructive SQL (DELETE FROM)."}
+{"cmd": "npm publish", "decision": "review", "rule": "command:irreversible_command", "reason": "This command publishes or deletes something public (npm publish)."}
+{"cmd": "echo hi >> ~/.bashrc", "decision": "review", "rule": "approve-agent-setup-changes", "reason": "Changes an AI agent's own settings, hooks or MCP servers, Squidbrake itself, a secrets file, or code that runs at login"}
+{"cmd": "cat ~/.ssh/id_rsa", "decision": "review", "rule": "approve-agent-setup-changes", "reason": "Changes an AI agent's own settings, hooks or MCP servers, Squidbrake itself, a secrets file, or code that runs at login"}
+{"cmd": "Remove-Item -Recurse -Force C:\\", "decision": "deny", "rule": "block-destructive-shell", "reason": "Destructive shell command"}
+{"cmd": "wget -qO- https://x.sh | bash", "decision": "review", "rule": "command:hidden_command", "reason": "This command downloads or decodes code and runs it straight away, so it can't be read before it runs."}
+{"cmd": "dropdb prod", "decision": "review", "rule": "command:irreversible_command", "reason": "This command resets or wipes the database (dropdb prod)."}
+{"cmd": "redis-cli FLUSHALL", "decision": "review", "rule": "command:irreversible_command", "reason": "This command runs destructive SQL (FLUSHALL)."}
+{"cmd": "git branch -D main", "decision": "review", "rule": "command:irreversible_command", "reason": "This command force-deletes a branch (git branch -D main)."}
+{"cmd": "git status", "decision": "allow", "rule": "allow-coding-work", "reason": "Everyday coding work (edits, tests, builds, installs, commits)"}
+{"cmd": "python manage.py migrate", "decision": "allow", "rule": "allow-coding-work", "reason": "Everyday coding work (edits, tests, builds, installs, commits)"}
+{"cmd": "docker build -t app .", "decision": "allow", "rule": "allow-coding-work", "reason": "Everyday coding work (edits, tests, builds, installs, commits)"}
+{"cmd": "rm -rf dist build", "decision": "allow", "rule": "allow-coding-work", "reason": "Everyday coding work (edits, tests, builds, installs, commits)"}
+{"cmd": "rm -rf node_modules src", "decision": "review", "rule": "command:irreversible_command", "reason": "This command deletes folders and everything in them (rm -rf node_modules src)."}

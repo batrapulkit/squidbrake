@@ -1193,6 +1193,47 @@ def test_atlassian_example_policy():
         assert decide(name)[0] == "deny", name
 
 
+def test_filesystem_example_policy():
+    rules = Path(__file__).resolve().parents[1] / "examples" / "rules" / "filesystem.yaml"
+    p = server.Policy(rules)
+
+    def decide(name):
+        return p.evaluate(kind="mcp", name=name, source=None, client="test", session_id=None, input={})
+
+    for name in (
+        "filesystem.read_text_file",
+        "filesystem.read_media_file",
+        "filesystem.read_multiple_files",
+        "filesystem.list_directory",
+        "filesystem.list_directory_with_sizes",
+        "filesystem.directory_tree",
+        "filesystem.search_files",
+        "filesystem.get_file_info",
+        "filesystem.list_allowed_directories",
+    ):
+        assert decide(name)[0] == "allow", name
+
+    for name in (
+        "filesystem.write_file",
+        "filesystem.append_file",
+        "filesystem.edit_file",
+        "filesystem.move_file",
+        "filesystem.copy_file",
+        "filesystem.create_directory",
+    ):
+        assert decide(name)[0] == "review", name
+
+    # The current server has no delete tool; the deny rule guards a future one.
+    for name in (
+        "filesystem.delete_file",
+        "filesystem.remove_directory",
+    ):
+        assert decide(name)[0] == "deny", name
+
+    # Every pattern is filesystem-scoped: another app's tools see the default.
+    assert decide("github.delete_repo")[0] == "review"
+
+
 def test_proxy(c):
     seen = {}
 
@@ -1551,8 +1592,19 @@ def test_settings(c, org):
     assert c.put("/v1/settings", headers=org["admin"], json={"slack_webhook": "not-a-url"}).status_code == 400
     assert c.put("/v1/settings", headers=org["admin"], json={"notify_as": "viewer"}).status_code == 400  # can't approve
     s = c.put("/v1/settings", headers=org["admin"], json={"ntfy_topic": "acme-approvals-x1", "public_url": "https://gw.acme.test"}).json()
-    assert s["ntfy_topic"] == "acme-approvals-x1" and s["public_url"] == "https://gw.acme.test"
+    assert s["ntfy_topic"] == "acme-approvals-x1" and s["public_url"] == "https://gw.acme.test" and s["paused_channels"] == []
     c.put("/v1/settings", headers=org["admin"], json={"ntfy_topic": "", "public_url": ""})
+
+
+def test_channels_the_plan_switches_off_show_as_paused_not_empty(c, org, monkeypatch):
+    # after the grace date, a free gateway sends no phone/Slack alerts: the page must say so instead of looking unset
+    import license
+    c.put("/v1/settings", headers=org["admin"], json={"ntfy_topic": "acme-approvals-x2"})
+    monkeypatch.setattr(license, "GRACE_UNTIL", "2020-01-01")
+    s = c.get("/v1/settings", headers=org["admin"]).json()
+    assert s["ntfy_topic"] == "" and s["paused_channels"] == ["phone"] and s["license"]["team_features"] is False
+    monkeypatch.setattr(license, "GRACE_UNTIL", "9999-12-31")
+    c.put("/v1/settings", headers=org["admin"], json={"ntfy_topic": ""})
 
 
 # ---------------------------------------------------------------- history: the gateway judges by what came before

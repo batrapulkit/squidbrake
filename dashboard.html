@@ -463,6 +463,39 @@ dialog .acts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 1
 .saved b { font-size: 15px; } .saved span { color: var(--text-secondary); font-size: 13px; }
 .saved a { margin-left: auto; }
 .saved.plan { border-left-color: #b45309; }
+.prog { margin: 0 0 14px; padding: 0 0 14px; }
+.prog summary { cursor: pointer; list-style: none; }
+.prog summary::-webkit-details-marker { display: none; }
+.bar { height: 8px; border-radius: 999px; background: var(--surface-2); overflow: hidden; margin: 8px 16px 0; }
+.bar i { display: block; height: 100%; background: var(--good); border-radius: inherit; transition: width .6s ease; }
+.badges { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; padding: 12px 16px 0; margin: 0; list-style: none; }
+.badges li { border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; font-size: 12.5px; color: var(--text-secondary); }
+.badges li b { display: block; font-size: 13px; color: var(--text-primary, inherit); }
+.badges li.locked { opacity: .5; filter: grayscale(1); }
+.badges li.got { border-color: var(--good); }
+.next { padding: 10px 16px 0; font-size: 12.5px; color: var(--text-muted); }
+.next .bar { margin: 6px 0 0; height: 5px; }
+.next .bar i { background: var(--accent); }
+.badges li.next-up { border: 1px dashed var(--accent); color: var(--text-primary); }
+.badges li .tag { float: right; font-size: 11px; color: var(--accent); font-weight: 600; }
+.badges li.pop { animation: pop .7s ease; }
+@keyframes pop { 0% { transform: scale(.9); box-shadow: 0 0 0 0 var(--good); } 50% { transform: scale(1.06); }
+  100% { transform: scale(1); box-shadow: 0 0 0 10px transparent; } }
+.listening { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--good); margin-right: 6px;
+  animation: blink 1.6s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: .25; } }
+/* Coach marks: point at the one button that earns the next badge. CSS, so the queue's live re-render keeps them. */
+body[data-coach="approve"] #aq > li:first-child .btn.approve,
+body[data-coach="reject"] #aq > li:first-child .btn.reject, .btn.coach-me { animation: ring 1.6s ease-out infinite; }
+.btn.coach-me::before { content: "👉"; display: inline-block; margin-right: 4px; animation: nudge 1s ease-in-out infinite; }
+body[data-coach="approve"] #aq > li:first-child .btn.approve::before,
+body[data-coach="reject"] #aq > li:first-child .btn.reject::before { content: "👉"; display: inline-block; margin-right: 4px; animation: nudge 1s ease-in-out infinite; }
+@keyframes ring { 0% { box-shadow: 0 0 0 0 var(--accent); } 100% { box-shadow: 0 0 0 8px transparent; } }
+@keyframes nudge { 50% { transform: translateX(4px); } }
+.coach-tip { margin: 0 16px 4px; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); font-size: 13px; color: var(--text-primary); }
+.badges li.next-up .tag::before { content: "👉 "; display: inline-block; animation: nudge 1s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } .badges li.pop, .listening, .btn::before, .btn,
+  .badges li .tag::before { animation: none !important; } }
 code { font-family: var(--mono); font-size: .92em; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
 
 /* forms */
@@ -512,6 +545,60 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   .print-head h1 { font-size: 20px; margin: 0 0 4px; }
   td button, th:last-child:empty { display: none; }
 }
+
+/* ---------- Team page */
+.team-stats { display: flex; flex-wrap: wrap; gap: 8px; padding: 2px 16px 12px; }
+.team-stats .stat { font-size: 13px; color: var(--text-secondary); background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 999px; padding: 4px 12px; }
+.team-stats .stat b { color: var(--text-primary); font-size: 14px; }
+.team-stats .stat.warn { border-color: var(--warning); background: color-mix(in srgb, var(--warning) 12%, var(--surface-1)); }
+.roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; padding: 0 16px 14px; }
+.role { border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; background: var(--surface-1); border-top: 3px solid var(--c, var(--border)); }
+.role b { display: block; font-size: 13px; color: var(--text-primary); } .role span { font-size: 12px; color: var(--text-muted); }
+.r-viewer { --c: var(--neutral); } .r-approver { --c: var(--good); } .r-admin { --c: var(--accent); }
+.r-owner { --c: #8b5cf6; } .r-agent { --c: var(--serious); }
+.who { display: inline-flex; align-items: center; gap: 8px; }
+.who .you { font-size: 11px; font-weight: 600; color: var(--accent); border: 1px solid var(--accent); border-radius: 999px; padding: 0 7px; }
+.lvl { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 10px; white-space: nowrap;
+  color: var(--c); background: color-mix(in srgb, var(--c) 13%, transparent); }
+.l-viewer { --c: var(--neutral); } .l-approver { --c: var(--good); } .l-admin { --c: var(--accent); }
+.l-owner { --c: #8b5cf6; } .l-agent { --c: var(--serious); }
+.team-foot { padding: 8px 16px 14px; margin: 0; }
+.upsell { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px;
+  background: linear-gradient(120deg, color-mix(in srgb, var(--accent) 10%, var(--surface-1)), var(--surface-1)); }
+.upsell b { display: block; font-size: 14px; } .upsell span { font-size: 13px; color: var(--text-secondary); }
+.upsell-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.kind-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.kind-opt { text-align: left; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary); border-radius: 10px;
+  padding: 10px 12px; cursor: pointer; font: inherit; }
+.kind-opt b { display: block; font-size: 13.5px; } .kind-opt span { font-size: 12px; color: var(--text-muted); font-weight: 400; }
+.kind-opt.on { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+
+/* ---------- Settings page */
+.set-nav { position: sticky; top: 0; z-index: 5; display: flex; gap: 6px; overflow-x: auto; padding: 8px 2px; margin-bottom: 4px;
+  background: var(--page); scrollbar-width: none; }
+.set-nav button { flex: none; border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary); border-radius: 999px;
+  padding: 5px 12px; font: inherit; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+.set-nav button:hover { color: var(--text-primary); border-color: var(--text-muted); }
+.view > .card[id^="set-"] { scroll-margin-top: 52px; }
+#agentsHere, #teamAgents { scroll-margin-top: 52px; }
+#view-team > .card + .card, #view-settings > .card + .card { margin-top: 14px; }
+.upsell .btn, .plan-note .btn { text-decoration: none; }
+.chan-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; padding: 4px 16px 12px; }
+.chan { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto auto; column-gap: 9px; text-align: left; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface-1); border-radius: 12px; padding: 10px 12px; font: inherit; color: var(--text-primary);
+  transition: border-color .15s, transform .1s; }
+.chan:hover { border-color: var(--text-muted); } .chan:active { transform: translateY(1px); }
+.chan .ic { grid-row: 1 / 3; font-size: 20px; line-height: 1.2; }
+.chan b { font-size: 13px; } .chan .sub { font-size: 11.5px; color: var(--text-muted); }
+.chan .st { grid-column: 1 / -1; margin-top: 7px; justify-self: start; font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 1px 9px;
+  color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); }
+.chan.st-on { --c: var(--good); border-color: color-mix(in srgb, var(--good) 45%, var(--border)); }
+.chan.st-off { --c: var(--text-muted); } .chan.st-plan { --c: var(--accent); }
+.chan.st-paused, .chan.st-blocked { --c: var(--serious); border-color: color-mix(in srgb, var(--serious) 45%, var(--border)); }
+.plan-note { margin: 0 16px 12px; border-radius: 10px; padding: 10px 12px; font-size: 13px; color: var(--text-primary);
+  background: color-mix(in srgb, var(--warning) 14%, var(--surface-1)); border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border)); }
+.plan-note p { margin: 0 0 6px; } .plan-note .btn { margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -531,6 +618,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     <label class="toggle"><input type="checkbox" id="auto" checked> Live</label>
     <button class="btn" id="refresh" title="Refresh">↻</button>
     <button class="btn" id="phoneBtn" title="Approve from your phone">📱 Phone</button>
+    <button class="btn" id="soundBtn" aria-pressed="true" title="Play a chime when an action needs approval">🔊</button>
     <button class="btn" id="notifyBtn" aria-pressed="false">🔔 <span id="notifyText">Alerts off</span></button>
     <button class="btn" id="keyBtn" title="Sign in with a different key">⚿ <span id="meName">Key</span></button>
     <button class="btn" id="modeBtn" data-admin hidden aria-pressed="false"
@@ -542,6 +630,12 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   <div class="shadow-banner" id="shadowBanner" hidden></div>
 
   <div id="view-activity" class="view">
+  <details class="card prog" id="progCard" open hidden>
+    <summary class="card-head"><h2>Your progress</h2><span class="sub" id="progSub"></span></summary>
+    <div class="bar" role="progressbar" aria-label="Badges unlocked" aria-valuemin="0" id="progBar"><i></i></div>
+    <ul class="badges" id="badges"></ul>
+    <div class="next" id="progNext"></div>
+  </details>
   <div class="saved" id="savedCard" hidden><div><b id="savedTitle"></b><br><span>Each one was stopped before it ran.</span></div>
     <a class="btn" id="savedShare" target="_blank" rel="noopener">Share on LinkedIn</a></div>
   <div class="saved plan" id="planCard" hidden><div><b id="planTitle"></b><br><span id="planText"></span></div>
@@ -571,6 +665,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
       <h2 id="aqTitle">Needs approval <span class="count" id="aqCount"></span></h2>
       <span class="hint" id="aqHint"></span>
     </div>
+    <p class="coach-tip" id="coachTip" hidden></p>
     <ul class="aq" id="aq"></ul>
   </section>
 
@@ -624,27 +719,39 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   <div id="view-team" class="view" hidden>
     <section class="card">
       <div class="card-head"><h2>People and agents</h2><span class="sub" id="teamSub"></span></div>
-      <p class="lede">Each person and each AI agent gets its own key. <b>Viewers</b> can look at everything and change
-        nothing; <b>approvers</b> also approve held actions and can stop agents; <b>admins</b> manage the team and settings;
-        <b>owners</b> also decide who is an admin or owner. Agents can only ask permission and report what they did.
-        Roles such as <code>finance</code> let rules require a specific team to approve.</p>
-      <p class="lede">Want your teammates to approve from anywhere, on one shared dashboard, their phone or Slack?
-        <a href="https://squidbrake.com/signup?plan=team&amp;from=invite" target="_blank" rel="noopener"><b>Start a 14-day Team
-        trial</b></a>: we host it for your team, no card to start. Or
-        <a href="https://calendly.com/pulkitbatra2024/new-meeting-1" target="_blank" rel="noopener">book 15 minutes with the founder</a>.</p>
+      <div class="team-stats" id="teamStats"></div>
+      <div class="roles" aria-label="What each kind of access can do">
+        <div class="role r-viewer"><b>👁 Viewer</b><span>Sees everything, changes nothing</span></div>
+        <div class="role r-approver"><b>✓ Approver</b><span>Approves held actions, can stop agents</span></div>
+        <div class="role r-admin"><b>⚙ Admin</b><span>Also manages the team and settings</span></div>
+        <div class="role r-owner"><b>★ Owner</b><span>Also decides who is admin or owner</span></div>
+        <div class="role r-agent"><b>🤖 AI agent</b><span>Only asks permission and reports what it did</span></div>
+      </div>
       <div class="tbl-wrap">
         <table class="events team">
           <thead><tr><th>Name</th><th>Type</th><th>Access</th><th>Roles</th><th>Added</th><th></th></tr></thead>
           <tbody id="teamRows"></tbody>
         </table>
       </div>
+      <p class="hint team-foot">Teams such as <code>finance</code> let a rule require that team to approve. Each person and each
+        agent has its own key.</p>
+    </section>
+    <section class="card upsell" id="teamUpsell" hidden>
+      <div><b>Approve together, from anywhere</b>
+        <span>One shared dashboard for your team, with approvals on their phones and in Slack. We host it; no card to start.</span></div>
+      <div class="upsell-acts">
+        <a class="btn primary" href="https://squidbrake.com/signup?plan=team&amp;from=invite" target="_blank" rel="noopener">Start a 14-day Team trial</a>
+        <a class="btn" href="https://calendly.com/pulkitbatra2024/new-meeting-1" target="_blank" rel="noopener">Book 15 min</a></div>
     </section>
     <section class="card" id="addMemberCard" data-admin hidden>
       <div class="card-head"><h2>Add someone</h2></div>
       <form class="form-grid" id="addMember">
+        <div class="full kind-pick" role="radiogroup" aria-label="Who are you adding?">
+          <button type="button" class="kind-opt on" data-kind="person" role="radio" aria-checked="true"><b>👤 A person</b><span>Gets a key to sign in and approve</span></button>
+          <button type="button" class="kind-opt" data-kind="agent" role="radio" aria-checked="false"><b>🤖 An AI agent</b><span>Gets a key to ask permission</span></button>
+          <select name="kind" hidden><option value="person">Person</option><option value="agent">AI agent</option></select>
+        </div>
         <label>Name <input name="name" required maxlength="64" placeholder="e.g. priya or billing-agent" pattern="[A-Za-z0-9][A-Za-z0-9_.@-]{0,63}"></label>
-        <label>Type
-          <select name="kind"><option value="person">Person</option><option value="agent">AI agent</option></select></label>
         <label class="person-only">Access
           <select name="access"><option value="approver">Approver: can approve</option><option value="viewer">Viewer: can view only</option>
             <option value="admin">Admin: manages team and settings</option><option value="owner">Owner: also manages admins</option></select></label>
@@ -722,23 +829,17 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
 
   <!-- ============================================================ SETTINGS -->
   <div id="view-settings" class="view" hidden>
-    <section class="card" id="teamAgents" hidden>
-      <div class="card-head"><h2>Agents across the team</h2><span class="sub" id="teamAgentsSub"></span></div>
-      <p class="lede">Each computer's <code>squidbrake doctor</code> says which agents it has. Anything marked
-        <b>not connected</b> works without Squidbrake: nothing it does is checked or recorded.</p>
-      <div class="tbl-wrap"><table class="events"><thead><tr><th>Computer</th><th>Connected</th><th>Not connected</th>
-        <th>MCP servers not guarded</th><th>Reported</th></tr></thead><tbody id="teamAgentsRows"></tbody></table></div>
-    </section>
-    <section class="card" id="agentsHere" hidden>
-      <div class="card-head"><h2>Agents on this computer</h2></div>
-      <p class="lede">Choose which agents go through Squidbrake. Turning one off takes Squidbrake out of that agent only;
-        the others stay as they are. Quit and reopen the agent afterwards so it picks the change up.</p>
-      <div id="agentsList"></div>
-    </section>
-    <section class="card">
-      <div class="card-head"><h2>Notifications</h2></div>
-      <p class="lede">When an agent needs approval, the gateway can ping you on your phone and in Slack. Each message has a
-        secure one-tap link to approve or reject that one action; the link stops working once it's decided.</p>
+    <nav class="set-nav" aria-label="Settings sections">
+      <button type="button" data-go="set-alerts">🔔 Alerts</button><button type="button" data-go="set-devices">🔐 Face ID</button>
+      <button type="button" data-go="set-ai">✨ AI briefs</button><button type="button" data-go="set-siem">📤 SIEM</button>
+      <button type="button" data-go="set-customers">🏷 Customers</button><button type="button" data-go="set-mcp">🔌 MCP by URL</button>
+      <button type="button" data-go="set-rules">📜 Rules</button><button type="button" data-go="agentsHere">💻 Agents here</button></nav>
+    <section class="card" id="set-alerts">
+      <div class="card-head"><h2>Alerts: how you hear that an action needs you</h2><span class="sub" id="chanSub"></span></div>
+      <div class="chan-grid" id="chanGrid"></div>
+      <div class="plan-note" id="chanPlan" hidden></div>
+      <p class="lede">Each phone, Slack, Teams or email alert carries a one-tap link to approve or reject that one action;
+        it stops working once the action is decided.</p>
       <form class="form-grid wide" id="settingsForm">
         <label class="full">Public address of this gateway
           <span class="hint">Links in notifications point here, so it must open from your phone (your cloud URL or tunnel link).</span>
@@ -795,7 +896,20 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
         </div>
       </form>
     </section>
-    <section class="card">
+    <section class="card" id="teamAgents" hidden>
+      <div class="card-head"><h2>Agents across the team</h2><span class="sub" id="teamAgentsSub"></span></div>
+      <p class="lede">Each computer's <code>squidbrake doctor</code> says which agents it has. Anything marked
+        <b>not connected</b> works without Squidbrake: nothing it does is checked or recorded.</p>
+      <div class="tbl-wrap"><table class="events"><thead><tr><th>Computer</th><th>Connected</th><th>Not connected</th>
+        <th>MCP servers not guarded</th><th>Reported</th></tr></thead><tbody id="teamAgentsRows"></tbody></table></div>
+    </section>
+    <section class="card" id="agentsHere" hidden>
+      <div class="card-head"><h2>Agents on this computer</h2></div>
+      <p class="lede">Choose which agents go through Squidbrake. Turning one off takes Squidbrake out of that agent only;
+        the others stay as they are. Quit and reopen the agent afterwards so it picks the change up.</p>
+      <div id="agentsList"></div>
+    </section>
+    <section class="card" id="set-devices">
       <div class="card-head"><h2>Approve with Face ID or fingerprint</h2><span class="sub" id="devSub"></span></div>
       <p class="lede">Register your phone or laptop as a passkey. Each approval you make with it is signed by the device
         and kept in the audit trail as proof of who approved what; anyone with an export can check the signature.</p>
@@ -808,7 +922,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
         <span class="hint">Approvals from Slack buttons, phone notification buttons and plain links are refused; people approve on the page,
           on a registered device. Rejecting never needs it. Register your own device first.</span></label>
     </section>
-    <section class="card">
+    <section class="card" id="set-ai">
       <div class="card-head"><h2>AI approval briefs</h2></div>
       <p class="lede">A short, plain-English risk note on each action waiting for a person, written with your team's own
         Anthropic key. It only advises: the rules decide what's held and people decide what runs. What it reads is what this
@@ -822,7 +936,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
           <button class="btn" type="button" id="aiForget">Remove key</button><span class="hint" id="aiMsg"></span></div>
       </form>
     </section>
-    <section class="card">
+    <section class="card" id="set-siem">
       <div class="card-head"><h2>Send to your SIEM</h2></div>
       <p class="lede">Every decision, as it happens: who, which tool, allowed, held or blocked and why, who approved. In batches,
         in the background, so a slow SIEM never slows an agent.</p>
@@ -837,7 +951,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
           <button class="btn" type="button" id="siemTest">Send a test record</button><span class="hint" id="siemMsg"></span></div>
       </form>
     </section>
-    <section class="card">
+    <section class="card" id="set-customers">
       <div class="card-head"><h2>Customers</h2><span class="sub" id="custCount"></span></div>
       <p class="lede">Agents copy what they read: a ticket's customer ends up in a pull request description or a public issue.
         When an agent puts text where others can read it (a PR, an issue or comment, a gist, a chat post) and it names a
@@ -852,7 +966,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
           <span class="hint" id="custMsg"></span></div>
       </form>
     </section>
-    <section class="card">
+    <section class="card" id="set-mcp">
       <div class="card-head"><h2>Agents that connect by URL</h2><span class="sub">MCP</span></div>
       <p class="lede">ChatGPT and claude.ai connectors, Devin, n8n and other cloud agents use MCP servers by URL. Add the app's
         MCP server here and give the agent its Squidbrake URL instead: every call is checked like any other and recorded as
@@ -883,7 +997,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
           <span class="hint" id="mcpMsg"></span></div>
       </form>
     </section>
-    <section class="card">
+    <section class="card" id="set-rules">
       <div class="card-head"><h2>Rules</h2></div>
       <p class="lede">What agents may do is decided by <code>rules.yaml</code> on the gateway: allow, block, or hold for a person
         (optionally a specific role). Edits apply within seconds. Use <b>Test a rule</b> to check what would happen.</p>
@@ -1505,7 +1619,8 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     const box = $("#chart");
     const total = buckets.reduce((a, b) => a + b.count, 0);
     renderChartTable(buckets, bucket);
-    if (!total) { box.replaceChildren(el("div", { class: "empty", text: "No calls in this period." })); return; }
+    if (!total) { box.replaceChildren(el("div", { class: "empty" }, el("span", { class: "listening", "aria-hidden": "true" }),
+      "Quiet in this period. New actions draw here live.")); return; }
 
     const W = Math.max(box.clientWidth, 280), H = 200;
     const m = { t: 10, r: 4, b: 24, l: 40 };
@@ -1598,7 +1713,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   function renderTop(stats) {
     const list = $("#top"), top = stats.top_names || [];
     list.replaceChildren();
-    if (!top.length) { list.append(el("li", { class: "empty", text: "Nothing yet." })); return; }
+    if (!top.length) { list.append(el("li", { class: "empty", text: "Your agent's most used tools will rank here." })); return; }
     const max = top[0].count;
     top.forEach((t) => list.append(el("li", {},
       el("button", { title: `Filter by ${t.name}`, onclick: () => setFilter("name", state.f.name === t.name ? "" : t.name) },
@@ -1635,10 +1750,10 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     $("#noRows").hidden = rows.length > 0;
     const narrowed = Object.keys(state.f).some((k) => state.f[k]) || state.window;
     $("#noRows").replaceChildren(
-      el("div", { class: "empty-title", text: narrowed ? "Nothing matches" : (listMode === "chains" ? "No chains yet" : "No calls yet") }),
+      el("div", { class: "empty-title" }, narrowed ? "Nothing matches" : [el("span", { class: "listening", "aria-hidden": "true" }), "Listening for your agent"]),
       el("div", { text: narrowed
         ? "Try a wider time range, or clear a filter."
-        : "When an agent works through a session, the whole run shows up here as one chain." }),
+        : "Try it now: ask your agent to “list the files in this folder”. It shows up here within a second." }),
     );
     $("#more").hidden = !nextBefore;
     const chainN = chains.length;
@@ -1721,9 +1836,62 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
       + `https://squidbrake.com/go/share`;
     $("#savedShare").href = `https://www.linkedin.com/feed/?shareActive=true&text=${encodeURIComponent(text)}`;
   }
+  // Progress badges, all from the last year of report counts; nothing new is stored on the server.
+  // [name, what it means, how to earn it, unlocked?]. "Set up" is always earned (you are looking at the dashboard),
+  // so the bar never starts at zero: people finish what they have already started (endowed progress).
+  const BADGES = [
+    ["Set up", "Squidbrake is running and watching", "", () => true],
+    ["First check", "Your agent's first action went through Squidbrake",
+      "Ask your agent to do anything, like “list the files in this folder”", (a) => a.seen >= 1],
+    ["Asked first", "An action waited for you to decide", "Ask your agent to change a file; you'll be asked first", (a) => a.held >= 1],
+    ["Your call", "You approved an action", "Press Approve on an action that is waiting", (a) => a.approved >= 1],
+    ["Saved the day", "A risky action was stopped before it ran", "Press Reject on an action you didn't expect", (a) => a.blocked + a.rejected >= 1],
+    ["Warmed up", "100 actions checked", "Keep working with your agent as usual", (a) => a.seen >= 100],
+    ["Ten saves", "10 risky actions stopped", "Reject anything you didn't expect", (a) => a.blocked + a.rejected >= 10],
+    ["Thousand club", "1,000 actions checked", "Keep going", (a) => a.seen >= 1000],
+  ];
+  const GOALS = [1, 10, 100, 1000, 10000, 100000];
+  const CHEERS = ["Good start", "Getting going", "Nice progress", "Halfway there", "Over halfway", "Almost there", "So close", "All badges earned"];
+  async function loadProgress() {
+    const r = (await api("/v1/reports/week", { days: 366 })).actions || {};
+    const a = Object.fromEntries(["seen", "held", "approved", "blocked", "rejected"].map((k) => [k, r[k] || 0]));
+    const got = BADGES.filter((b) => b[3](a)), nextUp = BADGES.find((b) => !b[3](a));
+    let seen = null;
+    try { seen = JSON.parse(localStorage.getItem("sb.badges") || "null"); } catch {}
+    const fresh = seen ? got.filter((b) => !seen.includes(b[0])) : [];
+    $("#progCard").hidden = false;
+    $("#progSub").textContent = `${got.length} of ${BADGES.length} badges · ${CHEERS[Math.min(got.length - 1, CHEERS.length - 1)]}`;
+    const bar = $("#progBar");
+    bar.setAttribute("aria-valuemax", BADGES.length); bar.setAttribute("aria-valuenow", got.length);
+    bar.firstChild.style.width = `${(got.length / BADGES.length) * 100}%`;
+    $("#badges").replaceChildren(...BADGES.map((b) => {
+      const [name, why, how, ok] = b, isNext = b === nextUp;
+      return el("li", { class: ok(a) ? `got${fresh.includes(b) ? " pop" : ""}` : (isNext ? "next-up" : "locked"),
+        title: ok(a) ? "Earned" : how },
+        isNext ? el("span", { class: "tag", text: "Next up" }) : null,
+        el("b", { text: `${ok(a) ? "★" : "☆"} ${name}` }), isNext ? how : why);
+    }));
+    // Goal gradient: the next count goal is always close, and says how few are left.
+    const goal = GOALS.find((n) => n > a.seen), left = goal - a.seen;
+    $("#progNext").replaceChildren(...(goal ? [a.seen
+      ? `Only ${nf.format(left)} more to reach ${nf.format(goal)} actions checked`
+      : "Waiting for your agent's first action. It shows up here within a second.",
+      el("div", { class: "bar" }, el("i", { style: `width:${Math.max(4, (a.seen / goal) * 100)}%` }))] : []));
+    // Point at the button that earns the next badge (only shows while something is waiting for approval).
+    const coach = { "Your call": "approve", "Saved the day": "reject" }[nextUp?.[0]] || "";
+    document.body.dataset.coach = coach;
+    $("#coachTip").hidden = !coach;
+    $("#coachTip").textContent = coach === "approve"
+      ? "👇 Your agent is waiting for you. Click ✓ Approve to let it run (and earn “Your call”)."
+      : "👇 Something you didn't expect? Click ✕ Reject to stop it before it runs (and earn “Saved the day”).";
+    // Celebrate badges earned since this browser last looked; the first visit only records them.
+    if (fresh.length) toast(`🎉 Badge earned: ${fresh.map((b) => b[0]).join(", ")}`, 5000);
+    try { localStorage.setItem("sb.badges", JSON.stringify(got.map((b) => b[0]))); } catch {}
+  }
   const reload = () => {
     state.window = null; const g = ++gen;
     loadSaved().catch(() => {});
+    loadProgress().catch(() => {});
     return run(g, () => Promise.all([loadMe().then(() => Promise.all([loadQueue(), loadControls(), loadView()])),
                                      loadStats(g), loadEvents(false, g)]));
   };
@@ -1734,6 +1902,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     liveBusy = true;
     const g = gen;
     try {
+      loadProgress().catch(() => {});
       await run(g, () => Promise.all([loadQueue(), loadControls(), loadStats(g), refreshEvents(g),
                                       view === "reports" ? loadReports() : null]));
     } finally { liveBusy = false; }
@@ -1752,10 +1921,10 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     if (lic && card) {
       card.hidden = lic.licensed;
       const list = lic.features.join(", ");
-      $("#planTitle").textContent = lic.team_features ? `From ${lic.grace_until}, these are part of the Team plan` : "Free plan";
+      $("#planTitle").textContent = lic.team_features ? `From ${lic.grace_until}, these need a paid plan` : "Free plan";
       $("#planText").textContent = lic.team_features
         ? `${list[0].toUpperCase()}${list.slice(1)}. Blocking and holding stay free.`
-        : `${list[0].toUpperCase()}${list.slice(1)} are part of the Team plan. Blocking and holding are on.`;
+        : `${list[0].toUpperCase()}${list.slice(1)} need a paid plan. Blocking and holding are on.`;
       $("#planLink").href = lic.upgrade_url;
     }
     const ver = $("#ver");
@@ -2016,14 +2185,55 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   }
   $("#notifyBtn").addEventListener("click", async () => {
     const s = deskState();
-    if (s === "on") { deskPref.set(false); renderNotifyBtn(); toast("Desktop alerts off."); return; }
+    if (s === "on") { deskPref.set(false); renderNotifyBtn(); if (view === "settings") renderChannels(); toast("Desktop alerts off."); return; }
     if (s !== "off") { renderNotifyBtn(); toast(DESK_TITLES[s], 8000); return; }
     const p = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
     deskPref.set(p === "granted");
+    $("#notifyBtn").classList.remove("coach-me");
     renderNotifyBtn();
+    if (view === "settings") renderChannels();
     toast(p === "granted" ? "Desktop alerts on. Keep this tab open; it can stay in the background." : DESK_TITLES[deskState()], 8000);
   });
   renderNotifyBtn();
+  // Chime: on by default. Browsers only allow sound after the viewer has clicked the page once, so the
+  // audio context is unlocked on the first click anywhere.
+  const soundPref = {
+    get() { try { return localStorage.getItem("gw.sound") !== "0"; } catch { return true; } },
+    set(v) { try { localStorage.setItem("gw.sound", v ? "1" : "0"); } catch {} },
+  };
+  let audio = null;
+  const unlockAudio = () => { try { audio = audio || new AudioContext(); audio.resume(); } catch {} };
+  document.addEventListener("pointerdown", unlockAudio, { once: true });
+  function chime() {
+    if (!soundPref.get() || !audio || audio.state !== "running") return;
+    [[880, 0], [1320, 0.16]].forEach(([hz, at]) => {   // two soft notes, "ding-dong"
+      const o = audio.createOscillator(), g = audio.createGain(), t = audio.currentTime + at;
+      o.frequency.value = hz; o.type = "sine";
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.5);
+      o.connect(g).connect(audio.destination); o.start(t); o.stop(t + 0.55);
+    });
+  }
+  function renderSoundBtn() {
+    const on = soundPref.get(), b = $("#soundBtn");
+    b.textContent = on ? "🔊" : "🔇"; b.setAttribute("aria-pressed", String(on));
+    b.setAttribute("aria-label", on ? "Approval sound on" : "Approval sound off");
+  }
+  $("#soundBtn").addEventListener("click", () => {
+    soundPref.set(!soundPref.get()); renderSoundBtn(); unlockAudio(); chime();
+    toast(soundPref.get() ? "Sound on: you'll hear a chime when an action needs approval." : "Sound off.");
+  });
+  renderSoundBtn();
+  // Blink the tab title while something waits and the viewer is in another tab.
+  let blink = false;
+  setInterval(() => {
+    if (!document.hidden || !queue.length) {
+      if (blink) { blink = false; document.title = queue.length ? `(${queue.length}) Needs approval · Squidbrake` : "Squidbrake"; }
+      return;
+    }
+    blink = !blink;
+    document.title = blink ? "🔔 Waiting for you!" : `(${queue.length}) Needs approval · Squidbrake`;
+  }, 1000);
   function notifyQueue() {
     const viewer = me ? me.client : "", waiting = new Set(queueIds);
     notifyOpen = notifyOpen.filter((o) => o.ids.some((id) => waiting.has(id)) || (o.n.close(), false));   // decided elsewhere: take it down
@@ -2031,6 +2241,9 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     const fresh = queue.filter((q) => !notifySeen.has(q.id));
     notifySeen = waiting;
     if (!fresh.length || !(me && me.can_approve)) return;
+    chime();
+    // Desktop pop-ups are off: point at the button that turns them on.
+    $("#notifyBtn").classList.toggle("coach-me", deskState() === "off");
     if (document.visibilityState === "visible" && document.hasFocus()) return;   // they're looking at the page already
     if (deskState() !== "on") { renderNotifyBtn(); return; }   // permission may have been revoked since
     const one = fresh.length === 1 ? fresh[0] : null;
@@ -2491,10 +2704,21 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
       : LEVEL[m.access] || (m.roles.includes("admin") ? "Admin" : m.approver ? "Approver" : "Viewer (view only)");
     $("#ownerSel").replaceChildren(el("option", { value: "", text: "nobody in particular" }),
       ...data.members.filter((m) => m.kind === "person").map((m) => el("option", { value: m.name, text: m.name })));
+    // at a glance: how many people and agents, and who can approve
+    const people = data.members.filter((m) => m.kind === "person"), agents = data.members.filter((m) => m.kind === "agent");
+    const approvers = people.filter((m) => m.approver || ["approver", "admin", "owner"].includes(m.access));
+    $("#teamStats").replaceChildren(
+      el("span", { class: "stat" }, el("b", { text: String(people.length) }), ` ${people.length === 1 ? "person" : "people"}`),
+      el("span", { class: "stat" }, el("b", { text: String(agents.length) }), ` AI agent${agents.length === 1 ? "" : "s"}`),
+      el("span", { class: "stat" + (approvers.length < 2 ? " warn" : "") }, el("b", { text: String(approvers.length) }),
+        approvers.length === 1 ? " can approve: add a second approver so nothing waits on one person" : " can approve"));
+    $("#teamUpsell").hidden = !!(me.license && me.license.licensed);
+    const level = (m) => m.kind === "agent" ? "agent" : m.access || (m.roles.includes("admin") ? "admin" : m.approver ? "approver" : "viewer");
     $("#teamRows").replaceChildren(...data.members.map((m) => el("tr", {},
-      el("td", {}, m.kind === "agent" ? avatarEl(m.name, "sm") : null, m.kind === "agent" ? " " : null, el("b", { text: m.name }), m.name === me.client ? el("span", { class: "muted", text: "  (you)" }) : null),
+      el("td", {}, el("span", { class: "who" }, avatarEl(m.name, "sm"), el("b", { text: m.name }),
+        m.name === me.client ? el("span", { class: "you", text: "you" }) : null)),
       el("td", { class: "sec", text: m.kind === "agent" ? "🤖 AI agent" : "👤 Person" }),
-      el("td", { text: access(m) }),
+      el("td", {}, el("span", { class: `lvl l-${level(m)}`, text: access(m) })),
       el("td", {}, m.roles.filter((r) => r !== "admin" && r !== "owner").length ? m.roles.filter((r) => r !== "admin" && r !== "owner").map((r) => el("span", { class: "tag", text: r })) : el("span", { class: "muted", text: "—" })),
       el("td", { class: "sec", text: fmtDate(m.created_at) }),
       el("td", { class: "num" }, admin && m.name !== me.client ? [
@@ -2523,7 +2747,14 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   const syncKind = () => {
     addForm.querySelectorAll(".person-only").forEach((n) => (n.hidden = addForm.kind.value === "agent"));
     addForm.querySelectorAll(".agent-only").forEach((n) => (n.hidden = addForm.kind.value !== "agent"));
+    addForm.querySelectorAll(".kind-opt").forEach((b) => {
+      const on = b.dataset.kind === addForm.kind.value;
+      b.classList.toggle("on", on); b.setAttribute("aria-checked", String(on));
+    });
   };
+  addForm.querySelectorAll(".kind-opt").forEach((b) => b.addEventListener("click", () => {
+    addForm.kind.value = b.dataset.kind; syncKind();
+  }));
   addForm.kind.addEventListener("change", syncKind);
   addForm.addEventListener("submit", async (ev) => {
     ev.preventDefault();
@@ -2779,8 +3010,55 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     ai.ai_briefs.checked = !!s.ai_briefs; ai.ai_model.value = s.ai_model || ""; ai.ai_key.value = "";
     $("#aiKeyHint").textContent = s.ai_key_set ? `A key ending ${s.ai_key_hint || "…"} is set. Paste a new one to replace it.` : "Kept on this gateway and never shown again.";
     $("#devRequired").checked = !!s.require_device_signature;
+    renderChannels(s);
     renderDevices();
     loadMcp();
+  }
+  // ---------- alerts at a glance: every way an approval request can reach someone, and whether it's on.
+  // Phone, Slack, Teams and email are Starter plan features: once the grace period is over, a free gateway's saved
+  // channels stop sending (settings() blanks them), so they show as paused here instead of looking never set up.
+  let lastSettings = null;
+  function renderChannels(s) {
+    lastSettings = s = s || lastSettings;
+    if (!s) return;
+    const lic = s.license || {}, paused = new Set(s.paused_channels || []), plan = !lic.team_features;
+    const desk = deskState();
+    const CH = [
+      { k: "desktop", icon: "🖥", name: "Desktop pop-up", sub: "this browser",
+        st: desk === "on" ? "on" : desk === "off" ? "off" : "blocked",
+        act: () => $("#notifyBtn").click() },
+      { k: "phone", icon: "📱", name: "Phone", sub: "ntfy app", st: s.ntfy_topic ? "on" : paused.has("phone") ? "paused" : plan ? "plan" : "off",
+        act: () => focusField("ntfy_topic") },
+      { k: "slack", icon: "💬", name: "Slack / Discord", sub: "webhook", st: s.slack_webhook ? "on" : paused.has("slack") ? "paused" : plan ? "plan" : "off",
+        act: () => focusField("slack_webhook") },
+      { k: "teams", icon: "🟦", name: "Microsoft Teams", sub: "workflow", st: s.teams_webhook ? "on" : paused.has("teams") ? "paused" : plan ? "plan" : "off",
+        act: () => focusField("teams_webhook") },
+      { k: "email", icon: "✉", name: "Email", sub: "SMTP", st: s.email_to && s.smtp_host ? "on" : paused.has("email") ? "paused" : plan ? "plan" : "off",
+        act: () => { $("#emailSetup").open = true; focusField("email_to"); } },
+    ];
+    const LABEL = { on: "On", off: "Off: set up", paused: "Paused: Starter plan", plan: "Starter plan", blocked: "Blocked by browser" };
+    $("#chanGrid").replaceChildren(...CH.map((c) => el("button", { type: "button", class: `chan st-${c.st}`, onclick: c.act,
+      title: c.k === "desktop" ? DESK_TITLES[desk] : `Set up ${c.name}` },
+      el("span", { class: "ic", text: c.icon }), el("b", { text: c.name }), el("span", { class: "sub", text: c.sub }),
+      el("span", { class: "st", text: LABEL[c.st] }))));
+    const on = CH.filter((c) => c.st === "on" && c.k !== "desktop").length;
+    $("#chanSub").textContent = on ? `${on} channel${on === 1 ? "" : "s"} on` : "only this browser: nothing reaches you when it's closed";
+    const notes = [];
+    if (paused.size) notes.push(`<b>Paused:</b> your ${[...paused].join(", ")} alerts are saved but not sent, because they're part of the Starter plan and up.`);
+    else if (plan) notes.push("Phone, Slack, Teams and email alerts are part of the Starter plan and up.");
+    else if (lic.in_grace && !lic.licensed) notes.push(`Phone, Slack, Teams and email alerts are free until <b>${lic.grace_until}</b>, then part of the Starter plan and up.`);
+    if (on && !s.public_url) notes.push("<b>Set the public address below:</b> without it, the one-tap links in alerts can't open on a phone.");
+    const showUpgrade = (paused.size || plan || (lic.in_grace && !lic.licensed)) && lic.upgrade_url;
+    $("#chanPlan").hidden = !notes.length;
+    $("#chanPlan").innerHTML = notes.map((n) => `<p>${n}</p>`).join("") +
+      (showUpgrade ? `<a class="btn primary" href="${lic.upgrade_url}" target="_blank" rel="noopener">Start a 14-day Team trial</a>` : "");
+  }
+  // the section nav scrolls (the address bar's #hash picks the tab, so it stays #settings)
+  document.querySelectorAll(".set-nav [data-go]").forEach((b) => b.addEventListener("click", () =>
+    document.getElementById(b.dataset.go).scrollIntoView({ behavior: "smooth", block: "start" })));
+  function focusField(name) {
+    const f = sForm[name]; if (!f) return;
+    f.scrollIntoView({ behavior: "smooth", block: "center" }); setTimeout(() => f.focus(), 300);
   }
   async function renderDevices() {
     const r = await loadDevices();
@@ -2972,14 +3250,19 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
   sForm.addEventListener("submit", async (ev) => {
     ev.preventDefault();
     try {
-      await apiSend("PUT", "/v1/settings", { public_url: sForm.public_url.value.trim(), ntfy_topic: sForm.ntfy_topic.value.trim(),
+      const body = { public_url: sForm.public_url.value.trim(), ntfy_topic: sForm.ntfy_topic.value.trim(),
         slack_webhook: sForm.slack_webhook.value.trim(), slack_signing_secret: sForm.slack_signing_secret.value.trim(),
         teams_webhook: sForm.teams_webhook.value.trim(), email_to: sForm.email_to.value.trim(),
         smtp_host: sForm.smtp_host.value.trim(), smtp_port: sForm.smtp_port.value ? +sForm.smtp_port.value : null,
         smtp_user: sForm.smtp_user.value.trim(), smtp_password: sForm.smtp_password.value,
         smtp_from: sForm.smtp_from.value.trim(),
         notify_as: sForm.notify_as.value || null, weekly_digest: sForm.weekly_digest.checked,
-        second_person: sForm.second_person.checked });
+        second_person: sForm.second_person.checked };
+      // a channel paused by the plan shows empty here: leave it out, so saving something else doesn't wipe it
+      const PAUSED_FIELDS = { phone: ["ntfy_topic"], slack: ["slack_webhook"], teams: ["teams_webhook"], email: ["email_to"] };
+      for (const ch of (lastSettings && lastSettings.paused_channels) || [])
+        for (const k of PAUSED_FIELDS[ch] || []) if (!body[k]) delete body[k];
+      renderChannels(await apiSend("PUT", "/v1/settings", body));
       $("#settingsMsg").textContent = "Saved ✓"; setTimeout(() => ($("#settingsMsg").textContent = ""), 3000);
     } catch (err) { $("#settingsMsg").textContent = err.message; }
   });

@@ -147,9 +147,13 @@ with db() as _c:
                         # when its hosted gateway was asked to start (sign-up, or its turn in line): unused ones are freed
                         ("started_at", "TEXT"),
                         # when it joined the line for a hosted slot, to the microsecond: first in, first out
-                        ("queued_at", "TEXT")):
+                        ("queued_at", "TEXT"),
+                        # when the founder first took keys; unlike keys_revealed_at, new keys never clear it
+                        ("keys_first_shown_at", "TEXT")):
         if _col not in _have:
             _c.execute(f"ALTER TABLE pilots ADD COLUMN {_col} {_type}")
+            if _col == "keys_first_shown_at":   # dashboards whose keys were already taken stay that way
+                _c.execute("UPDATE pilots SET keys_first_shown_at=keys_revealed_at WHERE keys_revealed_at IS NOT NULL")
 
 # Every install that says yes to the first-run question (telemetry.py) joins this code. It has gone missing from the
 # database twice (deleted with the other test links), and then every one of those joins was refused with a 404 that
@@ -638,10 +642,15 @@ def _connected(c, code: str) -> bool:
 def _reclaim_unused(c) -> None:
     """Free the slot of a sign-up's hosted dashboard nobody used (see RECLAIM_KEYS_MINUTES): provision.py removes it."""
     t = datetime.now(timezone.utc)
-    for p in c.execute(f"SELECT code, company, email, started_at, keys_revealed_at FROM pilots WHERE hosted=1 AND "
-                       f"state='running' AND started_at IS NOT NULL AND {RECLAIMABLE}").fetchall():
+    for p in c.execute(f"SELECT code, company, email, started_at, keys_revealed_at, keys_first_shown_at, rekey FROM pilots "
+                       f"WHERE hosted=1 AND state='running' AND started_at IS NOT NULL AND {RECLAIMABLE}").fetchall():
+        if p["rekey"] or _connected(c, p["code"]):     # new keys on the way, or an agent has used it: someone's there
+            continue
         age = (t - datetime.fromisoformat(p["started_at"])).total_seconds()
-        why = ("its keys weren't taken" if RECLAIM_KEYS_MINUTES and not p["keys_revealed_at"]
+        # Only a dashboard whose keys were NEVER taken: new keys (lost ones, or from the admin) clear keys_revealed_at
+        # so the start page shows them, and must not make a dashboard in use look abandoned.
+        never_taken = not p["keys_revealed_at"] and not p["keys_first_shown_at"]
+        why = ("its keys weren't taken" if RECLAIM_KEYS_MINUTES and never_taken
                and age > RECLAIM_KEYS_MINUTES * 60 else
                "no agent connected" if RECLAIM_IDLE_HOURS and age > RECLAIM_IDLE_HOURS * 3600
                and not _connected(c, p["code"]) else "")
@@ -652,13 +661,29 @@ def _reclaim_unused(c) -> None:
 
 def _start_waiting(c) -> None:
     """Hosted sign-ups that came in while every slot was taken: start the oldest ones as slots free up (nobody approves
-    them by hand). Run each time provision.py asks what to do, so a freed slot is used on its next round (10 s)."""
+    them by hand). Run each time provision.py asks what to do, so a freed slot is used on its next round (10 s).
+    Only those in line (queued_at): a request from before self-serve sign-up (no queued_at) was never approved, and
+    its email never proven, so it stays until you delete it or put it in line from the admin."""
     free = HOSTED_MAX - c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0]
     if free <= 0:
         return
-    for r in c.execute("SELECT code FROM pilots WHERE hosted=1 AND state='waiting' ORDER BY COALESCE(queued_at, created_at) LIMIT ?",
-                       (free,)).fetchall():
+    for r in c.execute("SELECT code FROM pilots WHERE hosted=1 AND state='waiting' AND queued_at IS NOT NULL "
+                       "ORDER BY queued_at LIMIT ?", (free,)).fetchall():
         c.execute("UPDATE pilots SET state='requested', started_at=? WHERE code=? AND state='waiting'", (now(), r["code"]))
+
+
+@app.post("/v1/admin/pilots/{code}/queue", dependencies=[Depends(admin)])
+def queue_old_request(code: str):
+    """An old hosted request (from before self-serve sign-up) you decided to keep: it joins the end of the line."""
+    with _lock, db() as c:
+        last = c.execute("SELECT MAX(queued_at) FROM pilots").fetchone()[0]
+        t = datetime.now(timezone.utc).isoformat()
+        if last and t <= last:                      # strictly after the last one in line (see signup)
+            t = (datetime.fromisoformat(last) + timedelta(microseconds=1)).isoformat()
+        if not c.execute("UPDATE pilots SET queued_at=? WHERE code=? AND hosted=1 AND state='waiting' AND queued_at IS NULL",
+                         (t, code)).rowcount:
+            raise HTTPException(404, "no old hosted request with that code")
+    return {"ok": True}
 
 
 @app.post("/v1/admin/pilots/{code}/new-keys", dependencies=[Depends(admin)])
@@ -747,7 +772,7 @@ def pilot_status(code: str, request: Request):
             _missed(request)
             raise HTTPException(404)
         ahead = c.execute("SELECT COUNT(*) FROM pilots WHERE hosted=1 AND state='waiting' AND "
-                          "COALESCE(queued_at, created_at) < ?", (p["q"],)).fetchone()[0] if p["state"] == "waiting" else 0
+                          "queued_at IS NOT NULL AND queued_at < ?", (p["q"],)).fetchone()[0] if p["state"] == "waiting" else 0
         connected = _connected(c, code)
     return {"state": p["state"], "keys_ready": bool(p["admin_key"]), "keys_shown": bool(p["keys_revealed_at"]),
             "rekey": bool(p["rekey"]), "connected": connected, "ahead": ahead}
@@ -800,7 +825,8 @@ def reveal_keys(code: str, request: Request):
             raise HTTPException(404)
         if not p["admin_key"]:
             raise HTTPException(409, "already shown" if p["keys_revealed_at"] else "your dashboard is still being set up")
-        c.execute("UPDATE pilots SET admin_key=NULL, agent_key=NULL, keys_revealed_at=? WHERE code=?", (now(), code))
+        c.execute("UPDATE pilots SET admin_key=NULL, agent_key=NULL, keys_revealed_at=?, "
+                  "keys_first_shown_at=COALESCE(keys_first_shown_at, ?) WHERE code=?", (now(), now(), code))
     return {"dashboard": dashboard_url(p["subdomain"]), "admin_key": p["admin_key"], "agent_key": p["agent_key"]}
 
 
@@ -1052,7 +1078,7 @@ def overview(request: Request):
             ever = sum(i["total_events"] or 0 for i in mine)
             if p["state"] != "running":
                 stage = {"requested": "setting up", "failed": "setup failed", "deleting": "deleting",
-                         "waiting": "in line for a slot"}.get(p["state"], stage)
+                         "waiting": "in line for a slot" if p.get("queued_at") else "old hosted request"}.get(p["state"], stage)
             elif not p["keys_revealed_at"]:
                 stage = "opened link" if p["page_views"] else "link sent"
             elif not ever:
