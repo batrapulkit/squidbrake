@@ -129,6 +129,10 @@ with db() as _c:
         done INTEGER NOT NULL DEFAULT 0);
     CREATE TABLE IF NOT EXISTS link_clicks (channel TEXT NOT NULL, day TEXT NOT NULL, n INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (channel, day));
+    CREATE TABLE IF NOT EXISTS app_links (id_hash TEXT PRIMARY KEY, code TEXT NOT NULL, device TEXT NOT NULL,
+        created_at TEXT NOT NULL, state TEXT NOT NULL, agent_key TEXT, key_name TEXT, error TEXT);
+    CREATE TABLE IF NOT EXISTS devices (token_hash TEXT PRIMARY KEY, code TEXT NOT NULL, name TEXT NOT NULL,
+        key_name TEXT, created_at TEXT NOT NULL, last_seen TEXT, version TEXT, os TEXT);
     """)
     if "ref" not in {r[1] for r in _c.execute("PRAGMA table_info(installs)")}:
         _c.execute("ALTER TABLE installs ADD COLUMN ref TEXT")           # where they heard about it (telemetry.py)
@@ -626,6 +630,8 @@ def _forget(c, code: str) -> None:
     c.executemany("DELETE FROM days WHERE install_id=?", [(i,) for i in ids])
     c.executemany("DELETE FROM catches WHERE install_id=?", [(i,) for i in ids])
     c.execute("DELETE FROM installs WHERE code=?", (code,))
+    c.execute("DELETE FROM app_links WHERE code=?", (code,))
+    c.execute("DELETE FROM devices WHERE code=?", (code,))
     c.execute("DELETE FROM pilots WHERE code=?", (code,))
 
 
@@ -647,13 +653,21 @@ def _connected(c, code: str) -> bool:
     return bool(c.execute("SELECT 1 FROM installs WHERE code=? AND COALESCE(total_events, 0) > 0", (code,)).fetchone())
 
 
+def _app_alive(c, code: str) -> bool:
+    """The Squidbrake app (desktop.py) on one of their computers checked in recently: it is installed and waiting for
+    their agent, so the dashboard must stay up (asleep, their agent's actions would wait until it wakes)."""
+    hours = RECLAIM_IDLE_HOURS or 24
+    since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+    return bool(c.execute("SELECT 1 FROM devices WHERE code=? AND last_seen > ?", (code, since)).fetchone())
+
+
 def _reclaim_unused(c) -> None:
     """Free the slot of a sign-up's hosted dashboard nobody used (see RECLAIM_KEYS_MINUTES): it goes to sleep."""
     t = datetime.now(timezone.utc)
     for p in c.execute(f"SELECT code, company, email, started_at, keys_revealed_at, keys_first_shown_at, rekey FROM pilots "
                        f"WHERE hosted=1 AND state='running' AND started_at IS NOT NULL AND {RECLAIMABLE}").fetchall():
-        if p["rekey"] or _connected(c, p["code"]):     # new keys on the way, or an agent has used it: someone's there
-            continue
+        if p["rekey"] or _connected(c, p["code"]) or _app_alive(c, p["code"]):
+            continue        # new keys on the way, an agent has used it, or the Squidbrake app is running: someone's there
         age = (t - datetime.fromisoformat(p["started_at"])).total_seconds()
         # Only a dashboard whose keys were NEVER taken: new keys (lost ones, or from the admin) clear keys_revealed_at
         # so the start page shows them, and must not make a dashboard in use look abandoned.
@@ -740,7 +754,11 @@ def provision_queue():
         rows = c.execute("SELECT code, company, subdomain, state, plan, trial_ends, mrr, rekey, "
                          "(admin_key IS NOT NULL OR keys_revealed_at IS NOT NULL) AS keys_ready "
                          "FROM pilots WHERE hosted=1").fetchall()
+        minting: dict[str, list] = {}
+        for r in c.execute("SELECT id_hash, code, device FROM app_links WHERE state='minting'").fetchall():
+            minting.setdefault(r["code"], []).append({"id": r["id_hash"], "device": r["device"]})
     return {"domain": HOSTED_DOMAIN, "pilots": [dict(r) | {"keys_ready": bool(r["keys_ready"]), "rekey": bool(r["rekey"]),
+                                                          "app_links": minting.get(r["code"], []),
                                                           "dashboard": dashboard_url(r["subdomain"]),
                                                           "license": _license_for(r)} for r in rows]}
 
@@ -808,8 +826,9 @@ def pilot_status(code: str, request: Request):
         ahead = c.execute("SELECT COUNT(*) FROM pilots WHERE hosted=1 AND state='waiting' AND "
                           "queued_at IS NOT NULL AND queued_at < ?", (p["q"],)).fetchone()[0] if p["state"] == "waiting" else 0
         connected = _connected(c, code)
+        apps = [r[0] for r in c.execute("SELECT name FROM devices WHERE code=? ORDER BY created_at", (code,))]
     return {"state": p["state"], "keys_ready": bool(p["admin_key"]), "keys_shown": bool(p["keys_revealed_at"]),
-            "rekey": bool(p["rekey"]), "connected": connected, "ahead": ahead}
+            "rekey": bool(p["rekey"]), "connected": connected, "ahead": ahead, "apps": apps}
 
 
 @app.post("/v1/pilot/{code}/wake")
@@ -1108,6 +1127,9 @@ def overview(request: Request):
     span = [(today - timedelta(days=i)).isoformat() for i in range(13, -1, -1)]
     with db() as c:
         pilots = [dict(r) for r in c.execute("SELECT * FROM pilots ORDER BY created_at DESC")]
+        apps: dict[str, list[str]] = {}         # computers with the Squidbrake app, per pilot
+        for r in c.execute("SELECT code, name FROM devices ORDER BY created_at"):
+            apps.setdefault(r["code"], []).append(r["name"])
         installs = [dict(r) for r in c.execute("SELECT * FROM installs")]
         days = c.execute("SELECT install_id, day, counts FROM days WHERE day >= ?", (span[0],)).fetchall()
         caught: dict[str, list] = {}
@@ -1154,6 +1176,8 @@ def overview(request: Request):
                 stage = {"requested": "setting up", "failed": "setup failed", "deleting": "deleting",
                          "sleeping": f"asleep ({p.get('slept_why') or 'unused'})",
                          "waiting": "in line for a slot" if p.get("queued_at") else "old hosted request"}.get(p["state"], stage)
+            elif not ever and apps.get(p["code"]):
+                stage = "app signed in"
             elif not p["keys_revealed_at"]:
                 stage = "opened link" if p["page_views"] else "link sent"
             elif not ever:
@@ -1187,6 +1211,7 @@ def overview(request: Request):
                                         reverse=True) if i["latency"]), None),
                     "idle_days": idle, "trend": (None if not prev else round(100 * (week["events"] - prev) / prev)),
                     "link": f"{public_url(request)}/start/{p['code']}", "stage": stage, "installs": len(active),
+                    "apps": apps.get(p["code"], []),
                     "last_seen": last or None, "versions": sorted({i["version"] for i in active if i["version"]}),
                     "modes": sorted({i["mode"] for i in active if i["mode"]}), "agents": agents,
                     "rules_hit": dict(sorted(hits.items(), key=lambda kv: -kv[1])[:6]), "week": week,
@@ -1553,6 +1578,207 @@ def supabase_user(token: str) -> dict | None:
         return None
 
 
+# ---- the Squidbrake app (desktop.py): sign in with an email code, get this computer's agent key, no keys to copy
+#
+#  POST /v1/app/code     {email}                 Supabase emails a 6-digit code (the same email as the sign-in link)
+#  POST /v1/app/connect  {email, code, device}   the code checked by Supabase -> a link the app polls
+#  GET  /v1/app/link/ID                          how far along: waking / waiting (ahead) / starting / connecting, then
+#                                                once: {dashboard, agent_key, device_token}; the agent key is the one
+#                                                still waiting for the start page, or (taken already) one provision.py
+#                                                makes for this computer, named after it (Team page: remove it there)
+#  POST /v1/app/heartbeat {token}                the app checking in: wakes a sleeping dashboard, keeps it awake
+#
+# Only ever an AGENT key: it can't approve or sign in to the dashboard, so a code typed on someone else's computer
+# never hands out control. The start page and the install commands keep working as before.
+# Where the start page's "App" tab downloads the installers from (the release files native.yml attaches); empty: no
+# App tab, only the install commands. Turn it on once a release has the app in it.
+APP_DOWNLOADS = os.getenv("INSIGHTS_APP_DOWNLOADS", "").rstrip("/")
+APP_LINK_MINUTES = 30
+APP_CODES_PER_HOUR = int(os.getenv("INSIGHTS_APP_CODES_PER_HOUR", "5"))      # codes emailed to one address
+APP_TRIES_PER_10_MIN = 8                                                      # wrong codes for one address
+_app_codes: dict[str, list[float]] = {}
+_app_tries: dict[str, list[float]] = {}
+DEVICE_RE = re.compile(r"[^A-Za-z0-9 ._'-]+")
+
+
+def _limit(seen: dict[str, list[float]], key: str, n: int, seconds: int, what: str) -> None:
+    t = time.time()
+    recent = [x for x in seen.get(key, []) if t - x < seconds]
+    if len(recent) >= n:
+        raise HTTPException(429, f"too many {what}: try again in {max(1, seconds // 60)} minutes")
+    seen[key] = recent + [t]
+
+
+def _supabase_post(path: str, body: dict) -> dict | None:
+    req = urllib.request.Request(SUPABASE_URL + path, data=json.dumps(body).encode(), method="POST",
+                                 headers={"apikey": SUPABASE_ANON_KEY, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return json.loads(r.read() or b"{}")
+    except Exception:
+        return None
+
+
+def supabase_send_code(email: str) -> bool:
+    """Supabase's sign-in email (its template shows the 6-digit {{ .Token }} next to the link)."""
+    return _supabase_post("/auth/v1/otp", {"email": email, "create_user": True}) is not None
+
+
+def supabase_check_code(email: str, code: str) -> dict | None:
+    """The Supabase user for a right code, or None."""
+    r = _supabase_post("/auth/v1/verify", {"type": "email", "email": email, "token": code})
+    return (r or {}).get("user")
+
+
+class AppCodeIn(BaseModel):
+    email: str = Field(max_length=200)
+
+
+class AppConnectIn(BaseModel):
+    email: str = Field(max_length=200)
+    code: str = Field(min_length=6, max_length=10)
+    device: str = Field(default="", max_length=80)
+
+
+class HeartbeatIn(BaseModel):
+    token: str = Field(min_length=20, max_length=200)
+    version: str = Field(default="", max_length=40)
+    os: str = Field(default="", max_length=40)
+
+
+def _app_ready() -> None:
+    if not SUPABASE_URL:
+        raise HTTPException(503, "sign-in by email isn't set up on this server: use the install command on your "
+                                 "start page instead")
+
+
+@app.post("/v1/app/code")
+def app_code(b: AppCodeIn, request: Request):
+    _app_ready()
+    email = b.email.strip().lower()
+    if not EMAIL_RE.match(email):
+        raise HTTPException(422, "that email address doesn't look right")
+    _limit(_app_codes, email, APP_CODES_PER_HOUR, 3600, "codes for this email")
+    _limit(_app_codes, "ip:" + _ip(request), APP_CODES_PER_HOUR * 4, 3600, "codes from here")
+    if not supabase_send_code(email):
+        raise HTTPException(502, "couldn't send the email just now: try again in a minute")
+    return {"ok": True}          # the same answer with or without a dashboard: who signed up isn't given away here
+
+
+@app.post("/v1/app/connect")
+def app_connect(b: AppConnectIn, request: Request):
+    _app_ready()
+    email = b.email.strip().lower()
+    _limit(_app_tries, email, APP_TRIES_PER_10_MIN, 600, "tries for this email")
+    user = supabase_check_code(email, b.code.strip())
+    if not user or (user.get("email") or "").lower() != email or not user.get("email_confirmed_at"):
+        raise HTTPException(401, "that code isn't right, or it expired: ask for a new one")
+    device = DEVICE_RE.sub("", b.device).strip()[:40] or "computer"
+    with _lock, db() as c:
+        p = c.execute("SELECT code, company FROM pilots WHERE lower(email)=? AND hosted=1 ORDER BY created_at DESC",
+                      (email,)).fetchone()
+        if not p:
+            raise HTTPException(404, f"there's no hosted dashboard for {email} yet: sign up first at "
+                                     f"{public_url(request)}/signup")
+        link = secrets.token_urlsafe(32)
+        c.execute("INSERT INTO app_links (id_hash, code, device, created_at, state) VALUES (?,?,?,?, 'pending')",
+                  (_token_hash(link), p["code"], device, now()))
+        out = _app_link(c, _token_hash(link))
+    notify(f"Squidbrake: {p['company']} ({email}) signed in to the app on {device}.")
+    return {"link": link, **out}
+
+
+@app.get("/v1/app/link/{link}")
+def app_link(link: str, request: Request):
+    _guessing(request)
+    with _lock, db() as c:
+        if not c.execute("SELECT 1 FROM app_links WHERE id_hash=?", (_token_hash(link),)).fetchone():
+            _missed(request)
+            raise HTTPException(404, "sign in again")
+        return _app_link(c, _token_hash(link))
+
+
+def _app_link(c, h: str) -> dict:
+    """Move a sign-in along as far as it can go now, and say where it is."""
+    ln = c.execute("SELECT * FROM app_links WHERE id_hash=?", (h,)).fetchone()
+    p = c.execute("SELECT * FROM pilots WHERE code=?", (ln["code"],)).fetchone()
+    expired = datetime.now(timezone.utc) - datetime.fromisoformat(ln["created_at"]) > timedelta(minutes=APP_LINK_MINUTES)
+    if not p or ln["state"] == "done" or (expired and ln["state"] != "ready"):
+        c.execute("DELETE FROM app_links WHERE id_hash=?", (h,))
+        raise HTTPException(410, "that sign-in is over: sign in again")
+    dashboard = dashboard_url(p["subdomain"])
+    if ln["state"] == "ready":                  # the key, once: this computer is now one of theirs
+        token = secrets.token_urlsafe(32)
+        c.execute("INSERT INTO devices (token_hash, code, name, key_name, created_at, last_seen) VALUES (?,?,?,?,?,?)",
+                  (_token_hash(token), ln["code"], ln["device"], ln["key_name"], now(), now()))
+        c.execute("UPDATE app_links SET state='done', agent_key=NULL WHERE id_hash=?", (h,))
+        return {"state": "connected", "dashboard": dashboard, "agent_key": ln["agent_key"], "device_token": token,
+                "company": p["company"]}
+    if p["state"] == "sleeping":
+        _wake(c, p["code"])
+        p = c.execute("SELECT * FROM pilots WHERE code=?", (ln["code"],)).fetchone()
+    if p["state"] == "waiting":
+        ahead = c.execute("SELECT COUNT(*) FROM pilots WHERE hosted=1 AND state='waiting' AND queued_at IS NOT NULL "
+                          "AND queued_at < ?", (p["queued_at"] or p["created_at"],)).fetchone()[0]
+        return {"state": "waiting", "ahead": ahead, "dashboard": dashboard}
+    if p["state"] != "running" or not (p["admin_key"] or p["keys_revealed_at"]):
+        return {"state": "starting", "dashboard": dashboard}
+    if ln["state"] == "pending":
+        if p["agent_key"]:                      # the start page's agent key, not taken yet: this computer gets it
+            c.execute("UPDATE pilots SET agent_key=NULL, keys_first_shown_at=COALESCE(keys_first_shown_at, ?) "
+                      "WHERE code=?", (now(), p["code"]))
+            c.execute("UPDATE app_links SET state='ready', agent_key=?, key_name='agent' WHERE id_hash=?",
+                      (p["agent_key"], h))
+            return _app_link(c, h)
+        c.execute("UPDATE app_links SET state='minting' WHERE id_hash=?", (h,))   # provision.py makes one (~10 s)
+    return {"state": "connecting", "dashboard": dashboard}
+
+
+class AppKeyIn(BaseModel):
+    id: str = Field(max_length=100)
+    key: str | None = Field(default=None, max_length=120)
+    key_name: str | None = Field(default=None, max_length=64)
+    error: str | None = Field(default=None, max_length=500)
+
+
+@app.post("/v1/admin/app-key", dependencies=[Depends(admin)])
+def app_key_made(b: AppKeyIn):
+    """provision.py made (and checked) an agent key for a computer signing in to the app."""
+    with _lock, db() as c:
+        if b.key:
+            c.execute("UPDATE app_links SET state='ready', agent_key=?, key_name=?, error=NULL "
+                      "WHERE id_hash=? AND state='minting'", (b.key, b.key_name, b.id))
+        else:
+            c.execute("UPDATE app_links SET error=? WHERE id_hash=?", (b.error, b.id))
+    return {"ok": True}
+
+
+@app.post("/v1/app/heartbeat")
+def app_heartbeat(b: HeartbeatIn, request: Request):
+    _guessing(request)
+    with _lock, db() as c:
+        d = c.execute("SELECT code FROM devices WHERE token_hash=?", (_token_hash(b.token),)).fetchone()
+        if not d:
+            _missed(request)
+            raise HTTPException(401, "this computer was signed out: sign in again")
+        c.execute("UPDATE devices SET last_seen=?, version=?, os=? WHERE token_hash=?",
+                  (now(), b.version[:40], b.os[:40], _token_hash(b.token)))
+        p = c.execute("SELECT state, subdomain FROM pilots WHERE code=?", (d["code"],)).fetchone()
+        if not p:
+            raise HTTPException(410, "this dashboard was deleted")
+        if p["state"] == "sleeping":           # their agent would be waiting on it: wake it
+            _wake(c, d["code"])
+            p = c.execute("SELECT state, subdomain FROM pilots WHERE code=?", (d["code"],)).fetchone()
+    return {"state": p["state"], "dashboard": dashboard_url(p["subdomain"])}
+
+
+@app.post("/v1/app/signout")
+def app_signout(b: HeartbeatIn):
+    with _lock, db() as c:
+        c.execute("DELETE FROM devices WHERE token_hash=?", (_token_hash(b.token),))
+    return {"ok": True}
+
+
 class SignupIn(BaseModel):
     name: str = Field(default="", max_length=80)
     email: str = Field(default="", max_length=200)
@@ -1744,6 +1970,7 @@ def start_page(code: str, request: Request):
             "hosted": bool(p["hosted"]), "dashboard": dashboard_url(p["subdomain"]), "state": p["state"],
             "keys_ready": bool(p["admin_key"]), "keys_shown": bool(p["keys_revealed_at"]), "rekey": bool(p["rekey"]),
             "self_serve_keys": bool(SUPABASE_URL),
+            "app_downloads": APP_DOWNLOADS if SUPABASE_URL and p["hosted"] else "",
             "connected": connected,
             "reclaim": {"keys_minutes": RECLAIM_KEYS_MINUTES, "idle_hours": RECLAIM_IDLE_HOURS}
                        if p["hosted"] and (p["note"] or "").startswith("signup") and not (p["mrr"] or p["paid_once"]) else None,

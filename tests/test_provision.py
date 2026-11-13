@@ -131,7 +131,7 @@ def test_a_failing_join_doesnt_stop_the_dashboard(monkeypatch):
 def test_the_snippets_run_on_python_38():
     """They run inside the gateway, but the provisioner itself runs on the server's Python 3.8."""
     import ast
-    for src in (provision.KEY_CHECK, provision.JOIN):
+    for src in (provision.KEY_CHECK, provision.JOIN, provision.APP_KEY, provision.NEW_KEYS):
         ast.parse(src, feature_version=(3, 8))
     ast.parse((Path(__file__).resolve().parents[1] / "insights" / "provision.py").read_text(encoding="utf-8"),
               feature_version=(3, 8))
@@ -232,3 +232,44 @@ def test_a_failing_setup_is_reported_and_tried_again_later(monkeypatch):
     provision.last_failure.clear()
     provision.tick()
     assert reports == [{"code": "co-f", "state": "failed", "error": "docker is down"}]
+
+
+def test_a_computer_signing_in_to_the_app_gets_its_own_agent_key_and_nothing_else_changes(tmp_path, monkeypatch):
+    """The real snippet on a real keys.json: one more agent key, named after the computer; the rest keep working."""
+    import subprocess
+    root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(root))
+    import server
+    store = server.KeyStore(tmp_path / "keys.json")
+    first = store.ensure_initialized()
+    reports = []
+
+    def docker(*args, check=True):
+        assert args[:4] == ("exec", "sbp-co", "python", "-c")
+        code = args[4].replace("/app/data", str(tmp_path).replace("\\", "/"))
+        out = subprocess.run([sys.executable, "-c", code, *args[5:]], capture_output=True, text=True, cwd=root)
+        assert out.returncode == 0, out.stderr
+        return out.stdout.strip()
+    monkeypatch.setattr(provision, "docker", docker)
+    monkeypatch.setattr(provision, "key_works", lambda name, key: store.identify(key) is not None)
+    monkeypatch.setattr(provision, "api", lambda path, body=None: reports.append((path, body)) or {})
+    provision.last_failure.clear()
+    links = [{"id": "h1", "device": "Karishma's MacBook Air"}, {"id": "h2", "device": "Karishma's MacBook Air"}]
+    provision.app_keys({"code": "co-1", "subdomain": "co", "app_links": links})
+    (p1, b1), (p2, b2) = reports
+    assert p1 == p2 == "/v1/admin/app-key" and b1["id"] == "h1" and b2["id"] == "h2"
+    assert b1["key_name"] == "app-karishma-s-macbook-air" and b2["key_name"] == "app-karishma-s-macbook-air-2"
+    for b in (b1, b2):
+        assert store.identify(b["key"]) == b["key_name"] and not store.is_person(b["key_name"])   # an agent: can't approve
+    assert store.identify(first["admin"]) == "admin" and store.identify(first["agent"]) == "agent"
+
+
+def test_an_app_key_that_doesnt_open_the_gateway_is_never_handed_out(monkeypatch):
+    reports, calls = [], []
+    monkeypatch.setattr(provision, "api", lambda path, body=None: reports.append(body) or {})
+    monkeypatch.setattr(provision, "docker", lambda *a, check=True: calls.append(a) or '{"name": "app-x", "key": "gw_k"}')
+    monkeypatch.setattr(provision, "key_works", lambda name, key: False)
+    provision.last_failure.clear()
+    provision.app_keys({"code": "co-1", "subdomain": "co", "app_links": [{"id": "h9", "device": "x"}]})
+    assert reports == [{"id": "h9", "error": "the new key doesn't open the gateway"}]
+    assert calls[-1][4] == provision.DROP_KEYS and calls[-1][5] == "app-x"           # and it's taken out again
