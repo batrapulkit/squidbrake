@@ -77,10 +77,10 @@ def start(p):
            "-v", f"{name}:/app/data", "-e", f"PUBLIC_URL={p['dashboard']}", "-e", "FORWARDED_ALLOW_IPS=*",
            "-e", "SQUIDBRAKE_PILOT_INTERVAL=20",     # counts only go out when they changed: the start page sees the first action soon
            "-e", "SQUIDBRAKE_PILOT_HEARTBEAT=600",   # an idle hosted dashboard still checks in every 10 minutes
-           # a free signup: one person, and after its free days it records but doesn't block (server.py PLAN). A Team
-           # trial is a license that ends with the trial instead: its Team features stop, blocking goes on
-           *(["-e", f"SQUIDBRAKE_PLAN={p['plan']}", "-e", f"SQUIDBRAKE_TRIAL_ENDS={p['trial_ends']}"]
-             if p.get("plan") == "free" else []),
+           # a signed-up plan: the gateway blocks and holds only with that plan's license (insights _license_for), and
+           # only watches without one (server.py hosted_watch_only). A pilot set up by hand has no plan: as before
+           *(["-e", f"SQUIDBRAKE_PLAN={p['plan']}"] if p.get("plan") else []),
+           *(["-e", f"SQUIDBRAKE_TRIAL_ENDS={p['trial_ends']}"] if p.get("plan") == "free" and p.get("trial_ends") else []),
            "--log-opt", "max-size=20m", "--log-opt", "max-file=3", IMAGE)
     keys = {}
     for _ in range(60):                       # the first start prints the admin and agent keys once

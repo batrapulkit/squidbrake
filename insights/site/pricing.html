@@ -206,7 +206,7 @@ body{overflow-x:clip}
           <li>See every action your agents take</li>
           <li>A weekly email of what would have been held</li>
           <li>Connect as many agents as you like</li>
-          <li>Watches only: nothing is blocked</li>
+          <li>Watches only: nothing is held, and only catastrophic commands (like <code>rm -rf ~</code>) are blocked</li>
         </ul>
         <a class="cta" href="/signup">Sign up free</a>
       </section>
@@ -265,7 +265,7 @@ body{overflow-x:clip}
           <li>Sign-in with your company's SSO (OIDC)</li>
           <li>Cancel any month</li>
         </ul>
-        <a class="cta" href="/signup?plan=team&amp;tier=scale&amp;from=pricing">Start a 14-day trial</a>
+        <a class="cta" href="/signup?plan=scale&amp;from=pricing">Start a 14-day trial</a>
       </section>
       <section class="plan" data-plan="enterprise">
         <h3>Enterprise</h3>
@@ -296,7 +296,7 @@ body{overflow-x:clip}
     <section class="oss" aria-labelledby="oss-h">
       <div>
         <h2 class="plain" id="oss-h">Open source: free to self-host</h2>
-        <p class="muted">Squidbrake is Apache 2.0. Run it on a laptop, Docker or your own server with every feature, at no cost. The plans above are for the version we host for you.</p>
+        <p class="muted">Squidbrake is Apache 2.0. Run it on a laptop, Docker or your own server, and blocking, holding and the audit trail are free. A license from the plans above adds approvals on a phone, Slack, Teams or email, the audit export, more people and SSO.</p>
         <a class="gh" href="https://github.com/batrapulkit/squidbrake" target="_blank" rel="noopener">View on GitHub</a>
       </div>
       <ul class="oss-list" aria-label="What the open-source version includes">
@@ -328,7 +328,7 @@ body{overflow-x:clip}
     <dl class="facts">
       <div><dt>What counts as an action?</dt><dd>One tool call, command or API call that an agent sends through Squidbrake for a decision. Opening the dashboard or approving something doesn&#39;t count.</dd></div>
       <div><dt>What happens when I run out of actions?</dt><dd>On Free, recording stops until next month. On paid plans, more actions are added automatically and your rules keep working. You can turn this off or set a monthly cap.</dd></div>
-      <div><dt>Is anything held back from the open-source version?</dt><dd>No. If you self-host, you have the same software we run. On our hosted plans, Free only watches; allowing, approving and denying start on Starter.</dd></div>
+      <div><dt>Is anything held back from the open-source version?</dt><dd>Blocking and holding never are: self-hosted, they're free. Approvals on a phone, Slack, Teams or email, the audit export, more than one person and SSO need a license, by the plans above. On our hosted plans, Free only watches; allowing, approving and denying start on Starter.</dd></div>
       <div><dt>Is there an offer for early teams?</dt><dd>Yes. The first 10 teams get Team for $99 a month for a year. <a href="mailto:pulkit@squidbrake.com?subject=Founding%20team%20offer">Email us</a> to claim it.</dd></div>
       <div><dt>Where does my data live on a hosted plan?</dt><dd>On a server we operate. If it has to stay inside your network, self-host it, or take Enterprise and we'll set it up in your cloud. See <a href="security">Security</a> for exactly what's stored.</dd></div>
       <div><dt>Do you have SOC 2 or ISO 27001?</dt><dd>Not yet. We hold no certifications today. Squidbrake produces evidence for your audits; it doesn't make us certified.</dd></div>

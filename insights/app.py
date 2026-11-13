@@ -39,27 +39,47 @@ ADMIN_KEY = os.getenv("INSIGHTS_ADMIN_KEY", "")
 PUBLIC_URL = os.getenv("INSIGHTS_PUBLIC_URL", "").rstrip("/")
 CONTACT = os.getenv("INSIGHTS_CONTACT", "")
 CHECKOUT_URL = os.getenv("INSIGHTS_CHECKOUT_URL", "")
-# Signs Team plan licenses (license.py in the gateway checks them with the public half). Hex, 32 bytes; only here.
+PAID_PLANS = ("starter", "pro", "team", "scale")          # squidbrake.com/pricing; license.py PLANS says what each unlocks
+TRIAL_PLANS = ("team", "scale")                           # 14 days free, no card to start
+# A Stripe Payment Link per plan, "starter=https://buy.stripe.com/...,pro=...,team=...,scale=...".
+# INSIGHTS_CHECKOUT_URL on its own is the Team plan's (as before plans).
+CHECKOUT_URLS = {k.strip(): v.strip() for k, _, v in (x.partition("=") for x in
+                 os.getenv("INSIGHTS_CHECKOUT_URLS", "").split(",")) if k.strip() in PAID_PLANS and v.strip()}
+
+
+def checkout_url(plan: str | None) -> str:
+    return CHECKOUT_URLS.get(plan or "") or (CHECKOUT_URL if plan == "team" else "")
+# Signs paid plan licenses (license.py in the gateway checks them with the public half). Hex, 32 bytes; only here.
 LICENSE_SECRET = os.getenv("INSIGHTS_LICENSE_SECRET", "")
 
 
-def issue_license(org: str, expires: str) -> str | None:
+def issue_license(org: str, expires: str, plan: str = "team") -> str | None:
     """The same format as license.issue in the gateway: base64url(JSON) "." base64url(Ed25519 signature)."""
     if not LICENSE_SECRET:
         return None
     import base64
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    body = json.dumps({"org": org, "plan": "team", "expires": expires}, separators=(",", ":")).encode()
+    body = json.dumps({"org": org, "plan": plan, "expires": expires}, separators=(",", ":")).encode()
     sig = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(LICENSE_SECRET)).sign(body)
     enc = lambda b: base64.urlsafe_b64encode(b).decode().rstrip("=")
     return enc(body) + "." + enc(sig)
 
 
 def _license_for(p) -> str | None:
-    """A hosted gateway's license: until its trial ends, else a year from today (renewed as long as it runs)."""
+    """A hosted gateway's license. Paying: its plan, a year from today (renewed as long as it runs). A Team or Scale
+    trial: until the trial ends. Free, or Starter/Pro not paid yet: none, so it only watches (server.py
+    hosted_watch_only). A pilot set up by hand (no plan): the Team plan, as before plans."""
+    org = p["company"] or p["code"]
     year = (datetime.now(timezone.utc).date() + timedelta(days=365)).isoformat()
     paying = "mrr" in p.keys() and (p["mrr"] or 0) > 0
-    return issue_license(p["company"] or p["code"], year if paying or not p["trial_ends"] else p["trial_ends"])  # where a Team plan is paid (e.g. a Stripe payment link)           # shown on start pages, e.g. "WhatsApp +91..., you@x.com"
+    plan = p["plan"]
+    if not plan:
+        return issue_license(org, year if paying or not p["trial_ends"] else p["trial_ends"])
+    if plan not in PAID_PLANS:
+        return None
+    if paying:
+        return issue_license(org, year, plan)
+    return issue_license(org, p["trial_ends"], plan) if plan in TRIAL_PLANS and p["trial_ends"] else None  # where a Team plan is paid (e.g. a Stripe payment link)           # shown on start pages, e.g. "WhatsApp +91..., you@x.com"
 CODE_RE = re.compile(r"^[a-z0-9-]{3,40}$")
 
 app = FastAPI(title="Squidbrake Insights", docs_url=None, redoc_url=None)
@@ -1465,7 +1485,7 @@ class SignupIn(BaseModel):
     agents: list[str] = Field(default_factory=list, max_length=12)
     website: str = Field(default="", max_length=200)   # a field people don't see: bots fill it in
     setup: str = Field(default="local", pattern="^(local|hosted)$")   # on their computer, or a gateway on our server
-    plan: str = Field(default="", pattern="^(|team)$")                  # team: a 14-day trial of the hosted Team plan
+    plan: str = Field(default="", pattern="^(|free|starter|pro|team|scale)$")   # a hosted plan (Team, Scale: 14 days free)
     source: str = Field(default="", pattern="^[a-z0-9-]{0,30}$")        # e.g. "invite" from the dashboard's Team page
     new_keys: bool = False     # signed in again because they lost their hosted keys: make new ones (Supabase only)
 
@@ -1514,7 +1534,7 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
         # hosted: starts at once while a slot is free, otherwise waits in line and starts on its own when one frees
         # up (nobody approves it by hand). Unused ones are freed again (_reclaim_unused), and without sign-in by email
         # one address gets HOSTED_PER_IP_DAY of them a day, so junk sign-ups can't hold the slots.
-        setup = "hosted" if s.plan == "team" else s.setup
+        setup = "hosted" if s.plan else s.setup
         if setup == "hosted" and HOSTED_DOMAIN and not SUPABASE_URL:
             day = [x for x in _hosted_ips.get(ip, []) if time.time() - x < 86400]
             if len(day) >= HOSTED_PER_IP_DAY:
@@ -1523,7 +1543,8 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
             _hosted_ips[ip] = day + [time.time()]
         sub = _subdomain(c, slug) if setup == "hosted" and HOSTED_DOMAIN else None
         auto = bool(sub) and c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0] < HOSTED_MAX
-        trial = (datetime.now(timezone.utc).date() + timedelta(days=14)).isoformat() if s.plan == "team" else None
+        trial = (datetime.now(timezone.utc).date() + timedelta(days=14)).isoformat() if s.plan in TRIAL_PLANS else None
+        plan = (s.plan or "free") if sub else (s.plan or None)       # a hosted one always has a plan: Free only watches
         queued = None
         if sub and not auto:     # strictly after the last one in line: a coarse clock (Windows) can repeat a time
             queued = datetime.now(timezone.utc)
@@ -1536,10 +1557,10 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
                   (code, s.company.strip(), f"{s.name.strip()} · {email}",
                    f"signup ({s.plan or setup})" + (f" from {s.source}" if s.source else "") + " · agents: "
                    + (", ".join(agents) or "-"), now(), email, json.dumps(agents),
-                   int(bool(sub)), sub, ("requested" if auto else "waiting") if sub else None, s.plan or None, trial,
+                   int(bool(sub)), sub, ("requested" if auto else "waiting") if sub else None, plan, trial,
                    now() if auto else None, queued))
     if sub:
-        notify(f"Squidbrake {'Team trial' if s.plan else 'hosted'} sign-up: {s.name.strip()} ({email}), {s.company.strip()}. "
+        notify(f"Squidbrake {(s.plan or 'free').capitalize()} sign-up: {s.name.strip()} ({email}), {s.company.strip()}. "
                + (f"It started on its own; see {PUBLIC_URL}/admin" if auto else
                   f"All {HOSTED_MAX} hosted slots are in use, so it's in line and starts when one frees up "
                   f"(delete one, or raise HOSTED_MAX if the server has the memory)."))
@@ -1651,8 +1672,9 @@ def start_page(code: str, request: Request):
             "connected": connected,
             "reclaim": {"keys_minutes": RECLAIM_KEYS_MINUTES, "idle_hours": RECLAIM_IDLE_HOURS}
                        if p["hosted"] and (p["note"] or "").startswith("signup") and not (p["mrr"] or p["paid_once"]) else None,
-            "plan": p["plan"], "trial_ends": p["trial_ends"],
-            "checkout": checkout_link(CHECKOUT_URL, code, p["email"]) if p["plan"] == "team" else ""}
+            "plan": p["plan"], "trial_ends": p["trial_ends"], "paying": bool(p["mrr"]),
+            "checkout": checkout_link(checkout_url(p["plan"]), code, p["email"], p["plan"])
+                        if p["plan"] in PAID_PLANS and not p["mrr"] else ""}
     return HTMLResponse(PAGE("start.html").replace("__DATA__", json.dumps(data).replace("</", "<\\/")))
 
 
@@ -1751,12 +1773,14 @@ pipeline.setup(app, db, admin, now)
 STRIPE_SECRET = os.getenv("INSIGHTS_STRIPE_WEBHOOK_SECRET", "")
 
 
-def checkout_link(url: str, code: str, email: str | None = None) -> str:
-    """A Payment Link that says which pilot is paying (and fills in their email)."""
+def checkout_link(url: str, code: str, email: str | None = None, plan: str | None = None) -> str:
+    """A Payment Link that says which pilot is paying for which plan ("code__plan": Stripe allows letters, digits,
+    - and _ there), and fills in their email."""
     if not url:
         return ""
     from urllib.parse import quote
-    return f"{url}{'&' if '?' in url else '?'}client_reference_id={quote(code)}" + \
+    ref = f"{code}__{plan}" if plan else code
+    return f"{url}{'&' if '?' in url else '?'}client_reference_id={quote(ref)}" + \
         (f"&prefilled_email={quote(email)}" if email else "")
 
 
@@ -1784,7 +1808,7 @@ async def stripe_webhook(request: Request):
     told = None
     with _lock, db() as c:
         if ev.get("type") == "checkout.session.completed":
-            code = obj.get("client_reference_id") or ""
+            code, _, bought = (obj.get("client_reference_id") or "").partition("__")
             email = ((obj.get("customer_details") or {}).get("email") or "").strip().lower()
             p = c.execute("SELECT code, company FROM pilots WHERE code=?", (code,)).fetchone() if code else None
             p = p or (c.execute("SELECT code, company FROM pilots WHERE lower(email)=?", (email,)).fetchone()
@@ -1794,10 +1818,12 @@ async def stripe_webhook(request: Request):
             if p and obj.get("mode") == "subscription":
                 c.execute("UPDATE pilots SET mrr=?, paying_since=COALESCE(paying_since, ?), stripe_customer=? WHERE code=?",
                           (amount, now(), obj.get("customer"), p["code"]))
+                if bought in PAID_PLANS:     # the plan they paid for: its license reaches the gateway (_license_for)
+                    c.execute("UPDATE pilots SET plan=? WHERE code=?", (bought, p["code"]))
             elif p:
                 c.execute("UPDATE pilots SET paid_once=COALESCE(paid_once, 0)+?, stripe_customer=COALESCE(?, stripe_customer) "
                           "WHERE code=?", (amount, obj.get("customer"), p["code"]))
-            told = (f"Squidbrake payment: {who} paid ${amount:,}"
+            told = (f"Squidbrake payment: {who} paid ${amount:,}{f' for {bought.capitalize()}' if bought in PAID_PLANS else ''}"
                     f"{'/month' if obj.get('mode') == 'subscription' else ' (one-time)'}"
                     f"{'' if p else ' (no pilot matched: set it in the admin)'}.")
         elif ev.get("type") == "customer.subscription.deleted":

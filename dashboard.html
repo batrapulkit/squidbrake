@@ -1921,10 +1921,10 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     if (lic && card) {
       card.hidden = lic.licensed;
       const list = lic.features.join(", ");
-      $("#planTitle").textContent = lic.team_features ? `From ${lic.grace_until}, these are part of the Team plan` : "Free plan";
+      $("#planTitle").textContent = lic.team_features ? `From ${lic.grace_until}, these need a paid plan` : "Free plan";
       $("#planText").textContent = lic.team_features
         ? `${list[0].toUpperCase()}${list.slice(1)}. Blocking and holding stay free.`
-        : `${list[0].toUpperCase()}${list.slice(1)} are part of the Team plan. Blocking and holding are on.`;
+        : `${list[0].toUpperCase()}${list.slice(1)} need a paid plan. Blocking and holding are on.`;
       $("#planLink").href = lic.upgrade_url;
     }
     const ver = $("#ver");
@@ -1950,7 +1950,12 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     $("#shadowBanner").replaceChildren(el("b", { text: "👁 Shadow mode" }), " ", el("span", { text: shadowAll
       ? "is on: nothing is blocked or held. Squidbrake records what it would have done (see Reports). Click 👁 Observe on (top right) to enforce again."
       : `for ${me.shadow_agents.join(", ")}: their actions aren't blocked or held, only recorded. Everyone else is enforced.` }));
-    if (me.plan === "free") {
+    if (me.watch_only) {
+      $("#shadowBanner").hidden = false;
+      $("#shadowBanner").replaceChildren(el("b", { text: "Watching only" }),
+        " ", el("span", { text: "Every action is recorded, but nothing is blocked or held on this plan. " }),
+        el("a", { href: me.upgrade_url, target: "_blank", rel: "noopener", text: "Turn on blocking" }));
+    } else if (me.plan === "free") {
       const left = Math.max(0, Math.ceil((new Date(me.trial_ends) - Date.now()) / 86400000));
       $("#shadowBanner").hidden = false;
       $("#shadowBanner").replaceChildren(el("b", { text: me.trial_over ? "Your free 14 days have ended" : `Free plan: ${left} day${left === 1 ? "" : "s"} left` }),
@@ -3010,7 +3015,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     loadMcp();
   }
   // ---------- alerts at a glance: every way an approval request can reach someone, and whether it's on.
-  // Phone, Slack, Teams and email are Team plan features: once the grace period is over, a free gateway's saved
+  // Phone, Slack, Teams and email are Starter plan features: once the grace period is over, a free gateway's saved
   // channels stop sending (settings() blanks them), so they show as paused here instead of looking never set up.
   let lastSettings = null;
   function renderChannels(s) {
@@ -3031,7 +3036,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
       { k: "email", icon: "✉", name: "Email", sub: "SMTP", st: s.email_to && s.smtp_host ? "on" : paused.has("email") ? "paused" : plan ? "plan" : "off",
         act: () => { $("#emailSetup").open = true; focusField("email_to"); } },
     ];
-    const LABEL = { on: "On", off: "Off: set up", paused: "Paused: Team plan", plan: "Team plan", blocked: "Blocked by browser" };
+    const LABEL = { on: "On", off: "Off: set up", paused: "Paused: Starter plan", plan: "Starter plan", blocked: "Blocked by browser" };
     $("#chanGrid").replaceChildren(...CH.map((c) => el("button", { type: "button", class: `chan st-${c.st}`, onclick: c.act,
       title: c.k === "desktop" ? DESK_TITLES[desk] : `Set up ${c.name}` },
       el("span", { class: "ic", text: c.icon }), el("b", { text: c.name }), el("span", { class: "sub", text: c.sub }),
@@ -3039,9 +3044,9 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     const on = CH.filter((c) => c.st === "on" && c.k !== "desktop").length;
     $("#chanSub").textContent = on ? `${on} channel${on === 1 ? "" : "s"} on` : "only this browser: nothing reaches you when it's closed";
     const notes = [];
-    if (paused.size) notes.push(`<b>Paused:</b> your ${[...paused].join(", ")} alerts are saved but not sent, because they're part of the Team plan.`);
-    else if (plan) notes.push("Phone, Slack, Teams and email alerts are part of the Team plan.");
-    else if (lic.in_grace && !lic.licensed) notes.push(`Phone, Slack, Teams and email alerts are free until <b>${lic.grace_until}</b>, then part of the Team plan.`);
+    if (paused.size) notes.push(`<b>Paused:</b> your ${[...paused].join(", ")} alerts are saved but not sent, because they're part of the Starter plan and up.`);
+    else if (plan) notes.push("Phone, Slack, Teams and email alerts are part of the Starter plan and up.");
+    else if (lic.in_grace && !lic.licensed) notes.push(`Phone, Slack, Teams and email alerts are free until <b>${lic.grace_until}</b>, then part of the Starter plan and up.`);
     if (on && !s.public_url) notes.push("<b>Set the public address below:</b> without it, the one-tap links in alerts can't open on a phone.");
     const showUpgrade = (paused.size || plan || (lic.in_grace && !lic.licensed)) && lic.upgrade_url;
     $("#chanPlan").hidden = !notes.length;

@@ -14,7 +14,7 @@ only in that browser. The page shows:
 - the full record for any event: input, output, error, metadata, the rule that blocked it, timings
 - filters are kept in the URL, so a view like `/dashboard?status=denied&range=7d` can be bookmarked or shared
 
-### Sign in with SSO (Team plan)
+### Sign in with SSO (Scale plan)
 
 People can sign in with your identity provider (Okta, Entra ID, Google Workspace, Auth0, Keycloak or any other
 OpenID Connect provider) instead of pasting a key:
