@@ -1730,6 +1730,10 @@ def install_sh():
 import pipeline  # noqa: E402
 pipeline.setup(app, db, admin, now)
 
+# the report email free sign-ups get every few days (off until INSIGHTS_SMTP_HOST is set)
+import report_mail  # noqa: E402
+report_mail.setup(app, db, _lock, admin, PUBLIC_URL, ADMIN_KEY)
+
 
 # --------------------------------------------------------------------------- Stripe
 # A payment on a Stripe Payment Link reaches the pilot it was for: the link carries the pilot's code
