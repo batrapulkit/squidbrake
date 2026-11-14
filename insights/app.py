@@ -30,6 +30,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
@@ -86,6 +87,8 @@ CODE_RE = re.compile(r"^[a-z0-9-]{3,40}$")
 SUB_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")     # one DNS label: a hosted pilot's <subdomain>
 
 app = FastAPI(title="Squidbrake Insights", docs_url=None, redoc_url=None)
+# the site's pages went out uncompressed (the homepage is ~170 KB of HTML); curl's install lines ask for none
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 # squidbrake.com is a static site: its "Book a demo" form posts here (/v1/team-request), from the browser
 app.add_middleware(CORSMiddleware, allow_origin_regex=r"https://([a-z0-9-]+\.)?(squidbrake\.com|onrender\.com)",
                    allow_methods=["POST"], allow_headers=["Content-Type"])
