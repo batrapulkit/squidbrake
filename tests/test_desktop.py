@@ -142,6 +142,7 @@ def test_status_colours(home, monkeypatch):
     cfg = {"dashboard": "https://co.app.test", "agent_key": "gw_K", "device_token": "t" * 30}
     up = {"v": True}
     monkeypatch.setattr(desktop, "gateway_answers", lambda c: up["v"])
+    monkeypatch.setattr(desktop, "agents_here", lambda: ["claude-code"])   # an agent here has the hook
     beats = []
     monkeypatch.setattr(desktop, "heartbeat", lambda c: beats.append(1) or {"state": "sleeping"})
     assert desktop.check(cfg, beat=False) == ("green", "Protecting your agents") and beats == []
@@ -172,3 +173,23 @@ def test_the_cli_runs_it(home, capsys):
 def test_the_page_is_packaged():
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert '"app_signin.html" = "squidbrake/app_signin.html"' in text and '"desktop.py" = "squidbrake/desktop.py"' in text
+
+
+def test_the_windows_app_connects_agents_with_its_console_twin(tmp_path, monkeypatch):
+    # squidbrake-app.exe always runs the app (entry.py adds "app"): connecting agents with it did nothing
+    app_exe, cli_exe = tmp_path / "squidbrake-app.exe", tmp_path / "squidbrake.exe"
+    app_exe.write_text(""); cli_exe.write_text("")
+    monkeypatch.setattr(desktop.sys, "executable", str(app_exe))
+    cmd = desktop._script("connect.py", "claude-code")
+    assert cmd[0] == str(cli_exe) and cmd[1].endswith("connect.py") and cmd[2] == "claude-code"
+
+
+def test_green_means_an_agent_really_goes_through_the_dashboard(monkeypatch):
+    # the dashboard answering while no agent here has the hook is not "protecting": that hid a Windows app that
+    # never connected anything
+    monkeypatch.setattr(desktop, "gateway_answers", lambda cfg: True)
+    monkeypatch.setattr(desktop, "heartbeat", lambda cfg: {"state": "running"})
+    monkeypatch.setattr(desktop, "agents_here", lambda: [])
+    assert desktop.check({}, beat=False) == ("amber", "No agent connected: choose Reconnect agents")
+    monkeypatch.setattr(desktop, "agents_here", lambda: ["claude-code"])
+    assert desktop.check({}, beat=False) == ("green", "Protecting your agents")
