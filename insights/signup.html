@@ -93,6 +93,27 @@ button.go { grid-column:1 / -1; font:inherit; font-weight:600; font-size:16px; b
 button.go:hover { background:var(--accent-hover); }
 button.go:active { transform:translateY(1px); }
 button.go:disabled { opacity:.6; cursor:default; }
+/* the plan picker: same Individuals / Teams switch as /pricing */
+.plans-pick legend { display:flex; justify-content:space-between; align-items:center; width:100%; }
+.plans-pick legend a { font-weight:400; font-size:12.5px; color:var(--muted); }
+.switch { display:inline-flex; gap:4px; padding:3px; margin:0 0 10px; border:1px solid var(--line); border-radius:999px; background:#fff; }
+.switch button { border:0; border-radius:999px; padding:6px 16px; background:none; color:var(--muted); font:500 13.5px var(--sans); cursor:pointer; }
+.switch button[aria-selected="true"] { background:var(--ink); color:var(--surface); }
+.switch button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.tiers { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px; }
+.tiers[hidden] { display:none; }
+.tier { position:relative; display:block; font-weight:400; background:#fff; border:1px solid var(--line); border-radius:10px;
+        padding:10px 11px; cursor:pointer; transition:border-color .12s, box-shadow .12s; text-decoration:none; color:var(--ink); }
+.tier input { position:absolute; opacity:0; inset:0; margin:0; cursor:pointer; }
+.tier b { display:block; font-size:14.5px; font-weight:600; }
+.tier .pr { display:block; font-family:var(--mono); font-size:13px; margin:2px 0 1px; }
+.tier .pr small { color:var(--muted); font-size:11.5px; }
+.tier .q { display:block; color:var(--muted); font-size:12px; line-height:1.35; }
+.tier:has(input:checked) { border-color:var(--accent); box-shadow:0 0 0 3px rgba(242,98,46,.18); }
+.tier:has(input:focus-visible) { outline:2px solid var(--accent); outline-offset:2px; }
+a.tier:hover { border-color:var(--ink); }
+.plan-note { margin:8px 0 0; color:var(--muted); font-size:13px; min-height:1.4em; }
+@media (max-width:560px) { .tiers { grid-template-columns:1fr; } }
 .hp { position:absolute; left:-10000px; width:1px; height:1px; overflow:hidden; }
 .err { color:var(--stop); font-size:14px; margin:0; }
 .fine { color:var(--muted); font-size:13px; margin:16px 0 0; line-height:1.5; }
@@ -213,7 +234,7 @@ footer a { color:var(--muted); }
 
     <section class="card" id="card">
       <div class="k">Squidbrake Console</div>
-      <h2>Sign up free</h2>
+      <h2>Try Squidbrake</h2>
       <ol class="journey" id="journey" aria-label="Your progress"></ol>
       <p class="sub" id="sub">Your own dashboard, running on our server, in about a minute. No password, no card.</p>
       <form id="f" novalidate>
@@ -231,9 +252,26 @@ footer a { color:var(--muted); }
             <label><input type="checkbox" name="agents" value="other"><span>other</span></label>
           </div>
         </fieldset>
+        <fieldset class="full plans-pick" id="plans" hidden><legend>Your plan <a href="/pricing" target="_blank" rel="noopener">Compare plans ↗</a></legend>
+          <div class="switch" role="tablist" aria-label="Plans for">
+            <button type="button" role="tab" id="tab-individuals" aria-controls="tiers-individuals" aria-selected="true">Individuals</button>
+            <button type="button" role="tab" id="tab-teams" aria-controls="tiers-teams" aria-selected="false" tabindex="-1">Teams</button>
+          </div>
+          <div class="tiers" id="tiers-individuals" role="tabpanel" aria-labelledby="tab-individuals">
+            <label class="tier"><input type="radio" name="plan" value="free" checked><b>Free</b><span class="pr">$0</span><span class="q">2,000 actions/mo · watch only</span></label>
+            <label class="tier"><input type="radio" name="plan" value="starter"><b>Starter</b><span class="pr">$9<small>/mo</small></span><span class="q">5,000 actions/mo · approvals</span></label>
+            <label class="tier"><input type="radio" name="plan" value="pro"><b>Pro</b><span class="pr">$19<small>/mo</small></span><span class="q">10,000 actions/mo · audit export</span></label>
+          </div>
+          <div class="tiers" id="tiers-teams" role="tabpanel" aria-labelledby="tab-teams" hidden>
+            <label class="tier"><input type="radio" name="plan" value="team"><b>Team</b><span class="pr">$299<small>/mo</small></span><span class="q">Up to 10 people · 14 days free</span></label>
+            <label class="tier"><input type="radio" name="plan" value="scale"><b>Scale</b><span class="pr">$499<small>/mo</small></span><span class="q">Up to 50 people · 14 days free</span></label>
+            <a class="tier" href="https://calendly.com/pulkitbatra2024/new-meeting-1" target="_blank" rel="noopener"><b>Enterprise</b><span class="pr">Custom</span><span class="q">50+ people · book a call ↗</span></a>
+          </div>
+          <p class="plan-note" id="plan-note" aria-live="polite"></p>
+        </fieldset>
         <div class="hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
         <p class="err full" id="err" role="alert" hidden></p>
-        <button type="submit" class="go" id="go">Sign up free</button>
+        <button type="submit" class="go" id="go">Try now</button>
       </form>
       <p class="fine" id="fine">Already signed up? Sign up again with the same email: you get your setup page back.<br>
         Your agents' actions are stored on our server, behind your keys. <a href="/security">What we store</a></p>
@@ -408,8 +446,7 @@ const sb = CONFIG.supabase_url && window.supabase
   ? window.supabase.createClient(CONFIG.supabase_url, CONFIG.supabase_key, { auth: { flowType: "implicit", persistSession: true } })
   : null;
 
-const fail = (msg) => { err.textContent = msg; err.hidden = false; go.disabled = false;
-  go.textContent = PLAN ? PLAN_GO : "Sign up free"; };
+const fail = (msg) => { err.textContent = msg; err.hidden = false; go.disabled = false; go.textContent = goLabel(); };
 // the journey shown on the card: where they are, and what's left (verify only with sign-in by email)
 const journey = (at) => {
   const steps = ["Sign up", ...(CONFIG.supabase_url ? ["Verify email"] : []),
@@ -425,17 +462,67 @@ const state = (html, at) => {
 // signed in: a hosted gateway, started on its own (in line if every slot is taken).
 // CONFIG.offer_local (INSIGHTS_SIGNUP_LOCAL=1): they pick "On my computer" or hosted, as before.
 // No hosted dashboards on this server (CONFIG.hosted false, no HOSTED_DOMAIN): the local setup.
-// ?plan=starter|pro|team|scale (pricing, or the dashboard's "invite your team"): that hosted plan, no choice to make.
+// ?plan=free|starter|pro|team|scale (pricing, or the dashboard's "invite your team"): that plan, picked already.
+// On a hosted server the form shows the plans (same Individuals / Teams switch as /pricing) and they can change it;
+// the pick is written back into the address, so the emailed sign-in link brings it back with them.
 // Team and Scale start with 14 days free; Starter and Pro watch only until they're paid (the start page has the link)
 // ?new_keys=1 (the start page's "Lost your keys?"): signed in again, so new keys are made for their dashboard
 const Q = new URLSearchParams(location.search),
-      PLAN = Q.get("tier") === "scale" ? "scale" : (["starter", "pro", "team", "scale"].includes(Q.get("plan")) ? Q.get("plan") : ""),
-      PLAN_NAME = PLAN && PLAN[0].toUpperCase() + PLAN.slice(1),
-      PLAN_GO = ["team", "scale"].includes(PLAN) ? `Start my 14-day ${PLAN_NAME} trial` : `Start ${PLAN_NAME}`,
+      PAID = ["starter", "pro", "team", "scale"], TRIAL = ["team", "scale"],
       SOURCE = (Q.get("from") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 30),
       NEW_KEYS = Q.get("new_keys") === "1";
-if (PLAN) { go.textContent = PLAN_GO; }
-const LOCAL_ONLY = !CONFIG.hosted && !PLAN, PICK = CONFIG.hosted && CONFIG.offer_local && !PLAN && !NEW_KEYS;
+let PLAN = Q.get("tier") === "scale" ? "scale" : (PAID.includes(Q.get("plan")) ? Q.get("plan") : "");
+const title = (p) => p[0].toUpperCase() + p.slice(1);
+const goLabel = () => !PLAN ? "Try now" : TRIAL.includes(PLAN) ? `Start my 14-day ${title(PLAN)} trial` : `Try ${title(PLAN)}`;
+const PLAN_NOTES = {
+  "": "Free forever. Watches your agents; only catastrophic commands are blocked. Upgrade any time.",
+  starter: "Starts watching right away. Pay $9/mo from your setup page to turn on approvals and blocking.",
+  pro: "Starts watching right away. Pay $19/mo from your setup page to turn on approvals, blocking and the audit export.",
+  team: "14 days free, no card to start. $299/mo after that.",
+  scale: "14 days free, no card to start. $499/mo after that.",
+};
+go.textContent = goLabel();
+const LOCAL_ONLY = !CONFIG.hosted && !PLAN;
+const pick = () => CONFIG.hosted && CONFIG.offer_local && !PLAN && !NEW_KEYS, PICK = pick();
+
+// the plan picker (hosted plans only; not when they're back for new keys)
+(function plans() {
+  if (!CONFIG.hosted || NEW_KEYS) return;
+  const box = document.getElementById("plans"), note = document.getElementById("plan-note"),
+        tabs = [...box.querySelectorAll('[role="tab"]')];
+  box.hidden = false;
+  const showTab = (tab, focus) => {
+    tabs.forEach((t) => { const on = t === tab; t.setAttribute("aria-selected", on); t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute("aria-controls")).hidden = !on; });
+    if (focus) tab.focus();
+  };
+  const set = (value, write) => {
+    PLAN = value === "free" ? "" : value;
+    go.textContent = goLabel();
+    note.textContent = PLAN_NOTES[PLAN];
+    if (!write) return;
+    const q = new URLSearchParams(location.search);
+    q.set("plan", value); q.delete("tier");
+    history.replaceState(null, "", location.pathname + "?" + q + location.hash);
+  };
+  tabs.forEach((t, i) => {
+    t.addEventListener("click", () => {
+      showTab(t);
+      // switching tabs picks that side's first plan, so what's selected is always what's shown
+      const shown = document.getElementById(t.getAttribute("aria-controls"));
+      if (!shown.querySelector("input:checked")) { const r = shown.querySelector("input"); r.checked = true; set(r.value, true); }
+    });
+    t.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      tabs[(i + 1) % tabs.length].click(); showTab(tabs[(i + 1) % tabs.length], true);
+    });
+  });
+  box.querySelectorAll('input[name="plan"]').forEach((r) => r.addEventListener("change", () => set(r.value, true)));
+  const start = box.querySelector(`input[value="${PLAN || "free"}"]`);
+  start.checked = true;
+  showTab(TRIAL.includes(PLAN) ? tabs[1] : tabs[0]);
+  set(start.value, false);
+})();
 const PRIVACY = `We see your name, email, the agents you picked, and for each action that was blocked or sent for approval:
   the program (e.g. <span class="mono">rm</span>), the rule and what happened. Never your commands, files or prompts.`;
 if (LOCAL_ONLY || PICK) {
@@ -457,7 +544,7 @@ if (!CONFIG.supabase_url && !LOCAL_ONLY && !PICK) document.getElementById("fine"
 function choose(body, token) {
   const extra = { source: SOURCE, ...(PLAN ? { plan: PLAN } : {}), ...(NEW_KEYS ? { new_keys: true } : {}) };
   if (LOCAL_ONLY) return finish({ ...body, ...extra, setup: "local" }, token);
-  if (!PICK) return finish({ ...body, ...extra, setup: "hosted" }, token);
+  if (!pick()) return finish({ ...body, ...extra, setup: "hosted" }, token);
   state(`<h2>How do you want to run Squidbrake?</h2><p>Same checks either way. You can switch later.</p>
     <div class="pick">
       <button type="button" data-setup="local"><b>On my computer</b><span>One line installs it. Everything your agents
@@ -514,7 +601,7 @@ function checkInbox(body) {
   const domain = body.email.split("@")[1] || "", box = INBOXES.find(([re]) => re.test(domain));
   state(`<div class="env">✉</div><h2>Check your inbox</h2>
          <p>We sent a sign-in link to</p><span class="to">${esc(body.email)}</span>
-         <p>${PICK ? "Click it on this computer, then pick where Squidbrake runs." : "Click it on this computer and your dashboard starts right away."}</p>
+         <p>${pick() ? "Click it on this computer, then pick where Squidbrake runs." : "Click it on this computer and your dashboard starts right away."}</p>
          ${box ? `<a class="inbox" href="${box[2]}" target="_blank" rel="noopener">Open ${box[1]} ↗</a>` : ""}
          <p class="again">Nothing after a minute? Check spam or Promotions.<br>
            <button class="linkbtn" id="resend" disabled></button> · <a href="/signup">Use a different email</a></p>`, "verify");
