@@ -9,6 +9,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "insights"))
 import provision  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _no_container_report():
+    """The once-a-minute container report (tested on its own below) stays out of the other tests' calls."""
+    import time
+    provision._reported[0] = time.time()
+
+
 def fake(monkeypatch, running):
     calls, reports = [], []
     keys = "admin  gw_admin_AAAA\nagent  gw_agent_BBBB\n"
@@ -273,3 +280,34 @@ def test_an_app_key_that_doesnt_open_the_gateway_is_never_handed_out(monkeypatch
     provision.app_keys({"code": "co-1", "subdomain": "co", "app_links": [{"id": "h9", "device": "x"}]})
     assert reports == [{"id": "h9", "error": "the new key doesn't open the gateway"}]
     assert calls[-1][4] == provision.DROP_KEYS and calls[-1][5] == "app-x"           # and it's taken out again
+
+
+def test_containers_are_reported_with_memory_and_only_leftovers_are_ever_removed(monkeypatch):
+    calls, posted = [], []
+    ps = ("sbp-acme|acme-1|running|Up 2 days|2026-11-12 10:00:00 +0000 UTC\n"
+          "sbp-old|old-1|exited|Exited (0) 1 day ago|2026-11-10 10:00:00 +0000 UTC\n"
+          "sbp-gone|gone-1|exited|Exited (0) 3 days ago|2026-11-09 10:00:00 +0000 UTC\n")
+
+    def docker(*args, check=True):
+        calls.append(args)
+        if args[0] == "ps":
+            return ps
+        if args[0] == "stats":
+            assert args[-1] == "sbp-acme"                     # memory only for the running ones
+            return "sbp-acme|84.2MiB / 192MiB"
+        return ""
+    monkeypatch.setattr(provision, "docker", docker)
+    monkeypatch.setattr(provision, "api", lambda path, body=None: posted.append((path, body)) or {})
+    pilots = [{"subdomain": "acme"}, {"subdomain": "old"}]
+    provision._reported[0] = 0
+    # asked to remove a pilot's container, a leftover, and something that isn't ours: only the leftover goes
+    provision.report(["sbp-old", "sbp-gone", "insights"], pilots)
+    assert [c for c in calls if c[0] in ("rm", "volume")] == [("rm", "-f", "sbp-gone"), ("volume", "rm", "sbp-gone")]
+    path, body = posted[-1]
+    assert path == "/v1/admin/containers"
+    acme = next(c for c in body["containers"] if c["name"] == "sbp-acme")
+    assert acme == {"name": "sbp-acme", "pilot": "acme-1", "state": "running", "status": "Up 2 days",
+                    "created": "2026-11-12 10:00:00 +0000 UTC", "mem": "84.2MiB / 192MiB"}
+    posted.clear()
+    provision.report([], pilots)                              # within the minute: not again
+    assert posted == []

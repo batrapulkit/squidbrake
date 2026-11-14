@@ -927,9 +927,11 @@ async function load() {
     ${tractionPanel(inv)}
     <section id="pilots"><div class="sec-h"><h2>Pilot details</h2><span class="sub">Hosted dashboards report every 2 minutes; individual installs are above</span>
         <div class="act"><a class="btn" href="#new">New pilot</a></div></div>
-      ${named.length ? `<div class="table-wrap"><table><thead><tr><th>Company</th><th>Status</th><th>Last 14 days</th>
+      ${staleContainers(d)}
+      ${named.length ? `<div class="table-wrap"><table><thead><tr><th>Company</th><th>Status</th><th>Container</th><th>Last 14 days</th>
         <th>Last 7 days</th><th>Agents</th><th>What fired</th><th></th></tr></thead><tbody>${named.map(row).join("")}</tbody></table></div>`
         : `<div class="surface empty">No pilots yet. Create a link below and send it to a founder.</div>`}
+      ${leftovers(d)}
     </section>
     ${monthlyPanel(monthly)}
     ${teamPanel(asks)}
@@ -984,6 +986,11 @@ async function load() {
         + `where Squidbrake runs:\n\nsquidbrake license set ${r.license}`;
       try { await navigator.clipboard.writeText(text); b.textContent = "Copied"; } catch { prompt("Copy this:", text); }
     } catch (e) { if (e.message !== "unauthorized") alert(e.message); }
+  });
+  document.querySelectorAll("[data-rmct]").forEach((b) => b.onclick = async () => {
+    if (!confirm(`Remove ${b.dataset.rmct}?\n\nNo pilot has it. Its container and data are deleted for good (within a minute).`)) return;
+    try { await api(`/v1/admin/containers/${encodeURIComponent(b.dataset.rmct)}/remove`, { method: "POST" }); b.textContent = "Removing…"; b.disabled = true; }
+    catch (e) { if (e.message !== "unauthorized") alert(e.message); }
   });
   document.querySelectorAll("[data-wake]").forEach((b) => b.onclick = async () => {
     try { await api(`/v1/admin/pilots/${encodeURIComponent(b.dataset.wake)}/wake`, { method: "POST" }); load(); }
@@ -1421,6 +1428,48 @@ function weeklyReport(d) {
   return lines.join("\n");
 }
 
+// ---- the Container column: what Docker on the server really has (provision.py reports it every minute)
+function containerCell(p) {
+  const c = p.container;
+  if (!p.hosted) return `<span class="sub">none: runs on their computer</span>`;
+  if (!c) return `<span class="sub">no report yet</span>`;
+  const mem = (c.mem || "").split("/")[0].trim();
+  const name = `<div class="mini"><span class="code">${esc(c.name)}</span></div>`;
+  if (c.exists && c.state === "running")
+    return `<span class="pill ${c.ok ? "s-active" : "s-quiet"}">running</span>${name}
+      <div class="mini">${esc(c.status || "")}${mem ? " · " + esc(mem) : ""}</div>
+      ${c.ok ? "" : `<div class="mini" style="color:var(--accent)">should be stopped (${esc(p.state)})</div>`}`;
+  if (c.exists)
+    return `<span class="pill ${c.ok ? "s-sent" : "s-quiet"}">${p.state === "sleeping" ? "stopped (asleep)" : "stopped"}</span>${name}
+      <div class="mini">${esc(c.status || c.state)}</div>
+      ${c.ok ? `<div class="mini">data and logs kept</div>` : `<div class="mini" style="color:var(--accent)">should be running: provision.py restarts it</div>`}`;
+  if (c.ok)
+    return `<span class="pill s-sent">${p.state === "deleting" ? "removed" : "none yet"}</span>
+      <div class="mini">${p.state === "waiting" ? "made when its turn comes" : p.state === "deleting" ? "pilot being deleted" : ""}</div>`;
+  return `<span class="pill s-quiet">missing</span>${name}
+    <div class="mini" style="color:var(--accent)">${p.state === "requested" ? "being created" : "provision.py makes a new one (new keys)"}</div>`;
+}
+
+function staleContainers(d) {
+  const at = d.containers && d.containers.reported_at;
+  if (!at) return "";
+  const mins = (Date.now() - Date.parse(at)) / 60000;
+  return mins > 5 ? `<div class="notice"><span><b>Container info is from ${ago(at)}.</b> provision.py reports every minute:
+    it may have stopped. On the server: <code>systemctl status squidbrake-provision</code></span></div>` : "";
+}
+
+// Containers no pilot has any more (e.g. a pilot removed by hand): nothing else would ever remove them
+function leftovers(d) {
+  const o = (d.containers && d.containers.orphans) || [];
+  if (!o.length) return "";
+  return `<div class="surface" style="margin-top:16px"><h3 style="margin:0 0 4px">Containers with no pilot · ${o.length}</h3>
+    <span class="sub">On the server, but no pilot has them. Remove deletes the container and its data for good.</span>
+    <div class="table-wrap"><table><thead><tr><th>Container</th><th>Was pilot</th><th>State</th><th>Created</th><th></th></tr></thead><tbody>
+    ${o.map((c) => `<tr><td><span class="code">${esc(c.name)}</span></td><td>${esc(c.pilot || "?")}</td>
+      <td>${esc(c.status || c.state)}${c.mem ? " · " + esc(c.mem.split("/")[0].trim()) : ""}</td><td class="mini">${esc(c.created || "")}</td>
+      <td><button class="icon-btn" data-rmct="${esc(c.name)}">Remove</button></td></tr>`).join("")}</tbody></table></div></div>`;
+}
+
 function row(p) {
   const [label, cls] = STAGE[p.stage] || [p.stage, "s-sent"];
   const max = Math.max(1, ...p.daily);
@@ -1438,6 +1487,7 @@ function row(p) {
     <td><span class="pill ${cls}">${label}</span><div class="mini">last seen ${ago(p.last_seen)}</div>
       <div class="mini">${p.installs} install${p.installs === 1 ? "" : "s"}${p.versions.length ? " · v" + esc(p.versions.join(", ")) : ""}${p.outdated ? ` <span class="pill s-quiet" title="Latest is ${esc(d_latest)}">outdated</span>` : ""}${p.modes.includes("shadow") ? " · shadow" : ""}</div>
       ${p.connected && p.connected.length ? `<div class="mini">connected: ${esc(p.connected.join(", "))}</div>` : ""}</td>
+    <td>${containerCell(p)}</td>
     <td>${spark}<div class="mini"><b>${p.total_events.toLocaleString()}</b> actions all time</div></td>
     <td class="num"><div><b>${w.events}</b> actions</div><div class="mini">${w.held} held · ${w.approved} approved · ${w.rejected} rejected</div>
       <div class="mini">${w.blocked} blocked${w.would_block ? ` · ${w.would_block} would block` : ""}${w.timed_out ? ` · ${w.timed_out} timed out` : ""}</div>
@@ -1455,7 +1505,7 @@ function row(p) {
       <button class="btn" data-mrr="${p.mrr || ""}" data-code="${esc(p.code)}" data-name="${esc(p.company)}" title="Monthly revenue from this pilot">${p.mrr ? "$" + Number(p.mrr).toLocaleString() + "/mo" : "Set revenue"}</button>
       ${p.hosted && p.state === "running" ? `<button class="btn" data-newkeys="${esc(p.code)}" data-name="${esc(p.company)}" data-link="${esc(p.link || "")}" title="They lost their keys: new ones appear once more on their start page">${p.rekey ? "New keys coming…" : "New keys"}</button>` : ""}
       <button class="icon-btn" title="Delete pilot" data-del="${esc(p.code)}" data-warn="${esc(deleteWarning(p))}">Delete</button></div></td></tr>
-    ${p.catches && p.catches.length ? `<tr class="catches"><td colspan="7"><details data-k="pilot:${esc(p.code)}"${opened.has("pilot:" + p.code) ? " open" : ""}><summary>What it held or blocked · ${p.catches.length}</summary>
+    ${p.catches && p.catches.length ? `<tr class="catches"><td colspan="8"><details data-k="pilot:${esc(p.code)}"${opened.has("pilot:" + p.code) ? " open" : ""}><summary>What it held or blocked · ${p.catches.length}</summary>
       ${catchList(p.catches, { n: 5, key: "pilot:" + p.code })}
       <div class="mini" style="margin-top:6px">Program only (never its arguments, files or prompts), the rule's reason, and sizes as numbers.</div></details></td></tr>` : ""}`;
 }
