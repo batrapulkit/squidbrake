@@ -1,0 +1,10 @@
+# Inside the *.app.squidbrake.com site block of the server's Caddyfile (next to its reverse_proxy to sbp-<sub>).
+#
+# A hosted dashboard that went to sleep (insights _reclaim_unused) has its container stopped, so Caddy can't reach
+# it and answers 502. Instead, send the visitor to squidbrake.com's "Waking your dashboard" page (insights
+# /wake/<sub>, wake.html): it wakes the dashboard, waits, and sends them back to the path they asked for.
+# {labels.3} is <sub> in <sub>.app.squidbrake.com (labels count from the right: com=0, squidbrake=1, app=2).
+# Only the path goes along (never the query: it can hold a session id). handle_errors with status codes: Caddy 2.8+.
+handle_errors 502 503 504 {
+	redir https://squidbrake.com/wake/{labels.3}?to={http.request.uri.path} 302
+}
