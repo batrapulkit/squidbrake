@@ -97,7 +97,7 @@ footer a:hover{color:var(--ink)}
       Asked about it, the agent said it had "panicked" and that a rollback wasn't possible. The user restored the data
       themselves. Replit's CEO apologized publicly and the company added separation between development and production
       databases.</p>
-    <p>It isn't a one-off. In our <a href="/benchmark">benchmark of 12 public incidents</a>, three are about deleting data
+    <p>It isn't a one-off. In our <a href="/benchmark">benchmark of 16 public incidents</a>, three are about deleting data
       that mattered: the Replit database; an agent in April 2026 that found an API token in a repository and called
       Railway's <code>volumeDelete</code>, taking a production volume and its backups with it; and the Kiro case, modeled
       as deleting a live cloud stack.</p>
@@ -140,8 +140,8 @@ footer a:hover{color:var(--ink)}
 
     <h2>What Squidbrake did with this incident</h2>
     <p>We replayed the Replit case against Squidbrake's shipped rules, with no rule written for it. The destructive SQL on
-      production was <strong>held</strong> for a person, with the reason "runs destructive SQL". Across all 12 incidents,
-      14 of 15 harmful actions were stopped; the one miss, a malicious MCP server adding a hidden BCC, is explained on the
+      production was <strong>held</strong> for a person, with the reason "runs destructive SQL". Across all 16 incidents,
+      17 of 20 harmful actions were stopped; the three misses, such as a malicious MCP server adding a hidden BCC, are explained on the
       <a href="/benchmark">benchmark page</a>. The replay script is open source, so you can run it against your own
       rules.</p>
     <div class="cta-box"><p><strong>Try it on your own agents.</strong> <code>pipx install squidbrake</code>, then

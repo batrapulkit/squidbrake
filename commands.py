@@ -1297,6 +1297,16 @@ def _runner(segment: str) -> str | None:
     return prog
 
 
+def _writes_file_only(segment: str, after: str) -> bool:
+    """`cat > f` / `cat >> f` / `tee [-a] f` and nothing piped on: a heredoc fed to it becomes a file's text."""
+    words = segment.split() + after.split()
+    if "|" in after or not words:
+        return False
+    if words[0] == "cat":
+        return any(w in (">", ">>") or (w.startswith(">") and len(w) > 2 and w[1] != "&") for w in words[1:])
+    return words[0] == "tee" and all(not w.startswith(">") for w in words[1:])
+
+
 def _code_heredocs(line: str) -> tuple[str, list[tuple[str, str]]]:
     """Heredocs that are a program (python3 - <<EOF, node <<EOF, cat <<EOF | python3): taken out of the line, so their
     body isn't read as shell commands, and returned as (program, code). Any other heredoc is left as it was."""
@@ -1313,6 +1323,13 @@ def _code_heredocs(line: str) -> tuple[str, list[tuple[str, str]]]:
                 piped = after.split("|", 1)[1]
                 prog = _runner(re.split(r"[;&|)]", piped)[0])
             end = next((j for j in range(i, len(lines)) if lines[j].strip() == m.group(2)), len(lines))
+            body = "\n".join(lines[i:end])
+            if prog is None and _writes_file_only(re.split(r"[;&|(]", before)[-1], after) \
+                    and (m.group(1) or not re.search(r"\$\(|`|\$\{", body)):
+                # `cat > notes.md <<'EOF'` only writes text to a file: its lines are data, not commands. A quoted
+                # delimiter expands nothing; an unquoted one is data only without $(...), `...` or ${...} in it.
+                i = end + 1
+                break
             if prog is None:
                 continue
             found.append((prog, "\n".join(lines[i:end])))

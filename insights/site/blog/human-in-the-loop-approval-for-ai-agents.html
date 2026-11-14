@@ -92,10 +92,10 @@ footer a:hover{color:var(--ink)}
       nothing, and the one bad action runs. Good approval design is mostly about choosing what to ask.</p>
 
     <h2>Asking about everything doesn't work</h2>
-    <p>In our <a href="/benchmark">benchmark</a> of 62 agent sessions, "ask for everything" stopped 65 of 66 harmful steps.
-      It also held 40 of 41 routine steps and asked a person 112 times. Nobody reads the 112th prompt carefully. Approval
+    <p>In our <a href="/benchmark">benchmark</a> of 66 agent sessions, "ask for everything" stopped 69 of 71 harmful steps.
+      It also held 40 of 41 routine steps and asked a person 117 times. Nobody reads the 117th prompt carefully. Approval
       fatigue turns a review into a reflex, and the reflex is "yes".</p>
-    <p>An allowlist of common developer tools did better on noise (10 routine steps held) but stopped only 53 of 66
+    <p>An allowlist of common developer tools did better on noise (10 routine steps held) but stopped only 55 of 71
       harmful steps, because it can't tell a safe <code>curl</code> from one that posts your config to an address a web
       page told the agent about.</p>
 
@@ -141,7 +141,7 @@ footer a:hover{color:var(--ink)}
     <h2>Roll it out without breaking anything</h2>
     <p>Start in shadow mode: log what would have been held or blocked, change nothing. After a week you know your real
       false positives and can tune before anyone is interrupted. In our benchmark, Squidbrake looking at whole sessions
-      stopped 65 of 66 harmful steps while holding 3 of 41 routine ones.</p>
+      stopped 68 of 71 harmful steps while holding 3 of 41 routine ones.</p>
     <div class="cta-box"><p><strong>Try it on your own agents.</strong> <code>pipx install squidbrake</code>, then
       <code>squidbrake connect all</code>. Start in shadow mode: nothing is blocked in week one, you see what would have been.
       <a href="/docs">Quickstart</a> · <a href="/benchmark">Benchmark</a> · <a href="/#demo">Book a demo</a></p></div>

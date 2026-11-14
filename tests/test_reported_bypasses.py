@@ -177,3 +177,19 @@ def test_reading_any_private_key_file_is_blocked(c, shipped, name, decision):
     path = "C:/Users/me/keys/" + name
     r = c.post("/v1/events", headers=H, json={"name": "Read", "source": "claude-code", "input": {"file_path": path}}).json()
     assert r["decision"] == decision, (path, r)
+
+
+
+@pytest.mark.parametrize("cmd,decision", [
+    ('git commit -m "block rm -rf ~ in hooks"', "allow"),          # words in a message, not a command
+    ('git commit -m "fix reboot loop"', "allow"),
+    ("cat > notes.md <<'EOF'\nnever run rm -rf ~ here\nEOF", "allow"),   # a file's text
+    ("rm -rf ~", "deny"),
+    ("echo ok && rm -rf ~", "deny"),
+    ("sudo reboot", "deny"),
+    ('bash -c "rm -rf ~"', "deny"),
+    ("cat > x.sh <<EOF\n$(rm -rf ~)\nEOF", "deny"),               # unquoted: the shell runs $(...) while writing
+])
+def test_a_delete_mentioned_in_text_runs_and_a_real_one_is_blocked(c, shipped, cmd, decision):
+    r = c.post("/v1/events", headers=H, json={"name": "Bash", "source": "claude-code", "input": {"command": cmd}}).json()
+    assert (r["decision"] == "deny") == (decision == "deny"), (cmd, r)
