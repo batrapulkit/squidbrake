@@ -465,7 +465,7 @@ const state = (html, at) => {
 // ?plan=free|starter|pro|team|scale (pricing, or the dashboard's "invite your team"): that plan, picked already.
 // On a hosted server the form shows the plans (same Individuals / Teams switch as /pricing) and they can change it;
 // the pick is written back into the address, so the emailed sign-in link brings it back with them.
-// Team and Scale start with 14 days free; Starter and Pro watch only until they're paid (the start page has the link)
+// Team and Scale start with 14 days free; Starter and Pro start once paid (the next page has the checkout)
 // ?new_keys=1 (the start page's "Lost your keys?"): signed in again, so new keys are made for their dashboard
 const Q = new URLSearchParams(location.search),
       PAID = ["starter", "pro", "team", "scale"], TRIAL = ["team", "scale"],
@@ -473,11 +473,11 @@ const Q = new URLSearchParams(location.search),
       NEW_KEYS = Q.get("new_keys") === "1";
 let PLAN = Q.get("tier") === "scale" ? "scale" : (PAID.includes(Q.get("plan")) ? Q.get("plan") : "");
 const title = (p) => p[0].toUpperCase() + p.slice(1);
-const goLabel = () => !PLAN ? "Try now" : TRIAL.includes(PLAN) ? `Start my 14-day ${title(PLAN)} trial` : `Try ${title(PLAN)}`;
+const goLabel = () => !PLAN ? "Try now" : TRIAL.includes(PLAN) ? `Start my 14-day ${title(PLAN)} trial` : `Continue to payment`;
 const PLAN_NOTES = {
   "": "Free forever. Watches your agents; only catastrophic commands are blocked. Upgrade any time.",
-  starter: "Starts watching right away. Pay $9/mo from your setup page to turn on approvals and blocking.",
-  pro: "Starts watching right away. Pay $19/mo from your setup page to turn on approvals, blocking and the audit export.",
+  starter: "$9/mo. You pay on the next page, then your dashboard starts in about a minute.",
+  pro: "$19/mo, with the audit export. You pay on the next page, then your dashboard starts in about a minute.",
   team: "14 days free, no card to start. $299/mo after that.",
   scale: "14 days free, no card to start. $499/mo after that.",
 };

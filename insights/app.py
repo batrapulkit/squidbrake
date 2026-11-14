@@ -42,6 +42,7 @@ CONTACT = os.getenv("INSIGHTS_CONTACT", "")
 CHECKOUT_URL = os.getenv("INSIGHTS_CHECKOUT_URL", "")
 PAID_PLANS = ("starter", "pro", "team", "scale")          # squidbrake.com/pricing; license.py PLANS says what each unlocks
 TRIAL_PLANS = ("team", "scale")                           # 14 days free, no card to start
+PAY_FIRST = ("starter", "pro")      # no dashboard until paid: the start page asks for the card, the webhook starts it
 # A Stripe Payment Link per plan, "starter=https://buy.stripe.com/...,pro=...,team=...,scale=...".
 # INSIGHTS_CHECKOUT_URL on its own is the Team plan's (as before plans). Default: the live links ($9, $19, $299, $499).
 CHECKOUT_URLS = {k.strip(): v.strip() for k, _, v in (x.partition("=") for x in os.getenv("INSIGHTS_CHECKOUT_URLS",
@@ -691,14 +692,23 @@ def _wake(c, code: str) -> bool:
     """A sleeping dashboard someone came back to: to the FRONT of the line (they're waiting on a page right now), so it
     starts on the next free slot, as it was. _start_waiting gives it a new started_at, so the reclaim timers start
     over. -> whether it was asleep."""
-    first = c.execute("SELECT MIN(queued_at) FROM pilots WHERE hosted=1 AND state='waiting' AND queued_at IS NOT NULL"
-                      ).fetchone()[0]
-    t = ((datetime.fromisoformat(first) - timedelta(microseconds=1)) if first else datetime.now(timezone.utc)).isoformat()
     woke = c.execute("UPDATE pilots SET state='waiting', queued_at=?, slept_at=NULL, slept_why=NULL "
-                     "WHERE code=? AND hosted=1 AND state='sleeping'", (t, code)).rowcount
+                     "WHERE code=? AND hosted=1 AND state='sleeping'", (_front_of_line(c), code)).rowcount
     if woke:
         _start_waiting(c)                   # a free slot: starting now, not on provision.py's next round
     return bool(woke)
+
+
+def _front_of_line(c) -> str:
+    """A queued_at ahead of everyone in line: for someone waiting on a page right now (woken, or just paid)."""
+    first = c.execute("SELECT MIN(queued_at) FROM pilots WHERE hosted=1 AND state='waiting' AND queued_at IS NOT NULL"
+                      ).fetchone()[0]
+    return ((datetime.fromisoformat(first) - timedelta(microseconds=1)) if first else datetime.now(timezone.utc)).isoformat()
+
+
+def _awaiting_payment(p) -> bool:
+    """A Starter/Pro sign-up whose dashboard waits for the first payment (not in line until then)."""
+    return p["state"] == "waiting" and not p["queued_at"] and p["plan"] in PAY_FIRST and not p["mrr"]
 
 
 def _start_waiting(c) -> None:
@@ -891,8 +901,8 @@ def pilot_status(code: str, request: Request):
     """Polled by the start page while a hosted dashboard is being set up."""
     _guessing(request)
     with db() as c:
-        p = c.execute("SELECT state, admin_key, keys_revealed_at, rekey, COALESCE(queued_at, created_at) AS q FROM pilots "
-                      "WHERE code=? AND hosted=1", (code,)).fetchone()
+        p = c.execute("SELECT state, admin_key, keys_revealed_at, rekey, COALESCE(queued_at, created_at) AS q, queued_at, "
+                      "plan, mrr FROM pilots WHERE code=? AND hosted=1", (code,)).fetchone()
         if not p:
             _missed(request)
             raise HTTPException(404)
@@ -901,7 +911,8 @@ def pilot_status(code: str, request: Request):
         connected = _connected(c, code)
         apps = [r[0] for r in c.execute("SELECT name FROM devices WHERE code=? ORDER BY created_at", (code,))]
     return {"state": p["state"], "keys_ready": bool(p["admin_key"]), "keys_shown": bool(p["keys_revealed_at"]),
-            "rekey": bool(p["rekey"]), "connected": connected, "ahead": ahead, "apps": apps}
+            "rekey": bool(p["rekey"]), "connected": connected, "ahead": ahead, "apps": apps,
+            "pay_first": _awaiting_payment(p)}
 
 
 @app.post("/v1/pilot/{code}/wake")
@@ -1289,7 +1300,8 @@ def overview(request: Request):
             if p["state"] != "running":
                 stage = {"requested": "setting up", "failed": "setup failed", "deleting": "deleting",
                          "sleeping": f"asleep ({p.get('slept_why') or 'unused'})",
-                         "waiting": "in line for a slot" if p.get("queued_at") else "old hosted request"}.get(p["state"], stage)
+                         "waiting": "in line for a slot" if p.get("queued_at") else
+                         "waiting for payment" if p.get("plan") in PAY_FIRST else "old hosted request"}.get(p["state"], stage)
             elif not ever and apps.get(p["code"]):
                 stage = "app signed in"
             elif not p["keys_revealed_at"]:
@@ -1959,11 +1971,14 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
                                          "pulkit@squidbrake.com")
             _hosted_ips[ip] = day + [time.time()]
         sub = _subdomain(c, slug) if setup == "hosted" and HOSTED_DOMAIN else None
-        auto = bool(sub) and c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0] < HOSTED_MAX
+        # Starter/Pro: nothing starts until the first payment (stripe_webhook puts it in line), so a paid plan is never
+        # used for free. Only with a checkout link to pay with; without one it starts like any sign-up.
+        pay_first = bool(sub) and s.plan in PAY_FIRST and bool(checkout_url(s.plan))
+        auto = bool(sub) and not pay_first and c.execute(f"SELECT COUNT(*) FROM pilots WHERE {LIVE}").fetchone()[0] < HOSTED_MAX
         trial = (datetime.now(timezone.utc).date() + timedelta(days=14)).isoformat() if s.plan in TRIAL_PLANS else None
         plan = (s.plan or "free") if sub else (s.plan or None)       # a hosted one always has a plan: Free only watches
         queued = None
-        if sub and not auto:     # strictly after the last one in line: a coarse clock (Windows) can repeat a time
+        if sub and not auto and not pay_first:     # strictly after the last one in line: a coarse clock (Windows) can repeat a time
             queued = datetime.now(timezone.utc)
             last = c.execute("SELECT MAX(queued_at) FROM pilots").fetchone()[0]
             if last and datetime.fromisoformat(last) >= queued:
@@ -1978,7 +1993,7 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
                    now() if auto else None, queued))
     if sub:
         notify(f"Squidbrake {(s.plan or 'free').capitalize()} sign-up: {s.name.strip()} ({email}), {s.company.strip()}. "
-               + (f"It started on its own; see {PUBLIC_URL}/admin" if auto else
+               + ("It starts when they pay." if pay_first else f"It started on its own; see {PUBLIC_URL}/admin" if auto else
                   f"All {HOSTED_MAX} hosted slots are in use, so it's in line and starts when one frees up "
                   f"(delete one, or raise HOSTED_MAX if the server has the memory)."))
     return {"ok": True, "link": f"{public_url(request)}/start/{code}"}
@@ -2091,6 +2106,7 @@ def start_page(code: str, request: Request):
             "reclaim": {"keys_minutes": RECLAIM_KEYS_MINUTES, "idle_hours": RECLAIM_IDLE_HOURS}
                        if p["hosted"] and (p["note"] or "").startswith("signup") and not (p["mrr"] or p["paid_once"]) else None,
             "plan": p["plan"], "trial_ends": p["trial_ends"], "paying": bool(p["mrr"]),
+            "pay_first": bool(p["hosted"]) and _awaiting_payment(p),
             "checkout": checkout_link(checkout_url(p["plan"]), code, p["email"], p["plan"])
                         if p["plan"] in PAID_PLANS and not p["mrr"] else ""}
     return HTMLResponse(PAGE("start.html").replace("__DATA__", json.dumps(data).replace("</", "<\\/")))
@@ -2238,6 +2254,10 @@ async def stripe_webhook(request: Request):
                           (amount, now(), obj.get("customer"), p["code"]))
                 if bought in PAID_PLANS:     # the plan they paid for: its license reaches the gateway (_license_for)
                     c.execute("UPDATE pilots SET plan=? WHERE code=?", (bought, p["code"]))
+                # a dashboard waiting for this payment (or any hosted request not yet in line): it starts now
+                if c.execute("UPDATE pilots SET queued_at=? WHERE code=? AND hosted=1 AND state='waiting' AND queued_at IS NULL",
+                             (_front_of_line(c), p["code"])).rowcount:
+                    _start_waiting(c)
             elif p:
                 c.execute("UPDATE pilots SET paid_once=COALESCE(paid_once, 0)+?, stripe_customer=COALESCE(?, stripe_customer) "
                           "WHERE code=?", (amount, obj.get("customer"), p["code"]))

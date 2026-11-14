@@ -825,7 +825,7 @@ def test_stripe_payments_reach_the_pilot_they_were_for(insights, monkeypatch):
 
 
 def test_each_plan_signs_up_hosted_and_paying_turns_on_its_license(insights, monkeypatch):
-    """Free only watches; Starter/Pro watch until paid; the plan that was paid for is the license the gateway gets."""
+    """Free only watches; Starter/Pro get no dashboard until paid; the plan paid for is the license the gateway gets."""
     import hashlib
     import hmac as _hmac
     import time as _time
@@ -849,8 +849,16 @@ def test_each_plan_signs_up_hosted_and_paying_turns_on_its_license(insights, mon
     assert row(free)["plan"] == "free" and row(free)["license"] is None              # Free only watches
     starter = sign("sam@starter.dev", plan="starter")
     page = insights.get(f"/start/{starter}").text
-    assert row(starter)["plan"] == "starter" and row(starter)["license"] is None    # not paid yet: watches
+    assert row(starter)["plan"] == "starter" and row(starter)["license"] is None
     assert f"client_reference_id={starter}__starter" in page and '"trial_ends": null' in page
+    # a paid plan is never used for free: no dashboard starts until the payment, though slots are free
+    assert row(starter)["state"] == "waiting" and '"pay_first": true' in page
+    s = insights.get(f"/v1/pilot/{starter}/status").json()
+    assert s["state"] == "waiting" and s["pay_first"] is True
+    insights.get("/v1/admin/provision", headers=admin)                               # provision.py's rounds don't start it
+    assert row(starter)["state"] == "waiting"
+    stage = next(p for p in insights.get("/v1/admin/overview", headers=admin).json()["pilots"] if p["code"] == starter)
+    assert stage["stage"] == "waiting for payment"
 
     body = json.dumps({"type": "checkout.session.completed", "data": {"object": {
         "mode": "subscription", "amount_total": 900, "client_reference_id": f"{starter}__starter", "customer": "cus_s"}}}).encode()
@@ -859,6 +867,8 @@ def test_each_plan_signs_up_hosted_and_paying_turns_on_its_license(insights, mon
     assert insights.post("/v1/stripe/webhook", content=body, headers={"Stripe-Signature": f"t={t},v1={sig}"}).status_code == 200
     lic = license.check(row(starter)["license"])
     assert lic["plan"] == "starter" and lic["expires"] > "2026"                      # paid: a year of Starter
+    s = insights.get(f"/v1/pilot/{starter}/status").json()          # and its dashboard starts now (or is first in line)
+    assert s["pay_first"] is False and (s["state"] == "requested" or (s["state"] == "waiting" and s["ahead"] == 0))
     assert '"checkout": ""' in insights.get(f"/start/{starter}").text                 # nothing left to pay
 
 
