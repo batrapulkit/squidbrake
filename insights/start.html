@@ -176,7 +176,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&
 // Which plan this dashboard is on, and what turns blocking on (squidbrake.com/pricing)
 const PRICES = { starter: 9, pro: 19, team: 299, scale: 499 };
 function planNote() {
-  if (!D.hosted || !D.plan || D.paying) return "";
+  if (!D.hosted || !D.plan || D.paying || D.pay_first) return "";
   const name = D.plan[0].toUpperCase() + D.plan.slice(1), price = PRICES[D.plan];
   const pay = (label) => D.checkout ? `<p><a class="btn small" href="${esc(D.checkout)}" target="_blank" rel="noopener">${label} →</a>
     <span style="font-size:14px">Secure checkout by Stripe. Cancel any month.</span></p>` : "";
@@ -526,6 +526,15 @@ function hostedPage() {
         s1sub.textContent = "";
         done("s1"); unlock(null);
       });
+    } else if (s.state === "waiting" && s.pay_first) {     // Starter/Pro: the dashboard starts once it's paid
+      const name = D.plan[0].toUpperCase() + D.plan.slice(1), price = PRICES[D.plan];
+      keys.innerHTML = `<div class="ready"><div class="big">💳</div><div>
+          <p style="color:var(--ink);margin:0;font-weight:600">Your ${esc(name)} dashboard starts as soon as you pay</p>
+          <p style="margin:2px 0 0">$${price} a month. Cancel any month.</p></div></div>
+        <div class="btns"><a class="btn" href="${esc(D.checkout)}" target="_blank" rel="noopener">Pay $${price} a month →</a></div>
+        <p class="note">Secure checkout by Stripe. Keep this tab open: it carries on by itself once you've paid.</p>`;
+      progress(1, "Waiting for your payment", "then about a minute");
+      setTimeout(poll, 5000);
     } else if (s.state === "waiting") {
       const ahead = s.ahead || 0;
       keys.innerHTML = `<div class="queue">
