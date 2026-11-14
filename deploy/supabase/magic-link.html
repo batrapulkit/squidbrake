@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light only">
+  <title>Sign in to Squidbrake</title>
+</head>
+<body style="margin:0;padding:0;background:#E6EBE2;">
+  <!-- Inbox preview line: the code shows in the notification, so it can be typed without opening the email -->
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    Your sign-in link for Squidbrake. In the app? Your code is {{ .Token }}.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#E6EBE2;padding:48px 16px;font-family:'Host Grotesk','Helvetica Neue',Helvetica,Arial,sans-serif;">
+    <tr><td align="center">
+
+      <!-- Logo -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:540px;">
+        <tr><td align="center" style="padding-bottom:28px;">
+          <a href="https://squidbrake.com" style="text-decoration:none;color:#1E2A23;">
+            <img src="https://lh3.googleusercontent.com/d/1QpnJ34GLrJbG8VM6HWDWkJAURB3FvQDC" width="44" height="44" alt=""
+                 style="display:inline-block;vertical-align:middle;border:0;">
+            <span style="display:inline-block;vertical-align:middle;padding-left:10px;font-size:24px;font-weight:600;letter-spacing:-0.9px;color:#1E2A23;">Squidbrake</span>
+          </a>
+        </td></tr>
+      </table>
+
+      <!-- Card -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:540px;background:#F4F6F1;border:1px solid #C9D2C5;border-radius:18px;">
+        <tr><td style="padding:48px 44px 8px;">
+          <p style="margin:0 0 14px;font-family:'IBM Plex Mono',Menlo,Consolas,monospace;font-size:12px;letter-spacing:1.5px;text-transform:uppercase;color:#237447;">
+            &#9679;&nbsp; Sign in
+          </p>
+          <h1 style="margin:0 0 16px;font-size:32px;line-height:1.1;font-weight:500;letter-spacing:-1.4px;color:#1E2A23;">
+            Welcome back{{ if .Data.name }}, {{ .Data.name }}{{ end }}.
+          </h1>
+          <p style="margin:0;font-size:16px;line-height:1.6;color:#56625A;">
+            Here's your link to sign in to Squidbrake. It takes you straight back to your setup page.
+          </p>
+        </td></tr>
+
+        <!-- Button (table-based so Outlook renders it) -->
+        <tr><td style="padding:28px 44px 8px;">
+          <table role="presentation" cellpadding="0" cellspacing="0">
+            <tr><td style="border-radius:10px;background:#F2622E;">
+              <a href="{{ .ConfirmationURL }}"
+                 style="display:inline-block;padding:15px 30px;font-size:16px;font-weight:600;color:#ffffff;text-decoration:none;border-radius:10px;">
+                Sign in to Squidbrake &rarr;
+              </a>
+            </td></tr>
+          </table>
+        </td></tr>
+
+        <!-- The same sign-in as a code, for the Squidbrake app -->
+        <tr><td style="padding:24px 44px 0;">
+          <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#56625A;">
+            Signing in to the Squidbrake app on your computer? Type this code there instead:
+          </p>
+          <div style="display:inline-block;padding:10px 18px;background:#FBFCF9;border:1px solid #C9D2C5;border-radius:10px;font-family:'IBM Plex Mono',Menlo,Consolas,monospace;font-size:26px;font-weight:600;letter-spacing:6px;color:#1E2A23;">{{ .Token }}</div>
+          <p style="margin:8px 0 0;font-size:13px;line-height:1.6;color:#7C8C81;">
+            The link and the code work once, and only for a short while.
+          </p>
+        </td></tr>
+
+        <tr><td style="padding:32px 44px 0;">
+          <div style="border-top:1px solid #C9D2C5;"></div>
+        </td></tr>
+
+        <tr><td style="padding:22px 44px 0;">
+          <p style="margin:0;font-size:15px;line-height:1.6;color:#56625A;">
+            Stuck, or want a hand? Just reply to this email. A real person reads every one.
+          </p>
+          <p style="margin:18px 0 0;font-size:15px;line-height:1.6;color:#1E2A23;">
+            Pulkit &amp; Karishma<br>
+            <span style="color:#56625A;">Founders, Squidbrake</span>
+          </p>
+        </td></tr>
+
+        <tr><td style="padding:28px 44px 40px;">
+          <p style="margin:0 0 6px;font-size:12px;line-height:1.6;color:#7C8C81;">
+            Button not working? Paste this link into your browser:
+          </p>
+          <p style="margin:0;font-size:12px;line-height:1.6;word-break:break-all;">
+            <a href="{{ .ConfirmationURL }}" style="color:#237447;text-decoration:underline;">{{ .ConfirmationURL }}</a>
+          </p>
+        </td></tr>
+      </table>
+
+      <!-- Footer -->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:540px;">
+        <tr><td align="center" style="padding:24px 24px 0;font-size:12px;line-height:1.6;color:#7C8C81;">
+          Didn't ask to sign in? You can safely ignore this email: nobody can sign in without it.<br>
+          <a href="https://squidbrake.com" style="color:#7C8C81;">squidbrake.com</a>
+        </td></tr>
+      </table>
+
+    </td></tr>
+  </table>
+</body>
+</html>

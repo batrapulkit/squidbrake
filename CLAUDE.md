@@ -16,3 +16,8 @@ Key routing rules:
 - Save progress → invoke /context-save
 - Resume context → invoke /context-restore
 - Author a backlog-ready spec/issue → invoke /spec
+
+## Deploying squidbrake.com and hosted dashboards
+After a deploy that touches `insights/`, go through `deploy/HOSTED.md`: restart `squidbrake-provision` when
+`provision.py` changed, the Caddy wake snippet (`deploy/caddy/hosted-wake.caddy`), and the Supabase email templates
+(`deploy/supabase/`). Each section says how to check it.

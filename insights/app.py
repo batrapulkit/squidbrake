@@ -1706,9 +1706,42 @@ def supabase_user(token: str) -> dict | None:
 #
 # Only ever an AGENT key: it can't approve or sign in to the dashboard, so a code typed on someone else's computer
 # never hands out control. The start page and the install commands keep working as before.
-# Where the start page's "App" tab downloads the installers from (the release files native.yml attaches); empty: no
-# App tab, only the install commands. Turn it on once a release has the app in it.
+# Where the start page's "App" tab downloads the installers from. Unset: on its own, as soon as the newest GitHub
+# release really has the app's installers (native.yml attaches them some minutes after the release, and releases
+# before APP_FIRST_VERSION have no app in them); until then only the install commands show. "off": never.
+# Any other value: that download address, as it is.
 APP_DOWNLOADS = os.getenv("INSIGHTS_APP_DOWNLOADS", "").rstrip("/")
+APP_REPO = os.getenv("INSIGHTS_APP_REPO", "batrapulkit/squidbrake")
+APP_FIRST_VERSION = (0, 14, 22)
+APP_FILES = ("squidbrake-macos-arm64.pkg", "squidbrake-windows-x64.msi")
+_app_release = {"checked": 0.0, "url": ""}
+
+
+def _version_tuple(tag: str) -> tuple:
+    try:
+        return tuple(int(x) for x in tag.lstrip("v").split(".")[:3])
+    except ValueError:
+        return ()
+
+
+def app_downloads() -> str:
+    """The App tab's download address, or "" (no App tab). Checked against GitHub at most every 10 minutes."""
+    if APP_DOWNLOADS:
+        return "" if APP_DOWNLOADS.lower() == "off" else APP_DOWNLOADS
+    if time.time() - _app_release["checked"] < 600:
+        return _app_release["url"]
+    _app_release["checked"] = time.time()
+    try:
+        req = urllib.request.Request(f"https://api.github.com/repos/{APP_REPO}/releases/latest",
+                                     headers={"Accept": "application/vnd.github+json", "User-Agent": "squidbrake-insights"})
+        with urllib.request.urlopen(req, timeout=5) as r:
+            rel = json.loads(r.read())
+        names = {a.get("name") for a in rel.get("assets") or []}
+        ready = _version_tuple(rel.get("tag_name") or "") >= APP_FIRST_VERSION and all(f in names for f in APP_FILES)
+        _app_release["url"] = f"https://github.com/{APP_REPO}/releases/latest/download" if ready else ""
+    except Exception:
+        pass                    # GitHub unreachable: keep the last answer
+    return _app_release["url"]
 APP_LINK_MINUTES = 30
 APP_CODES_PER_HOUR = int(os.getenv("INSIGHTS_APP_CODES_PER_HOUR", "5"))      # codes emailed to one address
 APP_TRIES_PER_10_MIN = 8                                                      # wrong codes for one address
@@ -2086,7 +2119,7 @@ def start_page(code: str, request: Request):
             "hosted": bool(p["hosted"]), "dashboard": dashboard_url(p["subdomain"]), "state": p["state"],
             "keys_ready": bool(p["admin_key"]), "keys_shown": bool(p["keys_revealed_at"]), "rekey": bool(p["rekey"]),
             "self_serve_keys": bool(SUPABASE_URL),
-            "app_downloads": APP_DOWNLOADS if SUPABASE_URL and p["hosted"] else "",
+            "app_downloads": app_downloads() if SUPABASE_URL and p["hosted"] else "",
             "connected": connected,
             "reclaim": {"keys_minutes": RECLAIM_KEYS_MINUTES, "idle_hours": RECLAIM_IDLE_HOURS}
                        if p["hosted"] and (p["note"] or "").startswith("signup") and not (p["mrr"] or p["paid_once"]) else None,

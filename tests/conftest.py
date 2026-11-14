@@ -20,6 +20,10 @@ os.environ["SQUIDBRAKE_NO_SHORTCUT"] = "1"
 # `squidbrake doctor` tells the team's gateway which agents a computer has: never from the tests.
 os.environ["SQUIDBRAKE_NO_INVENTORY"] = "1"
 
+# The start page's App tab asks GitHub whether the newest release has the app (insights app_downloads): never from
+# the tests (test_pilot.py checks it with a stand-in GitHub).
+os.environ["INSIGHTS_APP_DOWNLOADS"] = "off"
+
 # The Team plan's license (license.py): the tests check its gates on purpose (test_license.py); everywhere else the
 # Team features are on, whatever today's date is.
 import sys  # noqa: E402

@@ -1186,16 +1186,38 @@ def test_the_app_never_says_who_signed_up_and_limits_codes(insights, monkeypatch
     assert insights.post("/v1/app/code", json={"email": "a@app.dev"}).status_code == 503   # no Supabase: no app sign-in
 
 
-def test_the_start_page_offers_the_app_only_when_it_is_switched_on(insights, monkeypatch):
+def test_the_start_page_offers_the_app_once_the_newest_release_has_it(insights, monkeypatch):
+    import io
     import app as insights_app
     _app_signin(monkeypatch, insights_app)
     _hosted(insights_app, "app-page", "page@app.dev")
-    page = insights.get("/start/app-page").text
-    assert '"app_downloads": ""' in page                                            # off: the install commands only
-    monkeypatch.setattr(insights_app, "APP_DOWNLOADS", "https://example.com/dl")
-    assert '"app_downloads": "https://example.com/dl"' in insights.get("/start/app-page").text
+    tab = lambda: insights.get("/start/app-page").text.split('"app_downloads": "', 1)[1].split('"', 1)[0]
+    assert tab() == ""                                                       # "off" (the tests' setting): never
+    release = {}
+    asked = []
+
+    def github(req, timeout=None):
+        asked.append(req.full_url)
+        return io.BytesIO(json.dumps(release).encode())
+    monkeypatch.setattr(insights_app, "APP_DOWNLOADS", "")
+    monkeypatch.setattr(insights_app.urllib.request, "urlopen", github)
+    both = [{"name": "squidbrake-macos-arm64.pkg"}, {"name": "squidbrake-windows-x64.msi"}]
+    for rel, shown in (({"tag_name": "v0.14.21", "assets": both}, False),          # before the app existed
+                       ({"tag_name": "v0.14.22", "assets": both[:1]}, False),      # installers still being attached
+                       ({"tag_name": "v0.14.22", "assets": both}, True),
+                       ({"tag_name": "v0.15.0", "assets": both}, True)):
+        release.clear(); release.update(rel)
+        insights_app._app_release["checked"] = 0
+        assert bool(tab()) is shown, rel
+    assert tab() == "https://github.com/batrapulkit/squidbrake/releases/latest/download"
+    n = len(asked)
+    tab()
+    assert len(asked) == n                                                   # asked again only after 10 minutes
+    monkeypatch.setattr(insights_app, "APP_DOWNLOADS", "https://example.com/dl")   # set by hand: used as it is
+    assert tab() == "https://example.com/dl"
     with insights_app.db() as c:
         insights_app._forget(c, "app-page")
+
 
 def test_every_page_the_app_serves_is_in_its_docker_image():
     # a page missing from insights/Dockerfile's COPY works in tests and is a 500 in production (wake.html was)
