@@ -610,6 +610,7 @@ section .fine code,.faq code{font:400 .92em var(--mono)}
   .callout span{font-size:.75rem}
   .wrap{width:min(1280px,calc(100% - 32px))}
   .nav-links a:not(.btn){display:none}
+  .nav-links{gap:10px} .nav-links .btn{white-space:nowrap}
   .brand{font-size:1.2rem}
   .brand svg{width:32px;height:32px}
   .btn{min-height:40px;padding:0 16px;font-size:.9rem}
@@ -663,7 +664,7 @@ section .fine code,.faq code{font:400 .92em var(--mono)}
   .steps p,.fit p,.why-grid p{font-size:.92rem}
   .meter{padding:16px 16px 12px}
   .meter-read{font-size:clamp(2.2rem,10vw,3rem)}
-  .meter-head{margin-bottom:22px}
+  .meter-head{margin-bottom:36px}   /* room for the "p95 9 ms" label above the track */
   .policy{padding:16px;margin-top:24px}
   .policy pre{font-size:.75rem}
   .closing{padding:28px 20px;border-radius:12px;gap:18px}
@@ -740,7 +741,7 @@ section .fine code,.faq code{font:400 .92em var(--mono)}
       <h1><span class="reveal"><span>Agents propose.</span></span><span class="reveal"><span>People approve.</span></span></h1></div>
       <div class="hero-side">
         <p class="lede">Change control for AI agents. Everyday work runs on its own. When an agent wants to do something it can't take back, a teammate sees what it will change ("deletes 4,312 rows", "destroys the prod database") and says yes or no.</p>
-        <p class="spec"><strong>5,000+ PyPI downloads.</strong></p>
+        <p class="spec"><strong>10,000+ PyPI downloads.</strong></p>
         <div class="cta-row">
           <div class="cta-pick"><a class="btn" href="/signup">Try now</a><span>Building with agents yourself</span></div>
           <div class="cta-pick"><a class="btn ghost" href="#demo" data-demo>Book a demo</a><span>Security or platform team</span></div>
@@ -781,7 +782,7 @@ section .fine code,.faq code{font:400 .92em var(--mono)}
 
   <section id="proof" class="trust">
     <div class="used-at">
-      <p class="kicker">5,000+ downloads, including by engineers at</p>
+      <p class="kicker">10,000+ downloads, including by engineers at</p>
       <ul aria-label="Companies whose engineers installed Squidbrake">
         <li>HCLTech</li><li>Urban Company</li><li>World Wide Technology</li><li>Airbyte</li><li>Juniper Networks</li><li>Pax8</li><li>Capslock</li>
       </ul>
@@ -2036,5 +2037,6 @@ window.SQUIDBRAKE_WAITLIST={
 </script>
 <script src="assets/booking.js" defer></script>
 <script src="/assets/try.js" defer></script>
+<script src="/assets/menu.js" defer></script>
 </body>
 </html>

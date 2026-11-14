@@ -4,7 +4,7 @@
 
 **Change control for AI agents. Agents propose. People approve.**
 
-5,000+ PyPI downloads.
+10,000+ PyPI downloads.
 
 [![tests](https://github.com/batrapulkit/squidbrake/actions/workflows/tests.yml/badge.svg)](https://github.com/batrapulkit/squidbrake/actions/workflows/tests.yml)
 [![PyPI](https://img.shields.io/pypi/v/squidbrake.svg)](https://pypi.org/project/squidbrake/)
