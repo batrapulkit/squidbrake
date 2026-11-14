@@ -160,3 +160,20 @@ def test_default_is_still_fail_closed():
 def test_readme_quotes_the_count():
     n = len(REPORTED)
     assert f"**{n} of {n} stopped**" in (ROOT / "README.md").read_text(encoding="utf-8")
+
+
+
+from test_team_features import shipped  # noqa: E402,F401  the rules.yaml we ship
+
+
+@pytest.mark.parametrize("name,decision", [
+    ("id_ed25519", "deny"),      # today's default key type: only id_rsa was blocked before
+    ("id_ecdsa", "deny"),
+    ("id_dsa", "deny"),
+    ("id_rsa", "deny"),
+    ("id_ed25519.pub", "allow"),  # a public key is fine to read
+])
+def test_reading_any_private_key_file_is_blocked(c, shipped, name, decision):
+    path = "C:/Users/me/keys/" + name
+    r = c.post("/v1/events", headers=H, json={"name": "Read", "source": "claude-code", "input": {"file_path": path}}).json()
+    assert r["decision"] == decision, (path, r)
