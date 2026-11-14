@@ -729,7 +729,7 @@ def test_one_website_serves_the_pages_and_the_old_address_sends_people_there(ins
     import app as insights_app
     for path, text in (("/", "Agents propose."), ("/pricing", "Start a 14-day trial"), ("/docs.html", "<html"),
                        ("/security", "<html"), ("/llms.txt", "Squidbrake"), ("/assets/og.png", ""),
-                       ("/benchmark", "14 of 15"), ("/robots.txt", "Sitemap:"), ("/sitemap.xml", "/benchmark</loc>")):
+                       ("/benchmark", "17 of 20"), ("/robots.txt", "Sitemap:"), ("/sitemap.xml", "/benchmark</loc>")):
         r = insights.get(path)
         assert r.status_code == 200 and text in r.text, path
     assert insights.get("/sitemap.xml").headers["content-type"].startswith("application/xml")

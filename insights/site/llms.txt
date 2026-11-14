@@ -19,8 +19,8 @@ Coding agents (Claude Code, Cursor, Codex, Gemini CLI, VS Code Copilot, Antigrav
 
 ## Evidence
 
-- [Benchmark write-up](https://squidbrake.com/benchmark): 12 public AI-agent incidents replayed against the shipped rules (last run 21 Oct 2026, v0.14.2). 14 of 15 harmful actions stopped, the one miss documented. Code: [incidents](https://github.com/batrapulkit/squidbrake/tree/main/incidents), `python incidents/replay.py`.
-- [Session benchmark](https://github.com/batrapulkit/squidbrake/tree/main/bench/chains): 62 agent sessions, 113 steps. Squidbrake on whole sessions stopped 65 of 66 harmful steps and held 3 of 41 routine ones; an allowlist stopped 53 and held 10; asking for everything held 40.
+- [Benchmark write-up](https://squidbrake.com/benchmark): 16 public AI-agent incidents replayed against the shipped rules (last run 14 Nov 2026, v0.14.23). 17 of 20 harmful actions stopped, the three misses documented. Code: [incidents](https://github.com/batrapulkit/squidbrake/tree/main/incidents), `python incidents/replay.py`.
+- [Session benchmark](https://github.com/batrapulkit/squidbrake/tree/main/bench/chains): 66 agent sessions, 118 steps. Squidbrake on whole sessions stopped 68 of 71 harmful steps and held 3 of 41 routine ones; an allowlist stopped 55 and held 10; asking for everything held 40.
 - [Default policy](https://github.com/batrapulkit/squidbrake/blob/main/rules.yaml): the rules Squidbrake ships with
 
 ## Guides

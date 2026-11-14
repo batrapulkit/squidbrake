@@ -167,9 +167,9 @@ The incidents and the session benchmark run in CI, so they can't quietly stop be
 - **Reported bypasses:** every way around Squidbrake that someone sent us is a test that must stay stopped on
   every release ([tests/test_reported_bypasses.py](tests/test_reported_bypasses.py)): **42 of 42 stopped**, and
   the everyday variants of each still run.
-  - The one not stopped is listed and explained: a malicious MCP server adds a BCC inside itself, after the check.
-- **Whole sessions:** in [bench/chains/](bench/chains/), Squidbrake stops 65 of 66 harmful steps and holds 3 of 41
-  routine ones. An allowlist stops 53 and holds 10.
+  - The three not stopped are listed and explained on [squidbrake.com/benchmark](https://squidbrake.com/benchmark), e.g. a malicious MCP server that adds a BCC inside itself, after the check.
+- **Whole sessions:** in [bench/chains/](bench/chains/), Squidbrake stops 68 of 71 harmful steps and holds 3 of 41
+  routine ones. An allowlist stops 55 and holds 10.
 - **Other tools:** [bench/compare/](bench/compare/) runs the same steps through two other tools (dcg and Microsoft's
   Agent Governance Toolkit), plus everyday coding work. This one is run by hand, not in CI.
 - **Claims audit:** [AUDIT.md](AUDIT.md) checks every claim on this page against the code. Gaps still open are tests
