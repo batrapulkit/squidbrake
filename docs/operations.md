@@ -113,8 +113,12 @@ status` shows exactly what is sent.
 the next time says if there's a newer one. That request carries nothing about you beyond the request itself; never
 in hooks, scripts or CI; off with `SQUIDBRAKE_NO_UPDATE_CHECK=1` or `DO_NOT_TRACK=1`.
 
-If you'd like the team to know who you are, `squidbrake register you@company.com` (asks first). Details:
-[`telemetry.py`](../telemetry.py).
+**Registration.** A pip install that isn't part of a named pilot asks for your name and work email the first time
+you run a `squidbrake` command in a terminal, and runs the command once you've given them. They go to the
+Squidbrake team once, with the names of the coding agents installed here (not with every command), so the team
+knows who uses it. The agent hooks, `pilot join` and CI are never stopped. Where nobody can answer (a script, a
+gateway in Docker, a service), set `SQUIDBRAKE_NAME` and `SQUIDBRAKE_EMAIL`, or register ahead with
+`squidbrake register you@company.com --name "Your Name"`. Details: [`telemetry.py`](../telemetry.py).
 
 **Usage counts.** The gateway's counts reach the team one of two ways:
 

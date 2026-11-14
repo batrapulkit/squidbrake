@@ -2,6 +2,11 @@
 Anonymous usage stats: which `squidbrake` commands run, and counts of what the gateway checked, held and blocked.
 They are always on. The first time you run `squidbrake` in a terminal it says so once (and asks, optionally, where
 you heard about Squidbrake). Scripts, CI, `--yes` and the agent hooks send nothing until that first run happened.
+
+Registration: a pip install that isn't in a named pilot asks for your name and work email the first time you run a
+`squidbrake` command in a terminal, and the command runs once you've given them (see require_registration). They go
+to the Squidbrake team, with the coding agents installed here, so they know who uses it. A script, a gateway in
+Docker or a service can give them as SQUIDBRAKE_NAME and SQUIDBRAKE_EMAIL; the hooks and CI are never stopped.
 A gateway that starts without one (Docker, a background service) writes the same notice to its log and then shares
 its counts (gateway_start); never in CI or with the off switches.
 
@@ -10,15 +15,15 @@ its counts (gateway_start); never in CI or with the off switches.
                                      the first run, Enter skips it)
 
 What is sent, once each time you run a command:
-  - a random id made on this computer (not tied to you unless you give your email, below)
+  - a random id made on this computer (tied to the name and email you registered with, below)
   - the command name only (e.g. "connect", "doctor", "undo"), never its arguments
   - the Squidbrake version, operating system, CPU type and Python version, and whether it came from pip
   - the country, worked out by the stats service from the address the request comes from
   - where you heard about Squidbrake, if you answered (one word from a list, e.g. "linkedin"), or the name of the
     link you installed from (SQUIDBRAKE_REF, e.g. "whatsapp")
 Never sent: commands an agent ran, file or folder names, file contents, prompts, rules, keys, the audit trail,
-names of people, your name, work email and the coding agents installed here (only if you give your email, on the
-first run or with `squidbrake register`).
+names of people. Your name, work email and the coding agents installed here go once, when you register (on the
+first run in a terminal, or with `squidbrake register`), not with every command.
 The agent hooks (`hook`, `agent-hook`, `shell-guard`, `proxy`) send nothing, so nothing slows a tool call down.
 
 The gateway's usage counts go to the Squidbrake team the same way, exactly as a pilot's do (see pilot.py for every
@@ -86,16 +91,29 @@ def _identify(cfg: dict, email: str, version: str, name: str | None = None, comp
     _send("$identify", cfg["id"], {"$set": props}, wait=True)
 
 
-def _ask_contact() -> tuple[str, str | None] | None:
-    """Optional, once: work email and name, so the team can reach the person. Enter skips; nothing is sent then."""
-    print("Optional: your work email, so the Squidbrake team can help you set it up (Enter to skip).")
-    email = (_ask("Work email: ") or "")[:254]
-    if not EMAIL_RE.match(email):
-        if email:
-            print("That doesn't look like an email; skipped. Later:  squidbrake register EMAIL")
-        print()
-        return None
-    name = (_ask("Your name: ") or "")[:120] or None
+REGISTER_NOTICE = """\
+Before Squidbrake runs: your name and work email. They go to the Squidbrake team, with the names of the coding
+agents installed here, so the team knows who uses it and can help you set it up. Asked once on this computer."""
+
+
+def _ask_contact() -> tuple[str, str] | None:
+    """Required: name and work email. Asked until both are given; None if there was nothing to answer with
+    (Ctrl-C, Ctrl-D), and then the command doesn't run (require_registration)."""
+    print(REGISTER_NOTICE + "\n")
+    while True:
+        name = _ask("Your name: ")
+        if name is None:
+            return None
+        if name := name[:120].strip():
+            break
+        print("Your name is needed to use Squidbrake.")
+    while True:
+        email = _ask("Work email: ")
+        if email is None:
+            return None
+        if EMAIL_RE.match(email := email[:254]):
+            break
+        print("That doesn't look like an email (like you@company.com).")
     print(f"Sent with it: the coding agents installed here ({', '.join(installed_agents()) or 'none found'}).\n")
     return email, name
 
@@ -200,13 +218,13 @@ def _first_run(cfg: dict, version: str) -> dict:
     """The first `squidbrake` command in a terminal: say once what is sent (it isn't a question), and ask,
     optionally, where they heard about Squidbrake."""
     print("\n" + NOTICE + "\n")
+    kept = {k: cfg[k] for k in ("email", "name", "registered", "register_pending") if k in cfg}   # require_registration
     cfg = {"id": cfg.get("id") or str(uuid.uuid4()), "enabled": True,
-           "asked": datetime.now(timezone.utc).date().isoformat()}
+           "asked": datetime.now(timezone.utc).date().isoformat(), **kept}
     if ref := ref_from_env() or _ask_source():
         cfg["ref"] = ref
     _save(cfg)
-    if contact := _ask_contact():
-        _identify(cfg, contact[0], version, name=contact[1])
+    contact = (cfg["email"], cfg.get("name")) if cfg.get("email") else None   # counts land under this person
     cfg["counts_joined"] = _share_counts(True, version, cfg.get("ref"), contact)
     if not cfg["counts_joined"]:
         cfg["counts_retry"] = _today()          # tried today: the next try is tomorrow (see maybe)
@@ -267,6 +285,84 @@ def _send(event: str, distinct_id: str, props: dict, wait: bool = False) -> None
         atexit.register(t.join, 2)   # short commands: give it up to 2 seconds to finish on the way out
 
 
+# --------------------------------------------------------------------------- registration (required for pip installs)
+
+REGISTER_PATH = "/v1/register"
+NO_REGISTRATION = QUIET | {"pilot"}     # the hooks never wait; `pilot join` is how a named pilot's install starts
+
+
+def _in_named_pilot() -> bool:
+    """Installed for one of our pilots (its own code, hosted or not): we know who they are already."""
+    try:
+        import pilot
+        code = (pilot.load(_pilot_dir()) or {}).get("code")
+        return bool(code) and code != COMMUNITY_CODE
+    except Exception:
+        return False
+
+
+def _registration_needed(argv: list[str]) -> bool:
+    command = argv[0] if argv and not argv[0].startswith("-") else "start"
+    if command in NO_REGISTRATION or any(a in ("-h", "--help") for a in argv) or os.getenv("CI"):
+        return False
+    return not load().get("email") and not _in_named_pilot()
+
+
+def _send_registration(cfg: dict, version: str, company: str | None = None) -> bool:
+    """Tell the Squidbrake team who this is (insights/app.py, /v1/register). False when it couldn't (offline):
+    it's kept as pending and sent with a later command."""
+    try:
+        import httpx
+        r = httpx.post(COMMUNITY_SERVER + REGISTER_PATH, timeout=5, json={
+            "id": cfg["id"], "email": cfg["email"], "name": cfg.get("name") or "", "company": company or "",
+            "version": version, "os": f"{platform.system()} {platform.release()}", "ref": cfg.get("ref") or "",
+            "agents": installed_agents(), "install": _props("", version)["install"]})
+        return r.status_code < 300
+    except Exception:     # never break a command over this
+        return False
+
+
+def _record(cfg: dict, email: str, name: str | None, version: str, company: str | None = None) -> dict:
+    cfg = {**cfg, "id": cfg.get("id") or str(uuid.uuid4()), "email": email, **({"name": name} if name else {})}
+    cfg.pop("register_pending", None)
+    if not _send_registration(cfg, version, company):
+        cfg["register_pending"] = True
+    cfg.setdefault("registered", _today())
+    _save(cfg)
+    if POSTHOG_KEY and not _switched_off():
+        _identify(cfg, email, version, name=name, company=company)
+    return cfg
+
+
+def require_registration(argv: list[str], version: str) -> int | None:
+    """Called before every `squidbrake` command. A pip install outside a named pilot gives its name and work email
+    once before anything runs. Returns an exit code to stop with, or None to go on.
+
+    Never stops the hooks (an agent would hang), CI, `pilot join`, or `--help`. Where nobody can answer (a script, a
+    gateway in Docker, a service, `--yes`) it takes SQUIDBRAKE_NAME and SQUIDBRAKE_EMAIL, or else goes on and the next
+    run in a terminal asks."""
+    cfg = load()
+    if cfg.get("register_pending") and cfg.get("email"):          # given while offline: send it now
+        cfg["register_pending"] = not _send_registration(cfg, version)
+        _save(cfg)
+    if not _registration_needed(argv):
+        return None
+    email, name = os.getenv("SQUIDBRAKE_EMAIL", "").strip()[:254], os.getenv("SQUIDBRAKE_NAME", "").strip()[:120]
+    if EMAIL_RE.match(email) and name:
+        _record(cfg, email, name, version)
+        return None
+    if not _interactive() or "--yes" in argv:
+        return None
+    print()
+    contact = _ask_contact()
+    if not contact:
+        print("Squidbrake needs your name and work email to run. Run it again in a terminal, or:\n"
+              "  squidbrake register you@company.com --name \"Your Name\"")
+        return 1
+    _record(cfg, contact[0], contact[1], version)
+    return None
+
+
 def maybe(argv: list[str], version: str) -> None:
     """Called once per `squidbrake` command. Says what is sent the first time in a terminal, then sends."""
     command = argv[0] if argv and not argv[0].startswith("-") else "start"
@@ -284,7 +380,7 @@ def maybe(argv: list[str], version: str) -> None:
         # Someone who later left (squidbrake pilot leave) has counts_joined True, so they're never joined again.
         cfg["counts_retry"] = _today()
         cfg["counts_joined"] = _share_counts(True, version, cfg.get("ref"),
-                                             (cfg["email"], None) if cfg.get("email") else None)
+                                             (cfg["email"], cfg.get("name")) if cfg.get("email") else None)
         _save(cfg)
     if cfg.get("enabled") and not cfg.get("ref") and (ref := ref_from_env()):
         cfg["ref"] = ref                    # said yes before, then installed again from a named link
@@ -302,12 +398,9 @@ def register(argv: list[str], version: str) -> int:
             opts[flag[2:]] = (" ".join(args[i + 1:i + 2]) or "")[:160] or None
             del args[i:i + 2]
     company, name = opts.get("company"), opts.get("name")
-    if len(args) != 1 or not EMAIL_RE.match(args[0]):
-        print("usage: squidbrake register EMAIL [--name NAME] [--company NAME] [--yes]")
+    if len(args) != 1 or not EMAIL_RE.match(args[0]) or not name:
+        print("usage: squidbrake register EMAIL --name NAME [--company NAME] [--yes]")
         return 2
-    if not POSTHOG_KEY:
-        print("This build of Squidbrake has no stats service set up; nothing was sent.")
-        return 1
     email = args[0]
     print(f"This sends to the Squidbrake team: {email}" + (f", name {name}" if name else "") +
           (f", company {company}" if company else "") +
@@ -316,7 +409,7 @@ def register(argv: list[str], version: str) -> int:
     if "--yes" not in argv and (_ask("Send it? [Y/n] ") or "").lower() not in ("", "y", "yes"):
         print("Nothing was sent.")
         return 0
-    _identify(load(), email, version, name=name, company=company)
+    cfg = _record(load(), email, name, version, company)
     try:
         import pilot
         if (pilot.load(_pilot_dir()) or {}).get("code") == COMMUNITY_CODE:    # anonymous counts: under this email now
@@ -326,7 +419,8 @@ def register(argv: list[str], version: str) -> int:
                 pilot.join(_pilot_dir(), COMMUNITY_CODE, COMMUNITY_SERVER, True, version, contact=(email, name))
     except Exception:     # never break a command over this
         pass
-    print("Sent. Thanks, the team will be in touch.")
+    print("Saved; it will be sent the next time this computer is online." if cfg.get("register_pending")
+          else "Sent. Thanks, the team will be in touch.")
     return 0
 
 
@@ -343,6 +437,6 @@ def main(argv: list[str], version: str = "") -> int:
             cfg.get("enabled"), "on (from the first squidbrake command you run in a terminal)")
     print(f"Anonymous usage stats: {state}")
     if cfg.get("email"):
-        print(f"Registered email: {cfg['email']}")
+        print(f"Registered: {cfg.get('name') or ''} <{cfg['email']}>" + (" (not sent yet: offline)" if cfg.get("register_pending") else ""))
     print(f"Settings: {_path()}\n\nWhat is sent, once each time you run a command:\n  {WHAT_IS_SENT}")
     return 0

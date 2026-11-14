@@ -1,4 +1,5 @@
-"""Usage stats: always on, said once in a terminal, never from the hooks or scripts, never more than the command name."""
+"""Usage stats: always on, said once in a terminal, never from the hooks or scripts, never more than the command name.
+Registration: a pip install gives its name and work email once before it runs."""
 import json
 import sys
 from pathlib import Path
@@ -25,10 +26,16 @@ def sent(tmp_path, monkeypatch):
     monkeypatch.setattr(telemetry, "_interactive", lambda: True)
     monkeypatch.setattr(telemetry.threading, "Thread", RunNow)
     monkeypatch.setattr(pilot, "_post", lambda server, path, body: joins.append((path, body["code"])) or {})
-    joins.clear()
+    monkeypatch.setattr(telemetry, "_send_registration", lambda cfg, version, company=None: registered.append(
+        {**cfg, "company": company}) or online[0])
+    for var in ("SQUIDBRAKE_EMAIL", "SQUIDBRAKE_NAME"):
+        monkeypatch.delenv(var, raising=False)
+    joins.clear(); registered.clear(); online[0] = True
     return bodies
 
 
+registered = []   # what /v1/register was sent
+online = [True]
 joins = []   # what the community pilot was told: ("/v1/pilot/join" or "/v1/pilot/leave", code)
 
 
@@ -116,10 +123,12 @@ def test_a_real_pilot_is_never_moved_to_the_community_code(sent, monkeypatch, tm
 
 def test_register_asks_first_and_sends_the_email(sent, monkeypatch):
     answers(monkeypatch, "n")
-    telemetry.register(["me@acme.com"], "1")
-    assert sent == []
+    telemetry.register(["me@acme.com", "--name", "Asha"], "1")
+    assert sent == [] and registered == []
+    assert telemetry.register(["me@acme.com"], "1") == 2                  # a name is needed too
     answers(monkeypatch, "")
-    telemetry.register(["me@acme.com", "--company", "Acme"], "1")
+    telemetry.register(["me@acme.com", "--company", "Acme", "--name", "Asha"], "1")
+    assert registered[0]["email"] == "me@acme.com" and registered[0]["company"] == "Acme"
     assert sent[0]["event"] == "$identify"
     assert sent[0]["properties"]["$set"]["email"] == "me@acme.com"
     assert sent[0]["properties"]["$set"]["company"] == "Acme"
@@ -151,27 +160,80 @@ def test_a_named_link_answers_it_and_free_text_is_never_kept(sent, monkeypatch):
     assert telemetry._ask_source() is None                               # not a number from the list: nothing
 
 
-def test_the_first_run_email_is_optional_and_skipping_sends_nothing_about_you(sent, monkeypatch):
-    answers(monkeypatch, "", "")                                          # where-from, email: both skipped
-    telemetry.maybe(["doctor"], "1")
-    assert "email" not in telemetry.load() and [b["event"] for b in sent] == ["cli_command"]
-
-
-def test_a_first_run_email_sends_name_and_installed_agents(sent, monkeypatch):
+def test_a_pip_install_gives_name_and_email_before_it_runs(sent, monkeypatch, capsys):
     monkeypatch.setattr(telemetry, "installed_agents", lambda: ["claude-code", "cursor"])
-    answers(monkeypatch, "", "me@acme.com", "Asha")
-    telemetry.maybe(["doctor"], "1")
+    answers(monkeypatch, "Asha", "me@acme.com", "")                     # name, email, then where-from: skipped
+    assert telemetry.require_registration(["doctor"], "1") is None        # given: the command runs
+    assert "Before Squidbrake runs" in capsys.readouterr().out
+    assert registered[0]["email"] == "me@acme.com" and registered[0]["name"] == "Asha"
     ident = next(b for b in sent if b["event"] == "$identify")
-    assert ident["properties"]["$set"]["email"] == "me@acme.com"
-    assert ident["properties"]["$set"]["name"] == "Asha"
-    assert ident["properties"]["$set"]["agents"] == ["claude-code", "cursor"]
-    assert telemetry.load()["email"] == "me@acme.com"
+    assert ident["properties"]["$set"] == {"email": "me@acme.com", "name": "Asha",
+                                           "agents": ["claude-code", "cursor"], "version": "1"}
+    telemetry.maybe(["doctor"], "1")                                      # the first-run notice: no second ask
+    assert telemetry.load()["email"] == "me@acme.com" and telemetry.load()["enabled"] is True
+    answers(monkeypatch)                                                  # registered: never asked again
+    assert telemetry.require_registration(["connect", "all"], "1") is None and len(registered) == 1
 
 
-def test_not_an_email_is_skipped(sent, monkeypatch):
-    answers(monkeypatch, "", "not an email")
-    telemetry.maybe(["doctor"], "1")
-    assert all(b["event"] != "$identify" for b in sent)
+def test_a_blank_name_or_a_bad_email_is_asked_again(sent, monkeypatch):
+    answers(monkeypatch, "", "  ", "Asha", "not an email", "", "me@acme.com")
+    assert telemetry.require_registration(["doctor"], "1") is None
+    assert telemetry.load()["name"] == "Asha" and telemetry.load()["email"] == "me@acme.com"
+
+
+def test_no_answer_means_the_command_does_not_run(sent, monkeypatch, capsys):
+    def ctrl_d(_q):
+        raise EOFError
+    monkeypatch.setattr("builtins.input", ctrl_d)
+    assert telemetry.require_registration(["doctor"], "1") == 1
+    assert "needs your name and work email" in capsys.readouterr().out
+    assert registered == [] and "email" not in telemetry.load()
+
+
+@pytest.mark.parametrize("argv", [["hook"], ["agent-hook", "cursor"], ["shell-guard", "check", "ls"], ["proxy"],
+                                  ["pilot", "join", "acme-1"], ["telemetry"], ["register"], ["doctor", "--help"]])
+def test_hooks_pilot_join_and_help_are_never_stopped(sent, monkeypatch, argv):
+    answers(monkeypatch)                                                  # a question would raise
+    assert telemetry.require_registration(argv, "1") is None and registered == []
+
+
+def test_ci_and_a_named_pilot_are_never_asked(sent, monkeypatch, tmp_path):
+    answers(monkeypatch)
+    monkeypatch.setenv("CI", "true")
+    assert telemetry.require_registration(["doctor"], "1") is None
+    monkeypatch.delenv("CI")
+    (tmp_path / "data").mkdir()
+    (tmp_path / "data" / "pilot.json").write_text(json.dumps({"code": "acme-123abc", "server": "https://x",
+                                                              "install_id": "a" * 32}), encoding="utf-8")
+    assert telemetry.require_registration(["doctor"], "1") is None and registered == []
+
+
+def test_the_community_counts_alone_do_not_count_as_a_named_pilot(sent, monkeypatch):
+    telemetry.gateway_start("1", lambda s: None)                          # joined the community code, no email
+    answers(monkeypatch, "Ana", "ana@acme.dev")
+    assert telemetry.require_registration(["doctor"], "1") is None and registered[0]["email"] == "ana@acme.dev"
+
+
+def test_scripts_and_services_register_from_the_environment_or_go_on(sent, monkeypatch):
+    answers(monkeypatch)
+    monkeypatch.setattr(telemetry, "_interactive", lambda: False)
+    assert telemetry.require_registration(["start"], "1") is None and registered == []   # asked next time in a terminal
+    monkeypatch.setenv("SQUIDBRAKE_EMAIL", "ops@acme.dev")
+    monkeypatch.setenv("SQUIDBRAKE_NAME", "Acme Ops")
+    assert telemetry.require_registration(["start"], "1") is None
+    assert registered[0]["email"] == "ops@acme.dev" and telemetry.load()["name"] == "Acme Ops"
+
+
+def test_a_registration_made_offline_is_sent_later(sent, monkeypatch):
+    online[0] = False
+    answers(monkeypatch, "Asha", "me@acme.com")
+    assert telemetry.require_registration(["doctor"], "1") is None        # not stopped for being offline
+    assert telemetry.load()["register_pending"] is True
+    online[0] = True
+    telemetry.require_registration(["doctor"], "1")
+    assert telemetry.load()["register_pending"] is False and len(registered) == 2
+    telemetry.require_registration(["doctor"], "1")
+    assert len(registered) == 2                                           # sent once it worked
 
 
 def test_a_join_that_failed_is_retried_once_a_day_and_never_after_leaving(sent, monkeypatch, tmp_path):
@@ -239,7 +301,8 @@ def test_an_email_given_after_the_gateway_joined_moves_its_counts_to_that_person
     told = []
     monkeypatch.setattr(pilot, "_post", lambda server, path, body: told.append(body) or {})
     telemetry.gateway_start("1", lambda s: None)
-    answers(monkeypatch, "", "ana@acme.dev", "Ana")                      # terminal first run: where-from, email, name
+    answers(monkeypatch, "Ana", "ana@acme.dev", "")                      # terminal first run: name, email, where-from
+    telemetry.require_registration(["doctor"], "1")
     telemetry.maybe(["doctor"], "1")
     assert told[-1]["email"] == "ana@acme.dev" and told[-1]["install_id"] == told[0]["install_id"]
 
