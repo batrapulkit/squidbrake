@@ -689,7 +689,7 @@ section .fine code,.faq code{font:400 .92em var(--mono)}
 </svg>
 <div class="topbar" id="topbar">
   <div class="wrap">
-    <a class="brand" href="#scrolly" aria-label="Squidbrake, back to top"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#sb-mark"/></svg>squidbrake</a>
+    <a class="brand" href="#scrolly" aria-label="Squidbrake, back to top"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#sb-mark"/></svg>Squidbrake</a>
     <nav class="nav-links" aria-label="Sections">
       <a href="#incidents">Incidents</a>
       <a href="#product">Product</a>
@@ -1083,7 +1083,7 @@ plan/ ~/). Don't try to work around it.</span></pre>
 
   <footer>
     <div class="foot-top">
-      <a class="brand" href="#scrolly" aria-label="Squidbrake, back to top"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#sb-mark"/></svg>squidbrake</a>
+      <a class="brand" href="#scrolly" aria-label="Squidbrake, back to top"><svg viewBox="0 0 64 64" aria-hidden="true"><use href="#sb-mark"/></svg>Squidbrake</a>
       <nav class="foot-links" aria-label="Footer">
         <a href="#incidents">Incidents</a>
         <a href="#product">Product</a>
@@ -1745,7 +1745,7 @@ window.SQUIDBRAKE_WAITLIST={
   const keeperGeo=new THREE.ExtrudeGeometry(keeperShape,{depth:0.045,bevelEnabled:true,bevelThickness:0.006,bevelSize:0.004,bevelSegments:3,curveSegments:16}); keeperGeo.center();
   [-0.74,0.74].forEach(a=>{ const kp=new THREE.Mesh(keeperGeo,keeperMat); kp.position.set(Math.sin(a)*0.8875,0,Math.cos(a)*0.8875); kp.rotation.y=a-Math.PI/2; device.add(kp); });
   // debossed wordmark on the strap sides
-  const strapMark=canvasTexF(640,120,(g,w,h)=>{ g.fillStyle='rgba(150,155,163,0.6)'; g.font='600 76px "Host Grotesk", sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('squidbrake',w/2,h/2+4); },true);
+  const strapMark=canvasTexF(640,120,(g,w,h)=>{ g.fillStyle='rgba(150,155,163,0.6)'; g.font='600 76px "Host Grotesk", sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('Squidbrake',w/2,h/2+4); },true);
   [-1.72,1.72,Math.PI-0.5,Math.PI+0.5].forEach((a,i)=>{ const pl=new THREE.Mesh(new THREE.PlaneGeometry(0.2,0.0375),new THREE.MeshBasicMaterial({map:strapMark,transparent:true,depthWrite:false})); pl.position.set(Math.sin(a)*0.936,0,Math.cos(a)*0.936); pl.rotation.y=a; if(i>1) pl.scale.setScalar(0.8); device.add(pl); });
 
   /* the monitor unit */
@@ -1772,7 +1772,7 @@ window.SQUIDBRAKE_WAITLIST={
   // top frame: wordmark and sensor window
   const frameMark=new THREE.Mesh(new THREE.PlaneGeometry(0.2,0.0376),new THREE.MeshBasicMaterial({transparent:true,depthWrite:false,map:canvasTexF(680,128,(g,w,h)=>{
     drawMark(g,4,2,1.9,'rgba(30,42,35,0.92)','rgba(30,42,35,0.92)',null);
-    g.fillStyle='rgba(30,42,35,0.92)'; g.font='600 78px "Host Grotesk", sans-serif'; g.textBaseline='middle'; g.fillText('squidbrake',132,66);
+    g.fillStyle='rgba(30,42,35,0.92)'; g.font='600 78px "Host Grotesk", sans-serif'; g.textBaseline='middle'; g.fillText('Squidbrake',132,66);
   },true)}));
   frameMark.position.set(-0.172,0.186,FRONT+0.001); unit.add(frameMark);
   const sensorMat=new THREE.MeshPhysicalMaterial({color:0x05060a,roughness:0.03,clearcoat:1});
