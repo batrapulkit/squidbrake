@@ -610,6 +610,7 @@ section .fine code,.faq code{font:400 .92em var(--mono)}
   .callout span{font-size:.75rem}
   .wrap{width:min(1280px,calc(100% - 32px))}
   .nav-links a:not(.btn){display:none}
+  .nav-links{gap:10px} .nav-links .btn{white-space:nowrap}
   .brand{font-size:1.2rem}
   .brand svg{width:32px;height:32px}
   .btn{min-height:40px;padding:0 16px;font-size:.9rem}
@@ -663,7 +664,7 @@ section .fine code,.faq code{font:400 .92em var(--mono)}
   .steps p,.fit p,.why-grid p{font-size:.92rem}
   .meter{padding:16px 16px 12px}
   .meter-read{font-size:clamp(2.2rem,10vw,3rem)}
-  .meter-head{margin-bottom:22px}
+  .meter-head{margin-bottom:36px}   /* room for the "p95 9 ms" label above the track */
   .policy{padding:16px;margin-top:24px}
   .policy pre{font-size:.75rem}
   .closing{padding:28px 20px;border-radius:12px;gap:18px}
@@ -2036,5 +2037,6 @@ window.SQUIDBRAKE_WAITLIST={
 </script>
 <script src="assets/booking.js" defer></script>
 <script src="/assets/try.js" defer></script>
+<script src="/assets/menu.js" defer></script>
 </body>
 </html>
