@@ -139,6 +139,13 @@ def main() -> int:
                 flow.header(3)
     except Exception:
         pass
+    try:   # a pip install gives its name and work email once before it runs (never the hooks or CI; telemetry.py)
+        import telemetry
+        stop = telemetry.require_registration(argv, __version__)
+    except Exception:
+        stop = None
+    if stop is not None:
+        return stop
     try:   # says once, in a terminal, what the usage stats send; never in the hooks, scripts or CI (see telemetry.py)
         import telemetry
         telemetry.maybe(argv, __version__)

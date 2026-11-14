@@ -251,8 +251,8 @@ Anonymous usage **counts** are sent to the Squidbrake team:
 - the decision time
 - for each hold or block, only the program (like `rm`) and the rule
 
-The first run in a terminal says so, and asks, optionally, for your work email and name (Enter skips it; only if you
-give an email are it, your name and the names of the coding agents installed here sent). `squidbrake telemetry status` shows exactly what is sent, and `DO_NOT_TRACK=1`
+A pip install asks for your name and work email the first time you run it in a terminal; they're sent to the team
+once, with the names of the coding agents installed here (or set `SQUIDBRAKE_NAME` and `SQUIDBRAKE_EMAIL`). `squidbrake telemetry status` shows exactly what is sent, and `DO_NOT_TRACK=1`
 turns it off. Details: [docs/operations.md](docs/operations.md#usage-sharing).
 
 ## What is stored
