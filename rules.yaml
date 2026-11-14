@@ -203,7 +203,9 @@ rules:
     reason: Destructive shell command
     match:
       name: ["shell*", "bash*", "powershell*", "exec*", "run_command*"]
-      input_regex: 'rm\s+-(rf|fr)\s+(/\*?|~/?\*?|\*)(?=[\s"'';&|)]|$)|mkfs|dd\s+if=|:\(\)\s*\{|shutdown|reboot|Remove-Item\s.*-Recurse.*\s(C:\\\\|~|\$HOME)'
+      # where a command starts (the input's first word, or after ; & | ( ` a newline or sudo), not the same words
+      # inside a quoted message or file text: the command parser blocks the real ones wherever they are
+      input_regex: '(?:(?<!\\)"|[;&|(`]|\\n|\bsudo)\s*(?:rm\s+-(rf|fr)\s+(/\*?|~/?\*?|\*)(?=[\s"'';&|)]|$)|mkfs|dd\s+if=|shutdown|reboot|Remove-Item\s.*-Recurse.*\s(C:\\\\|~|\$HOME))|:\(\)\s*\{'
 
   - id: block-sql-drop
     action: deny
