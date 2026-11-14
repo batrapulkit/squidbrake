@@ -261,8 +261,52 @@ def sleep(p):
 last_failure = {}   # code -> time: a failed setup is retried every 5 minutes, not every tick
 
 
+REPORT_SECONDS = 60
+_reported = [0.0]
+
+
+def containers():
+    """Every hosted dashboard's container Docker has (running or not), with memory for the running ones."""
+    out = docker("ps", "-a", "--filter", "label=squidbrake.hosted=1", "--format",
+                 '{{.Names}}|{{.Label "squidbrake.pilot"}}|{{.State}}|{{.Status}}|{{.CreatedAt}}', check=False)
+    found = []
+    for line in out.splitlines():
+        parts = line.split("|")
+        if len(parts) == 5:
+            found.append(dict(zip(("name", "pilot", "state", "status", "created"), parts)))
+    running = [c["name"] for c in found if c["state"] == "running"]
+    if running:
+        mem = dict(line.split("|", 1) for line in docker("stats", "--no-stream", "--format", "{{.Name}}|{{.MemUsage}}",
+                                                         *running, check=False).splitlines() if "|" in line)
+        for c in found:
+            c["mem"] = mem.get(c["name"], "")
+    return found
+
+
+def report(remove, pilots):
+    """What Docker really has, for the admin's Container column (every REPORT_SECONDS). Leftovers the admin asked
+    to remove go first: only an sbp- container of a hosted dashboard that no pilot has (checked again here)."""
+    mine = {"sbp-" + p["subdomain"] for p in pilots if p.get("subdomain")}
+    if remove:
+        have = {c["name"] for c in containers()}
+        for name in remove:
+            if name.startswith("sbp-") and name in have and name not in mine:
+                log("removing leftover", name)
+                docker("rm", "-f", name, check=False)
+                docker("volume", "rm", name, check=False)
+    elif time.time() - _reported[0] < REPORT_SECONDS:
+        return
+    api("/v1/admin/containers", {"containers": containers()})
+    _reported[0] = time.time()
+
+
 def tick():
-    for p in api("/v1/admin/provision")["pilots"]:
+    queue = api("/v1/admin/provision")
+    try:
+        report(queue.get("remove_containers") or [], queue["pilots"])
+    except Exception as e:          # only the admin's view: never stops the dashboards being looked after
+        log("couldn't report containers", e)
+    for p in queue["pilots"]:
         try:
             if p["state"] == "deleting":
                 remove(p)

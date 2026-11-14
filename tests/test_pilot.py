@@ -1205,3 +1205,39 @@ def test_every_page_the_app_serves_is_in_its_docker_image():
                     if line.startswith("COPY"))
     missing = [n for n in set(re.findall(r'PAGE\("([^"/]+)"\)', app_src)) if n not in copy.split()]
     assert not missing, f"add to insights/Dockerfile COPY: {missing}"
+
+
+def test_the_admin_shows_each_hosted_pilots_container_and_leftovers(insights, monkeypatch):
+    import app as insights_app
+    admin = {"X-Admin-Key": "admin-test-key"}
+    monkeypatch.setattr(insights_app, "notify", lambda *_: None)
+    for code, sub, state in (("ct-up", "ctup", "running"), ("ct-zz", "ctzz", "sleeping"), ("ct-miss", "ctmiss", "running"),
+                             ("ct-line", "ctline", "waiting")):
+        with insights_app.db() as c:
+            c.execute("INSERT INTO pilots (code, company, created_at, email, hosted, subdomain, state, note, started_at, "
+                      "keys_revealed_at) VALUES (?,?,?,?,1,?,?, 'made by hand', ?, ?)",
+                      (code, code, insights_app.now(), f"{code}@x.dev", sub, state, insights_app.now(), insights_app.now()))
+    report = {"containers": [
+        {"name": "sbp-ctup", "pilot": "ct-up", "state": "running", "status": "Up 1 hour", "created": "x", "mem": "80MiB / 192MiB"},
+        {"name": "sbp-ctzz", "pilot": "ct-zz", "state": "exited", "status": "Exited (0) 2 hours ago", "created": "x"},
+        {"name": "sbp-leftover", "pilot": "gone-1", "state": "exited", "status": "Exited (0) 3 days ago", "created": "x"}]}
+    assert insights.post("/v1/admin/containers", json=report).status_code == 401
+    assert insights.post("/v1/admin/containers", headers=admin, json=report).status_code == 200
+    d = insights.get("/v1/admin/overview", headers=admin).json()
+    box = {p["code"]: p["container"] for p in d["pilots"] if p["code"].startswith("ct-")}
+    assert box["ct-up"]["exists"] and box["ct-up"]["ok"] and box["ct-up"]["mem"] == "80MiB / 192MiB"
+    assert box["ct-zz"]["exists"] and box["ct-zz"]["ok"]                      # asleep: stopped is right
+    assert not box["ct-miss"]["exists"] and not box["ct-miss"]["ok"]          # should be running: missing
+    assert not box["ct-line"]["exists"] and box["ct-line"]["ok"]              # in line: none yet is right
+    assert [o["name"] for o in d["containers"]["orphans"]] == ["sbp-leftover"] and d["containers"]["reported_at"]
+    # removing: only a leftover, and provision.py is told on its next round
+    assert insights.post("/v1/admin/containers/sbp-ctup/remove", headers=admin).status_code == 409
+    assert insights.post("/v1/admin/containers/sbp-leftover/remove", headers=admin).status_code == 200
+    assert insights.get("/v1/admin/provision", headers=admin).json()["remove_containers"] == ["sbp-leftover"]
+    report["containers"].pop()                                                # gone on the next report
+    insights.post("/v1/admin/containers", headers=admin, json=report)
+    assert insights.get("/v1/admin/provision", headers=admin).json()["remove_containers"] == []
+    with insights_app.db() as c:
+        for code in ("ct-up", "ct-zz", "ct-miss", "ct-line"):
+            insights_app._forget(c, code)
+        c.execute("DELETE FROM settings WHERE key IN ('containers', 'remove_containers')")

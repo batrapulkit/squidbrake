@@ -746,6 +746,74 @@ def new_keys(code: str):
     return {"ok": True}
 
 
+# ---- what Docker really has on the server (provision.py reports it every minute), for the admin's Container column
+
+class ContainerIn(BaseModel):
+    name: str = Field(max_length=80)
+    pilot: str = Field(default="", max_length=60)
+    state: str = Field(default="", max_length=20)       # running / exited / created / restarting / dead
+    status: str = Field(default="", max_length=80)      # "Up 2 days", "Exited (0) 3 hours ago"
+    created: str = Field(default="", max_length=60)
+    mem: str = Field(default="", max_length=40)         # "84.2MiB / 192MiB"
+
+
+class ContainersIn(BaseModel):
+    containers: list[ContainerIn] = Field(default_factory=list, max_length=2000)
+
+
+@app.post("/v1/admin/containers", dependencies=[Depends(admin)])
+def containers_report(b: ContainersIn):
+    with _lock, db() as c:
+        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('containers', ?)",
+                  (json.dumps({"reported_at": now(), "containers": [x.model_dump() for x in b.containers]}),))
+        # removals asked for that are done (the container is gone) are forgotten
+        names = {x.name for x in b.containers}
+        asked = [n for n in _remove_asked(c) if n in names]
+        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('remove_containers', ?)", (json.dumps(asked),))
+    return {"ok": True}
+
+
+def _containers(c) -> dict:
+    row = c.execute("SELECT value FROM settings WHERE key='containers'").fetchone()
+    return json.loads(row[0]) if row else {}
+
+
+def _remove_asked(c) -> list[str]:
+    row = c.execute("SELECT value FROM settings WHERE key='remove_containers'").fetchone()
+    return json.loads(row[0]) if row else []
+
+
+def _container_of(p: dict, report: dict) -> dict | None:
+    """This hosted pilot's container as Docker last reported it, and whether that is what it should be."""
+    if not p.get("hosted") or not p.get("subdomain") or not report:
+        return None
+    name = "sbp-" + p["subdomain"]
+    got = next((x for x in report.get("containers", []) if x["name"] == name), None)
+    want = {"running": "running", "requested": "running", "failed": "running", "sleeping": "exited",
+            "waiting": None, "deleting": None}.get(p.get("state"), "running")
+    ok = (got is None) if want is None else bool(got and got["state"] == want)
+    return {**(got or {}), "name": name, "exists": bool(got), "ok": ok}
+
+
+def _orphans(pilots: list[dict], report: dict) -> list[dict]:
+    """Containers of hosted dashboards that no pilot has any more: nothing else would ever remove them."""
+    mine = {"sbp-" + p["subdomain"] for p in pilots if p.get("hosted") and p.get("subdomain")}
+    return [x for x in report.get("containers", []) if x["name"] not in mine]
+
+
+@app.post("/v1/admin/containers/{name}/remove", dependencies=[Depends(admin)])
+def remove_container(name: str):
+    """A leftover container (no pilot has it): provision.py removes it and its data volume on its next round."""
+    with _lock, db() as c:
+        pilots = [dict(r) for r in c.execute("SELECT hosted, subdomain FROM pilots")]
+        if not any(x["name"] == name for x in _orphans(pilots, _containers(c))):
+            raise HTTPException(409, "that container belongs to a pilot (delete the pilot instead) or isn't there")
+        asked = _remove_asked(c)
+        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('remove_containers', ?)",
+                  (json.dumps(sorted(set(asked) | {name})),))
+    return {"ok": True}
+
+
 # ---- hosted gateways: provision.py (on the server, with Docker) asks what to do and reports back
 
 @app.get("/v1/admin/provision", dependencies=[Depends(admin)])
@@ -760,7 +828,9 @@ def provision_queue():
         minting: dict[str, list] = {}
         for r in c.execute("SELECT id_hash, code, device FROM app_links WHERE state='minting'").fetchall():
             minting.setdefault(r["code"], []).append({"id": r["id_hash"], "device": r["device"]})
-    return {"domain": HOSTED_DOMAIN, "pilots": [dict(r) | {"keys_ready": bool(r["keys_ready"]), "rekey": bool(r["rekey"]),
+        remove = _remove_asked(c)
+    return {"domain": HOSTED_DOMAIN, "remove_containers": remove,
+            "pilots": [dict(r) | {"keys_ready": bool(r["keys_ready"]), "rekey": bool(r["rekey"]),
                                                           "app_links": minting.get(r["code"], []),
                                                           "dashboard": dashboard_url(r["subdomain"]),
                                                           "license": _license_for(r)} for r in rows]}
@@ -1173,6 +1243,7 @@ def overview(request: Request):
         apps: dict[str, list[str]] = {}         # computers with the Squidbrake app, per pilot
         for r in c.execute("SELECT code, name FROM devices ORDER BY created_at"):
             apps.setdefault(r["code"], []).append(r["name"])
+        report = _containers(c)
         installs = [dict(r) for r in c.execute("SELECT * FROM installs")]
         days = c.execute("SELECT install_id, day, counts FROM days WHERE day >= ?", (span[0],)).fetchall()
         caught: dict[str, list] = {}
@@ -1255,6 +1326,7 @@ def overview(request: Request):
                     "idle_days": idle, "trend": (None if not prev else round(100 * (week["events"] - prev) / prev)),
                     "link": f"{public_url(request)}/start/{p['code']}", "stage": stage, "installs": len(active),
                     "apps": apps.get(p["code"], []),
+                    "container": _container_of(p, report),
                     "last_seen": last or None, "versions": sorted({i["version"] for i in active if i["version"]}),
                     "modes": sorted({i["mode"] for i in active if i["mode"]}), "agents": agents,
                     "rules_hit": dict(sorted(hits.items(), key=lambda kv: -kv[1])[:6]), "week": week,
@@ -1267,7 +1339,8 @@ def overview(request: Request):
     named = [p for p in out if not p["community"]]
     pilots_week = {k: sum(p["week"][k] for p in named) for k in SUMS}
     community = next((p for p in out if p["community"]), None)
-    return {"span": span, "pilots": out, "week": totals, "pilots_week": pilots_week, "latest_version": latest or None,
+    return {"containers": {"reported_at": report.get("reported_at"), "orphans": _orphans(pilots, report)},
+            "span": span, "pilots": out, "week": totals, "pilots_week": pilots_week, "latest_version": latest or None,
             **{k: v for k, v in all_time().items() if k in ("pilots_total", "pilots_daily")},
             "pilots_all_time": None,
             "active_pilots": sum(1 for p in named if p["stage"] == "active"),
