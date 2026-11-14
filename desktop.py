@@ -240,6 +240,15 @@ def heartbeat(cfg: dict) -> dict:
                server=cfg.get("server"))
 
 
+def agents_here() -> list[str]:
+    """The agents on this computer with Squidbrake's hook in their config (connect.py, nothing run)."""
+    try:
+        import connect
+        return connect.connected_agents()
+    except Exception:
+        return []
+
+
 def check(cfg: dict, beat: bool) -> tuple[str, str]:
     """-> (colour, what to show): green protecting, amber waking / waiting, grey can't reach it, red signed out."""
     state, answers = None, gateway_answers(cfg)
@@ -250,7 +259,8 @@ def check(cfg: dict, beat: bool) -> tuple[str, str]:
             if e.status in (401, 410):
                 return "red", "Signed out: sign in again"
     if answers:
-        return "green", "Protecting your agents"
+        # green only when an agent here really goes through it: the dashboard answering isn't protection
+        return ("green", "Protecting your agents") if agents_here() else ("amber", "No agent connected: choose Reconnect agents")
     if state in ("sleeping", "waiting", "requested"):
         return "amber", "Waking your dashboard…"
     return "grey", "Can't reach your dashboard"
@@ -467,7 +477,8 @@ def run_tray() -> int:
     def signed_in_now():
         wake.set()                                           # green straight away, not in a minute
         if icon.HAS_NOTIFICATION:
-            icon.notify("Your agents are connected. Reopen them and work as usual.", "Squidbrake")
+            icon.notify("Your agents are connected. Reopen them and work as usual." if agents_here() else
+                        "Signed in, but no agent was connected: choose Reconnect agents.", "Squidbrake")
 
     def open_signin(*_):
         if not signin["page"]:

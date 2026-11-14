@@ -181,3 +181,14 @@ def test_the_windows_app_connects_agents_with_its_console_twin(tmp_path, monkeyp
     monkeypatch.setattr(desktop.sys, "executable", str(app_exe))
     cmd = desktop._script("connect.py", "claude-code")
     assert cmd[0] == str(cli_exe) and cmd[1].endswith("connect.py") and cmd[2] == "claude-code"
+
+
+def test_green_means_an_agent_really_goes_through_the_dashboard(monkeypatch):
+    # the dashboard answering while no agent here has the hook is not "protecting": that hid a Windows app that
+    # never connected anything
+    monkeypatch.setattr(desktop, "gateway_answers", lambda cfg: True)
+    monkeypatch.setattr(desktop, "heartbeat", lambda cfg: {"state": "running"})
+    monkeypatch.setattr(desktop, "agents_here", lambda: [])
+    assert desktop.check({}, beat=False) == ("amber", "No agent connected: choose Reconnect agents")
+    monkeypatch.setattr(desktop, "agents_here", lambda: ["claude-code"])
+    assert desktop.check({}, beat=False) == ("green", "Protecting your agents")
