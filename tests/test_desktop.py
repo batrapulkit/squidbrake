@@ -172,3 +172,12 @@ def test_the_cli_runs_it(home, capsys):
 def test_the_page_is_packaged():
     text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert '"app_signin.html" = "squidbrake/app_signin.html"' in text and '"desktop.py" = "squidbrake/desktop.py"' in text
+
+
+def test_the_windows_app_connects_agents_with_its_console_twin(tmp_path, monkeypatch):
+    # squidbrake-app.exe always runs the app (entry.py adds "app"): connecting agents with it did nothing
+    app_exe, cli_exe = tmp_path / "squidbrake-app.exe", tmp_path / "squidbrake.exe"
+    app_exe.write_text(""); cli_exe.write_text("")
+    monkeypatch.setattr(desktop.sys, "executable", str(app_exe))
+    cmd = desktop._script("connect.py", "claude-code")
+    assert cmd[0] == str(cli_exe) and cmd[1].endswith("connect.py") and cmd[2] == "claude-code"

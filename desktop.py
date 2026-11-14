@@ -175,6 +175,10 @@ def _script(name: str, *args: str) -> list[str]:
     exe = sys.executable
     if sys.platform == "win32" and exe.lower().endswith("pythonw.exe"):
         exe = exe[:-5] + ".exe" if Path(exe[:-5] + ".exe").exists() else exe
+    # Windows build: squidbrake-app.exe puts "app" in front of every command (packaging/native/entry.py), so run as it
+    # would start the app again and no agent was ever connected. Its console twin squidbrake.exe runs the script.
+    if Path(exe).stem.lower() == "squidbrake-app" and Path(exe).with_name("squidbrake.exe").exists():
+        exe = str(Path(exe).with_name("squidbrake.exe"))
     return [exe, str(HERE / name), *args]
 
 
