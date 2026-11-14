@@ -142,6 +142,7 @@ def test_status_colours(home, monkeypatch):
     cfg = {"dashboard": "https://co.app.test", "agent_key": "gw_K", "device_token": "t" * 30}
     up = {"v": True}
     monkeypatch.setattr(desktop, "gateway_answers", lambda c: up["v"])
+    monkeypatch.setattr(desktop, "agents_here", lambda: ["claude-code"])   # an agent here has the hook
     beats = []
     monkeypatch.setattr(desktop, "heartbeat", lambda c: beats.append(1) or {"state": "sleeping"})
     assert desktop.check(cfg, beat=False) == ("green", "Protecting your agents") and beats == []
