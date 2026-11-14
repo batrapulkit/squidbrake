@@ -149,7 +149,7 @@
     if (store.get("sb.bar.closed") > Date.now() - 7 * 864e5) return;
     var bar = h("div", { class: "sbbar", role: "complementary", "aria-label": "Sign up" }, [
       h("span", { text: "Check every agent action before it runs." }),
-      h("a", { href: "/signup?from=bar-" + page, onclick: function () { track("Bar Signup", { page: page }); } }, ["Sign up free"]),
+      h("a", { href: "/signup?from=bar-" + page, onclick: function () { track("Bar Signup", { page: page }); } }, ["Try now"]),
       h("button", { class: "x", "aria-label": "Close", text: "×", onclick: function () {
         bar.classList.remove("on"); store.set("sb.bar.closed", String(Date.now())); window.removeEventListener("scroll", onScroll);
       } }),
