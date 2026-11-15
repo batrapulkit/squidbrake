@@ -324,6 +324,21 @@ def test_admin_password_and_sessions(insights):
     assert insights.post("/v1/admin/login", json={"password": "a-long-password-1"}).status_code == 429   # slowed down
     insights_app._failures.clear()
 
+def test_a_pip_registration_shows_on_the_admin_page_one_row_per_person(insights):
+    admin = {"X-Admin-Key": "admin-test-key"}
+    me = {"email": "Reg@Acme.dev", "name": "Reg", "version": "0.9.0", "os": "Darwin 23", "agents": ["cursor"], "install": "pip"}
+    assert insights.post("/v1/register", json={**me, "id": "1" * 32}).status_code == 200
+    assert insights.post("/v1/register", json={**me, "id": "2" * 32, "os": "Linux 6", "agents": ["codex"],
+                                                "company": "Acme"}).status_code == 200
+    assert insights.post("/v1/register", json={**me, "id": "2" * 32, "name": ""}).status_code == 422     # a name
+    assert insights.post("/v1/register", json={**me, "id": "3" * 32, "email": "nope"}).status_code == 422
+    assert insights.get("/v1/admin/registrations").status_code == 401
+    r = insights.get("/v1/admin/registrations", headers=admin).json()
+    reg = next(p for p in r["people"] if p["email"] == "reg@acme.dev")
+    assert reg["computers"] == 2 and reg["company"] == "Acme" and reg["agents"] == ["codex", "cursor"]
+    assert reg["os"] == ["Darwin", "Linux"] and reg["install"] == "pip"
+
+
 def test_team_request_form(insights):
     """Teams that installed on their own can ask for help; only what they typed is kept, and only the admin sees it."""
     admin = {"X-Admin-Key": os.environ["INSIGHTS_ADMIN_KEY"]}
@@ -938,7 +953,6 @@ def test_an_email_on_the_first_run_gets_its_own_pilot_row(insights, tmp_path, mo
     """pip users who give their email show up under it, one row for all their computers, not in the community row."""
     import app as insights_app
     insights_app._joins.clear()          # earlier tests' joins count against this address's hourly limit
-    insights_app._joins.clear()          # earlier tests' joins count against this address's hourly limit
     code = insights_app.COMMUNITY_CODE
     path_of = lambda url: "/" + url.split("://", 1)[1].split("/", 1)[1]
     monkeypatch.setattr(pilot.httpx, "post", lambda url, json, timeout: insights.post(path_of(url), json=json))
@@ -962,18 +976,22 @@ def test_an_email_on_the_first_run_gets_its_own_pilot_row(insights, tmp_path, mo
 def test_register_moves_an_anonymous_install_onto_its_own_row(insights, tmp_path, monkeypatch):
     import app as insights_app
     insights_app._joins.clear()          # earlier tests' joins count against this address's hourly limit
-    insights_app._joins.clear()          # earlier tests' joins count against this address's hourly limit
     import telemetry
     path_of = lambda url: "/" + url.split("://", 1)[1].split("/", 1)[1]
     monkeypatch.setattr(pilot.httpx, "post", lambda url, json, timeout: insights.post(path_of(url), json=json))
     monkeypatch.setattr(telemetry, "_pilot_dir", lambda: tmp_path)
     monkeypatch.setattr(telemetry, "COMMUNITY_SERVER", "http://localhost")
     monkeypatch.setattr(telemetry, "_identify", lambda *a, **k: None)
+    monkeypatch.setenv("SQUIDBRAKE_HOME", str(tmp_path / "home"))       # not this computer's telemetry.json
+    insights_app._registers.clear()
     assert pilot.join(tmp_path, insights_app.COMMUNITY_CODE, "http://localhost", True, "1.0") == 0
     before = pilot.load(tmp_path)["install_id"]
-    assert telemetry.register(["late@firm.io", "--yes"], "1.0") == 0
+    assert telemetry.register(["late@firm.io", "--name", "Late", "--yes"], "1.0") == 0
     after = pilot.load(tmp_path)
     assert after["code"] != insights_app.COMMUNITY_CODE and after["install_id"] == before   # same install, its history kept
+    people = insights.get("/v1/admin/registrations", headers={"X-Admin-Key": "admin-test-key"}).json()["people"]
+    late = next(p for p in people if p["email"] == "late@firm.io")       # on the admin page, with its counts' row
+    assert late["name"] == "Late" and late["pilot_code"] == after["code"] and late["sharing"] == 1
 
 
 def test_retention_cohorts_and_weekly_accounting(insights):

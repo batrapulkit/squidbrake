@@ -97,11 +97,11 @@ python tests/e2e_business_scenario.py
 
 ## Usage sharing
 
-Squidbrake sends anonymous usage **counts** to its team, and says so the first time you run `squidbrake` in a
-terminal. Nothing in them is about you or your agents' work: never commands an agent ran, files, prompts, rules,
+Squidbrake sends usage **counts** to its team, and says so the first time you run `squidbrake` in a
+terminal. Nothing in them is about your agents' work: never commands an agent ran, files, prompts, rules,
 keys or the audit trail.
 
-**Anonymous usage stats.** The command name (e.g. `doctor`, never its arguments), version, OS, Python version and
+**Usage stats.** The command name (e.g. `doctor`, never its arguments), version, OS, Python version and
 country, plus the gateway's usage counts described below (what it allowed, held and blocked). The first run also
 asks, optionally, where you heard about Squidbrake (pick from a list, or Enter to skip); if you installed from a
 named link, that name (`SQUIDBRAKE_REF`, e.g. `linkedin`) answers it instead. The agent hooks never send anything,
@@ -113,12 +113,18 @@ status` shows exactly what is sent.
 the next time says if there's a newer one. That request carries nothing about you beyond the request itself; never
 in hooks, scripts or CI; off with `SQUIDBRAKE_NO_UPDATE_CHECK=1` or `DO_NOT_TRACK=1`.
 
-If you'd like the team to know who you are, `squidbrake register you@company.com` (asks first). Details:
-[`telemetry.py`](../telemetry.py).
+**Registration.** A pip install that isn't part of a named pilot asks for your name and work email the first time
+you run a `squidbrake` command in a terminal, and runs the command once you've given them. They go to the
+Squidbrake team once, with the names of the coding agents installed here (not with every command), so the team
+knows who uses it. The agent hooks, `pilot join` and CI are never stopped. Where nobody can answer (a script, a
+gateway in Docker, a service), set `SQUIDBRAKE_NAME` and `SQUIDBRAKE_EMAIL`, or register ahead with
+`squidbrake register you@company.com --name "Your Name"`. `SQUIDBRAKE_TELEMETRY=0` and `DO_NOT_TRACK=1` don't skip it:
+they turn the usage stats off, and the name and email still reach the team once (not PostHog). Once registered,
+that computer's usage stats are linked to you. Details: [`telemetry.py`](../telemetry.py).
 
 **Usage counts.** The gateway's counts reach the team one of two ways:
 
-- Every install, through the anonymous usage stats above.
+- Every install, through the usage stats above.
 - A pilot joins with the code they were given: `squidbrake pilot join CODE --server URL` (asks first, default no).
 
 What is shared is usage **counts**: actions allowed, held, approved and blocked per day, how many a person marked

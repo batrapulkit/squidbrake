@@ -135,6 +135,9 @@ with db() as _c:
         PRIMARY KEY (channel, day));
     CREATE TABLE IF NOT EXISTS app_links (id_hash TEXT PRIMARY KEY, code TEXT NOT NULL, device TEXT NOT NULL,
         created_at TEXT NOT NULL, state TEXT NOT NULL, agent_key TEXT, key_name TEXT, error TEXT);
+    CREATE TABLE IF NOT EXISTS registrations (id TEXT PRIMARY KEY, email TEXT NOT NULL, name TEXT NOT NULL,
+        company TEXT, version TEXT, os TEXT, ref TEXT, agents TEXT, install TEXT, created_at TEXT NOT NULL,
+        last_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS devices (token_hash TEXT PRIMARY KEY, code TEXT NOT NULL, name TEXT NOT NULL,
         key_name TEXT, created_at TEXT NOT NULL, last_seen TEXT, version TEXT, os TEXT);
     """)
@@ -462,6 +465,77 @@ def _own_pilot(c, email: str, name: str):
     c.execute("INSERT INTO pilots (code, company, contact, note, created_at, email) VALUES (?,?,?,?,?,?)",
               (code, email, name or None, "first run", now(), email))   # company=email: join echoes it, never the name
     return c.execute("SELECT * FROM pilots WHERE code=?", (code,)).fetchone()
+
+
+# --------------------------------------------------------------------------- pip installs say who they are
+# A pip install outside a named pilot gives its name and work email once, before it runs (telemetry.py,
+# require_registration). One row per computer (its random usage id); the admin page groups them by email.
+
+class RegisterIn(BaseModel):
+    id: str = Field(pattern=r"^[0-9a-fA-F-]{32,36}$")
+    email: str = Field(max_length=254, pattern=r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
+    name: str = Field(min_length=1, max_length=120)
+    company: str = Field(default="", max_length=160)
+    version: str = Field(default="", max_length=40)
+    os: str = Field(default="", max_length=80)
+    ref: str = Field(default="", pattern=r"^([a-z0-9][a-z0-9-]{0,29})?$")
+    agents: list[str] = Field(default_factory=list, max_length=20)
+    install: str = Field(default="", pattern=r"^(pip|source)?$")
+
+
+REGISTERS_PER_HOUR = 20
+_registers: dict[str, list[float]] = {}
+
+
+@app.post("/v1/register")
+def register(r: RegisterIn, request: Request):
+    if not _rate(_registers, request, REGISTERS_PER_HOUR):
+        raise HTTPException(429, "too many from here: try again in an hour")
+    agents = json.dumps(sorted({a[:40] for a in r.agents}))
+    with _lock, db() as c:
+        c.execute("""INSERT INTO registrations (id, email, name, company, version, os, ref, agents, install, created_at, last_at)
+                     VALUES (?,?,?,?,?,?,?,?,?,?,?)
+                     ON CONFLICT(id) DO UPDATE SET email=excluded.email, name=excluded.name,
+                     company=COALESCE(excluded.company, registrations.company), version=excluded.version, os=excluded.os,
+                     ref=COALESCE(excluded.ref, registrations.ref), agents=excluded.agents, install=excluded.install,
+                     last_at=excluded.last_at""",
+                  (r.id.lower(), r.email.strip().lower(), r.name.strip(), r.company.strip() or None, r.version, r.os,
+                   r.ref or None, agents, r.install or None, now(), now()))
+    return {"ok": True}
+
+
+@app.get("/v1/admin/registrations", dependencies=[Depends(admin)])
+def registrations():
+    """Everyone who registered a pip install, newest first, one entry per email: their computers, and how much the
+    installs sharing counts under their email (the first-run pilot, _own_pilot) have done."""
+    with db() as c:
+        rows = [dict(r) for r in c.execute("SELECT * FROM registrations ORDER BY created_at")]
+        usage = {r["email"]: dict(r) for r in c.execute(
+            "SELECT p.email, p.code, MAX(i.last_seen) AS last_seen, SUM(COALESCE(i.total_events, 0)) AS actions, "
+            "SUM(CASE WHEN i.install_id IS NOT NULL AND i.left_at IS NULL THEN 1 ELSE 0 END) AS sharing "
+            "FROM pilots p LEFT JOIN installs i ON i.code = p.code WHERE p.note = 'first run' GROUP BY p.email, p.code")}
+    people: dict[str, dict] = {}
+    for r in rows:
+        e = people.setdefault(r["email"], {"email": r["email"], "name": r["name"], "company": r["company"],
+                                           "first": r["created_at"], "computers": 0, "agents": set(), "os": set(),
+                                           "versions": set(), "ref": r["ref"], "install": r["install"]})
+        e["computers"] += 1
+        e["name"], e["company"] = r["name"] or e["name"], r["company"] or e["company"]   # the latest one given
+        e["ref"] = e["ref"] or r["ref"]
+        e["agents"] |= set(json.loads(r["agents"] or "[]"))
+        e["os"].add((r["os"] or "").split(" ")[0] or "unknown")
+        if r["version"]:
+            e["versions"].add(r["version"])
+        e["last"] = r["last_at"]
+    out = []
+    for e in people.values():
+        u = usage.get(e["email"]) or {}
+        out.append({**e, "agents": sorted(e["agents"]), "os": sorted(e["os"]), "versions": sorted(e["versions"], key=_version),
+                    "pilot_code": u.get("code"), "sharing": u.get("sharing") or 0, "actions": u.get("actions") or 0,
+                    "last_seen": u.get("last_seen")})
+    out.sort(key=lambda e: e["first"], reverse=True)
+    return {"people": out, "total": len(out), "computers": len(rows),
+            "this_week": sum(1 for e in out if e["first"][:10] >= (datetime.now(timezone.utc).date() - timedelta(days=6)).isoformat())}
 
 
 @app.post("/v1/pilot/leave")
