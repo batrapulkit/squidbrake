@@ -5,8 +5,8 @@
 class Squidbrake < Formula
   desc "Change control for AI agents: agents propose, people approve"
   homepage "https://squidbrake.com"
-  url "https://files.pythonhosted.org/packages/f8/f6/1896c2486cfa9cda4ea04374dacece6ab6c918ed2d11551864c5831227e7/squidbrake-0.14.24.tar.gz"
-  sha256 "facc483ce19c7bbe18a68969768515668e04e2abb918062c3626d8e448c431d7"
+  url "https://files.pythonhosted.org/packages/51/86/b4ca7108ec256c9ab80d5b712b5dcda7c8d78f99b90daf97097b5887cb0c/squidbrake-0.14.25.tar.gz"
+  sha256 "aa471852fb34f7f54c023a5e3b2c32af02a6ff6936b337e18ca42a6975a16655"
   license "Apache-2.0"
 
   depends_on "python@3.12"
