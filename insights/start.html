@@ -325,9 +325,9 @@ function hostedPage() {
           <div><span>3</span><b>Reopen your agent</b>and ask it anything</div>
         </div>
         <div class="tabs" role="tablist">
-          ${D.app_downloads ? `<button role="tab" data-os="app">App (no terminal)</button>` : ""}
           <button role="tab" data-os="win">Windows</button><button role="tab" data-os="mac">macOS / Linux</button>
-          <button role="tab" data-os="manual">Manual</button></div>
+          <button role="tab" data-os="manual">Manual</button>
+          ${D.app_downloads ? `<button role="tab" data-os="app">App (no terminal)</button>` : ""}</div>
         <div class="cmd" id="installCmd"></div>
         ${D.app_downloads ? `<div id="appBox" hidden>
           <div class="appdl">
@@ -340,8 +340,11 @@ function hostedPage() {
             <li><b>Reopen your agent</b> and ask it anything</li>
           </ol>
           <p class="note">No keys to copy: the app gets its own. A Squidbrake icon in your menu bar shows it's working.
-            Mac with an Intel chip, or Linux? Use the terminal tab. If your Mac says it can't check the installer (it
-            isn't code-signed yet): System Settings → Privacy &amp; Security → Open Anyway.</p>
+            Mac with an Intel chip, or Linux? Use the terminal tab.</p>
+          <p class="note">The app isn't code-signed yet, so your computer warns before opening it.
+            <b>Windows:</b> "Windows protected your PC" → More info → Run anyway.
+            <b>Mac:</b> it says it can't check the installer → System Settings → Privacy &amp; Security → Open Anyway.
+            The line in the Windows and macOS tabs installs the same thing without a warning.</p>
         </div>` : ""}
         <p class="note" id="keyNote"></p>
         <div class="live" id="live"><span class="pulse"></span><span id="liveText">Listening for your agent's first action…</span></div>
@@ -425,7 +428,7 @@ function hostedPage() {
   };
   document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => show(b.dataset.os)));
   const desktopOs = /Mac|Linux|X11/.test(navigator.userAgent) && !/Windows/.test(navigator.userAgent) ? "mac" : "win";
-  show(appBox && /Macintosh|Windows/.test(navigator.userAgent) ? "app" : desktopOs);
+  show(desktopOs);       // the install line first: the app isn't code-signed yet, so Windows and macOS warn before it opens
 
   const done = (id) => {
     const sec = document.getElementById(id), n = sec.querySelector(".n");
