@@ -1,5 +1,5 @@
 """
-Anonymous usage stats: which `squidbrake` commands run, and counts of what the gateway checked, held and blocked.
+Usage stats: which `squidbrake` commands run, and counts of what the gateway checked, held and blocked.
 They are always on. The first time you run `squidbrake` in a terminal it says so once (and asks, optionally, where
 you heard about Squidbrake). Scripts, CI, `--yes` and the agent hooks send nothing until that first run happened.
 
@@ -207,7 +207,7 @@ def _ask(question: str) -> str | None:
 
 
 NOTICE = """\
-Squidbrake sends anonymous usage counts to its team, so one small team can see what to fix next:
+Squidbrake sends usage counts to its team, so one small team can see what to fix next:
   - which squidbrake commands run, the version, OS and country
   - how many actions it allowed, held and blocked; for each one held or blocked, the program only
     (e.g. "rm"), the rule, and sizes as numbers
@@ -435,7 +435,7 @@ def main(argv: list[str], version: str = "") -> int:
     else:
         state = {True: "on", False: "off (you said no when an earlier version asked; that is kept)"}.get(
             cfg.get("enabled"), "on (from the first squidbrake command you run in a terminal)")
-    print(f"Anonymous usage stats: {state}")
+    print(f"Usage stats: {state}")
     if cfg.get("email"):
         print(f"Registered: {cfg.get('name') or ''} <{cfg['email']}>" + (" (not sent yet: offline)" if cfg.get("register_pending") else ""))
     print(f"Settings: {_path()}\n\nWhat is sent, once each time you run a command:\n  {WHAT_IS_SENT}")

@@ -244,7 +244,7 @@ a vulnerability, see [SECURITY.md](SECURITY.md).
 What your agents do never leaves your machine or server: commands, files, prompts, tool inputs and outputs, and the
 audit trail.
 
-Anonymous usage **counts** are sent to the Squidbrake team:
+Usage **counts** are sent to the Squidbrake team:
 
 - the command name and version
 - how many actions were allowed, held and blocked
@@ -252,8 +252,8 @@ Anonymous usage **counts** are sent to the Squidbrake team:
 - for each hold or block, only the program (like `rm`) and the rule
 
 A pip install asks for your name and work email the first time you run it in a terminal; they're sent to the team
-once, with the names of the coding agents installed here (or set `SQUIDBRAKE_NAME` and `SQUIDBRAKE_EMAIL`). `squidbrake telemetry status` shows exactly what is sent, and `DO_NOT_TRACK=1`
-turns it off. Details: [docs/operations.md](docs/operations.md#usage-sharing).
+once, with the names of the coding agents installed here (or set `SQUIDBRAKE_NAME` and `SQUIDBRAKE_EMAIL`). That computer's counts are then linked to you. `squidbrake telemetry status` shows exactly what is sent, and
+`DO_NOT_TRACK=1` turns the counts off (the name and email are still asked once). Details: [docs/operations.md](docs/operations.md#usage-sharing).
 
 ## What is stored
 

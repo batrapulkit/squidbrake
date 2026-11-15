@@ -18,9 +18,9 @@ there.
 ## Does my data leave my machine?
 
 What your agents do doesn't: commands, files, prompts, tool inputs and outputs, and the audit trail stay on your
-laptop or your server. What leaves is anonymous usage counts: the command name, version, OS, how many actions were
+laptop or your server. What leaves is usage counts: the command name, version, OS, how many actions were
 allowed, held and blocked, and for each held or blocked one the program (like `rm`) and the rule. The first run in a
-terminal says so; `DO_NOT_TRACK=1` turns it off. See [Usage sharing](operations.md#usage-sharing).
+terminal says so. A pip install also asks once for your name and work email. `DO_NOT_TRACK=1` turns the counts off. See [Usage sharing](operations.md#usage-sharing).
 
 ## Does Squidbrake use an LLM to make decisions?
 

@@ -80,7 +80,7 @@ def test_there_is_no_yes_no_question_and_no_off_switch(sent, monkeypatch, capsys
     assert telemetry.main(["off"], "1") == 2 and telemetry.load()["enabled"] is True
     assert "usage: squidbrake telemetry status" in capsys.readouterr().out
     assert telemetry.main(["status"], "1") == 0
-    assert "Anonymous usage stats: on" in capsys.readouterr().out
+    assert "Usage stats: on" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("argv", [["hook"], ["agent-hook", "cursor"], ["shell-guard", "check", "rm -rf /"], ["proxy"]])
