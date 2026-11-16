@@ -25,6 +25,12 @@ Coding agents (Claude Code, Cursor, Codex, Gemini CLI, VS Code Copilot, Antigrav
 
 ## Guides
 
+- [Claude Code deleted my files: how to get them back, and stop it next time](https://squidbrake.com/blog/claude-code-deleted-my-files)
+- [YOLO mode in Claude Code, Cursor and Codex, compared (2026)](https://squidbrake.com/blog/yolo-mode-claude-code-cursor-codex)
+- [9 seconds: how a token an AI agent found deleted a production database and its backups](https://squidbrake.com/blog/ai-agent-found-a-token-pocketos)
+- [Vibe coding security: 10 checks before you ship (2026)](https://squidbrake.com/blog/vibe-coding-security-checklist)
+- [Stop AI agents force-pushing to main: branch protection, hooks and approvals](https://squidbrake.com/blog/ai-agent-git-force-push)
+- [Approval fatigue: why asking about every agent action makes you less safe](https://squidbrake.com/blog/ai-agent-approval-fatigue)
 - [How an AI agent deleted a production database, and how to stop it](https://squidbrake.com/blog/ai-agent-deleted-production-database)
 - [Human-in-the-loop approval for AI agents](https://squidbrake.com/blog/human-in-the-loop-approval-for-ai-agents)
 - [MCP security checklist](https://squidbrake.com/blog/mcp-security-checklist)

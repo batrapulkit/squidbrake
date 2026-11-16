@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YOLO mode in Claude Code, Cursor and Codex compared (2026)</title>
+<meta name="description" content="Claude Code auto mode and skip-permissions, Cursor auto-run, Codex --yolo: what each skips, what still protects you, and a safe setup for each.">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+<meta name="author" content="Pulkit Batra">
+<link rel="canonical" href="https://squidbrake.com/blog/yolo-mode-claude-code-cursor-codex">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://squidbrake.com/blog/yolo-mode-claude-code-cursor-codex">
+<meta property="og:site_name" content="Squidbrake">
+<meta property="og:title" content="YOLO mode in Claude Code, Cursor and Codex compared (2026)">
+<meta property="og:description" content="Claude Code auto mode and skip-permissions, Cursor auto-run, Codex --yolo: what each skips, what still protects you, and a safe setup for each.">
+<meta property="og:image" content="https://squidbrake.com/assets/blog/yolo-mode-claude-code-cursor-codex.png">
+<meta property="article:published_time" content="2026-11-16">
+<meta property="article:author" content="https://squidbrake.com/about">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="YOLO mode in Claude Code, Cursor and Codex compared (2026)">
+<meta name="twitter:description" content="Claude Code auto mode and skip-permissions, Cursor auto-run, Codex --yolo: what each skips, what still protects you, and a safe setup for each.">
+<meta name="twitter:image" content="https://squidbrake.com/assets/blog/yolo-mode-claude-code-cursor-codex.png">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "BlogPosting", "headline": "YOLO mode in Claude Code, Cursor and Codex, compared (2026)", "description": "Claude Code auto mode and skip-permissions, Cursor auto-run, Codex --yolo: what each skips, what still protects you, and a safe setup for each.", "url": "https://squidbrake.com/blog/yolo-mode-claude-code-cursor-codex", "mainEntityOfPage": "https://squidbrake.com/blog/yolo-mode-claude-code-cursor-codex", "datePublished": "2026-11-16", "dateModified": "2026-11-16", "image": "https://squidbrake.com/assets/blog/yolo-mode-claude-code-cursor-codex.png", "inLanguage": "en", "keywords": "yolo mode, claude code auto mode, dangerously-skip-permissions, cursor yolo mode, codex yolo, codex dangerously-bypass-approvals-and-sandbox, ai coding agent permissions", "articleSection": "Comparison", "wordCount": 579, "author": {"@type": "Person", "@id": "https://squidbrake.com/about#pulkit", "name": "Pulkit Batra", "url": "https://squidbrake.com/about"}, "publisher": {"@type": "Organization", "@id": "https://squidbrake.com/#org", "name": "Squidbrake", "url": "https://squidbrake.com/", "logo": "https://squidbrake.com/assets/logo-512.png"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://squidbrake.com/"}, {"@type": "ListItem", "position": 2, "name": "Blog", "item": "https://squidbrake.com/blog"}, {"@type": "ListItem", "position": 3, "name": "YOLO mode in Claude Code, Cursor and Codex, compared (2026)", "item": "https://squidbrake.com/blog/yolo-mode-claude-code-cursor-codex"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Is Claude Code auto mode the same as --dangerously-skip-permissions?", "acceptedAnswer": {"@type": "Answer", "text": "No. Auto mode has a classifier decide each step and still blocks risky ones. --dangerously-skip-permissions asks nothing and checks nothing, apart from hooks you've set up."}}, {"@type": "Question", "name": "What does codex --yolo do?", "acceptedAnswer": {"@type": "Answer", "text": "It's short for --dangerously-bypass-approvals-and-sandbox: Codex runs every command without asking and without its sandbox. Use it only in a throwaway environment."}}, {"@type": "Question", "name": "Do hooks run in YOLO mode?", "acceptedAnswer": {"@type": "Answer", "text": "Yes, in Claude Code, Codex and Cursor. Hooks are separate from the permission prompts, so a hook can still hold or block a call when the agent asks nothing. Codex skips a new hook until you trust it with /hooks."}}, {"@type": "Question", "name": "Which YOLO mode is safest?", "acceptedAnswer": {"@type": "Answer", "text": "One that keeps a sandbox or a classifier, plus a hook that holds the irreversible actions for a person. No mode alone covers a force push or a cloud delete you didn't intend."}}]}]}</script>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preload" href="/assets/fonts/host-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/fonts/fonts.css">
+<style>
+:root{
+  --bg:#E6EBE2; --surface:#F4F6F1; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5;
+  --go:#237447; --stop:#C0301C; --hold:#A5560C; --accent:#F2622E; --accent-hover:#E4541F;
+  --code-bg:#1E2A23; --code-ink:#E6EDE4; --code-muted:#93A196;
+  --sans:"Host Grotesk","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:4px}
+.wrap{width:min(1120px,100% - 32px);margin-inline:auto}
+main p,main li,main dd,main>h1{max-width:80ch}   /* the page uses the width, a line of text stays readable */
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 0;border-bottom:1px solid var(--line)}
+.brand{display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:1.2rem;letter-spacing:-0.03em;text-decoration:none}
+.brand svg{width:32px;height:32px}
+header nav{display:flex;gap:20px;font-size:.95rem}
+header nav a{color:var(--muted);text-decoration:none}
+header nav a:hover{color:var(--ink)}
+main{padding:56px 0 80px}
+.kicker{margin:0 0 14px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-weight:500;font-size:clamp(2.2rem,6vw,3.4rem);line-height:1;letter-spacing:-0.05em;margin:0 0 18px}
+.lead{color:var(--muted);font-size:1.1rem;margin:0 0 40px;max-width:52ch}
+h2{display:flex;align-items:baseline;gap:12px;font-weight:500;font-size:1.6rem;letter-spacing:-0.035em;margin:56px 0 12px}
+h2 .n{font:400 .9rem var(--mono);color:var(--muted)}
+p{margin:0 0 14px}
+.muted{color:var(--muted)}
+code{font:400 .9em var(--mono)}
+p code,li code{background:var(--surface);padding:1px 5px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line)}
+pre{margin:0 0 18px;padding:18px 20px;border-radius:10px;background:var(--code-bg);color:var(--code-ink);font:400 .86rem/1.6 var(--mono);overflow-x:auto}
+pre .c{color:var(--code-muted)}
+pre .d{color:#FF8A75}
+pre .h{color:#F7B267}
+.file{display:block;margin:0 0 -6px;padding:8px 20px 14px;border-radius:10px 10px 0 0;background:var(--code-bg);color:var(--code-muted);font:400 .76rem var(--mono)}
+.file+pre{border-radius:0 0 10px 10px}
+.note{margin:18px 0;padding:14px 18px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0;font-size:.95rem}
+ul{padding-left:1.2em;margin:0 0 14px}
+li{margin:4px 0}
+footer{padding:28px 0 40px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem;display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between}
+footer a{text-decoration:none}
+footer a:hover{color:var(--ink)}
+@media (max-width:560px){ header nav a:not(:last-child){display:none} main{padding:36px 0 56px} pre{font-size:.78rem;padding:14px} }
+.ph-badge{display:inline-block;line-height:0}.ph-badge img{max-width:100%;height:auto}
+</style>
+<style>.posts{list-style:none;padding:0;margin:0}.posts li{padding:22px 0;border-bottom:1px solid var(--line)}.posts a{color:var(--ink);font-size:1.3rem;font-weight:500;letter-spacing:-0.02em}.posts p{margin:6px 0 0;color:var(--muted)}.posts time,.byline{font:400 .82rem var(--mono);color:var(--muted)}article h2{display:block}article li{margin:6px 0}.cta-box{margin:48px 0 0;padding:20px 22px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}.cta-box p{margin:0}.cmp{width:100%;border-collapse:collapse;margin:8px 0 0;font-size:.95rem}.cmp th,.cmp td{text-align:left;vertical-align:top;padding:10px 12px 10px 0;border-bottom:1px solid var(--line)}.cmp th{font-weight:500}.cmp td:first-child{color:var(--muted)}.tbl{overflow-x:auto}@media (max-width:560px){.tbl .cmp:has(th:nth-child(4)){min-width:540px}}</style>
+<style>
+.toc{margin:0 0 36px;padding:16px 20px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);max-width:80ch}
+.toc p{margin:0 0 6px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.toc ol{margin:0;padding-left:1.2em}.toc li{margin:2px 0}.toc a{text-decoration:none}.toc a:hover{text-decoration:underline}
+.tldr{margin:0 0 32px;padding:18px 22px;border-radius:12px;border-left:3px solid var(--accent);background:var(--surface);max-width:80ch}
+.tldr p{margin:0 0 6px;font-weight:500}.tldr ul{margin:0}
+figure.fig{margin:28px 0 30px;padding:20px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+figure.fig .scroll{overflow-x:auto}
+figure.fig svg{display:block;width:100%;min-width:560px;height:auto;font-family:var(--sans)}
+figure.fig figcaption{margin:12px 0 0;color:var(--muted);font-size:.9rem;max-width:80ch}
+.fig .bx{fill:var(--bg);stroke:var(--line);stroke-width:1.5}
+.fig .bx-go{fill:var(--bg);stroke:var(--go);stroke-width:2}
+.fig .bx-hold{fill:var(--bg);stroke:var(--hold);stroke-width:2}
+.fig .bx-stop{fill:var(--bg);stroke:var(--stop);stroke-width:2}
+.fig .bx-acc{fill:var(--bg);stroke:var(--accent);stroke-width:2}
+.fig .bx-off{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:5 5}
+.fig .t{fill:var(--ink);font-size:15px;font-weight:500}
+.fig .s{fill:var(--muted);font-size:12.5px}
+.fig .m{fill:var(--muted);font:400 11.5px var(--mono);letter-spacing:.06em}
+.fig .ln{stroke:var(--muted);stroke-width:1.5;fill:none}
+.fig .ah{fill:var(--muted)}
+.fig .go{fill:var(--go)}.fig .hold{fill:var(--hold)}.fig .stop{fill:var(--stop)}.fig .acc{fill:var(--accent)}.fig .mut{fill:var(--muted)}
+.fig .bar{fill:var(--muted)}.fig .bar-hi{fill:var(--accent)}.fig .grid{stroke:var(--line);stroke-width:1}
+.fig .ring-a{fill:var(--go);fill-opacity:.13;stroke:var(--go);stroke-width:1.5}
+.fig .ring-b{fill:var(--hold);fill-opacity:.13;stroke:var(--hold);stroke-width:1.5}
+.fig .ring-c{fill:var(--accent);fill-opacity:.13;stroke:var(--accent);stroke-width:1.5}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:24px 0 30px}
+.stat{padding:16px 18px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+.stat b{display:block;font-size:1.9rem;font-weight:500;letter-spacing:-0.04em;line-height:1.1}
+.stat span{color:var(--muted);font-size:.88rem}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;font:400 .76rem var(--mono);white-space:nowrap;box-shadow:inset 0 0 0 1px currentColor}
+.pill.go{color:var(--go)}.pill.hold{color:var(--hold)}.pill.stop{color:var(--stop)}
+.faq details{padding:14px 0;border-bottom:1px solid var(--line);max-width:80ch}
+.faq summary{cursor:pointer;font-weight:500}
+.faq details p{margin:10px 0 0}
+.related{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0 0;padding:0;list-style:none}
+.related li{margin:0}
+.related a{display:block;height:100%;padding:14px 16px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);text-decoration:none}
+.related a:hover{box-shadow:inset 0 0 0 1px var(--ink)}
+.related b{display:block;font-weight:500}.related span{color:var(--muted);font-size:.88rem}
+article code{overflow-wrap:anywhere}
+details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+</style>
+<style>.hero-img{display:block;width:100%;height:auto;border-radius:14px;margin:6px 0 26px;box-shadow:0 0 0 1px var(--line)}ol.steps{padding-left:1.3em}ol.steps li{margin:0 0 12px;padding-left:4px}</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>Squidbrake</a>
+    <nav aria-label="Docs"><a href="/#how">How it works</a><a href="/security">Security</a><a href="/pricing">Pricing</a><a href="/about">About</a><a href="/blog">Blog</a><a href="/changelog">Changelog</a><a href="/signup"><b>Try now</b></a></nav>
+  </header>
+
+  <main>
+    <p class="kicker">Comparison</p>
+    <article>
+    <h1>YOLO mode in Claude Code, Cursor and Codex, compared (2026)</h1>
+    <p class="byline">By <a href="/about">Pulkit Batra</a> · <time datetime="2026-11-16">16 November 2026</time> · 7 min read</p>
+    <img class="hero-img" src="/assets/blog/yolo-mode-claude-code-cursor-codex.png" width="1200" height="630" alt="YOLO mode in Claude Code, Cursor and Codex">
+    <p class="lead">Every coding agent now has a setting that stops it asking before it acts. People call all of them YOLO mode. They don't skip the same things, and the difference decides whether a bad command costs you a minute or a production database.</p>
+    <div class="tldr"><p>In short</p><ul><li>Claude Code has three levels: asking (default), auto mode, where a classifier decides each step, and <code>--dangerously-skip-permissions</code>, which asks nothing.</li><li>Codex's <code>--yolo</code> skips both the approvals and the sandbox. Its safer full-auto setups keep the sandbox.</li><li>Cursor's auto-run runs commands without asking. Allow and deny lists help, but they match text.</li><li>In all three, hooks still run in YOLO mode. A hook that parses each command is the layer that's left when the prompts are gone.</li></ul></div>
+    <nav class="toc" aria-label="On this page"><p>On this page</p><ol><li><a href="#what-yolo-mode-means">What YOLO mode means</a></li><li><a href="#side-by-side">Side by side</a></li><li><a href="#claude-code">Claude Code: auto mode or skip-permissions?</a></li><li><a href="#codex">Codex: --yolo versus full auto</a></li><li><a href="#cursor">Cursor: auto-run and its lists</a></li><li><a href="#a-safe-setup">A safe setup for all three</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+
+    <h2 id="what-yolo-mode-means">What YOLO mode means</h2>
+    <p>A coding agent normally asks before it runs a command or changes a file. YOLO mode is any setting that stops the asking, so the agent can work through a task without you pressing <em>yes</em> forty times. It's popular for good reason: the prompts are slow, and after the first dozen most people approve without reading.</p>
+    <p>What changes between tools is what else is still there when the prompts are gone: a sandbox, a classifier, or nothing.</p>
+
+    <h2 id="side-by-side">Side by side</h2>
+    <div class="tbl"><table class="cmp"><thead><tr><th></th><th>Claude Code</th><th>Codex CLI</th><th>Cursor</th></tr></thead><tbody>
+      <tr><td>Asks nothing</td><td><code>--dangerously-skip-permissions</code></td><td><code>--yolo</code> (<code>--dangerously-bypass-approvals-and-sandbox</code>)</td><td>Auto-run with no allowlist</td></tr>
+      <tr><td>A middle setting</td><td>Auto mode: a classifier decides each step</td><td>Full auto inside the workspace sandbox</td><td>Auto-run with allow and deny lists</td></tr>
+      <tr><td>Sandbox in YOLO mode</td><td>No</td><td>No (that's what <code>--yolo</code> turns off)</td><td>No</td></tr>
+      <tr><td>Hooks still run</td><td>Yes</td><td>Yes, once trusted with <code>/hooks</code></td><td>Yes</td></tr>
+    </tbody></table></div>
+    <p class="note">Flags and defaults change between versions. Check <a href="https://code.claude.com/docs/en/permission-modes" target="_blank" rel="noopener">Claude Code's permission modes</a>, <code>codex --help</code> and Cursor's settings on yours.</p>
+
+    <h2 id="claude-code">Claude Code: auto mode or skip-permissions?</h2>
+    <p>Anthropic added <a href="https://www.anthropic.com/engineering/claude-code-auto-mode" target="_blank" rel="noopener">auto mode</a> in March 2026. A separate model reads each tool call in the context of the session and blocks what looks destructive, irreversible or aimed outside your work. It's a real step up from asking nothing, and it's the right default for most solo work.</p>
+    <p>Two limits are worth knowing. A classifier is a judgement, so the same call can get different answers, and it will sometimes miss. And the person who could approve a blocked step is the same person running the agent. For the few actions that can't be undone, like a force push to main or deleting cloud resources, a fixed rule that waits for a second person is stronger. That's what a hook gives you, and it runs in auto mode and in skip-permissions mode alike.</p>
+
+    <h2 id="codex">Codex: --yolo versus full auto</h2>
+    <p>Codex pairs its approval setting with a sandbox. In its full-auto setups the agent edits and runs commands without asking, but only inside your workspace, usually with no network. That sandbox is what makes asking less safe enough for most tasks.</p>
+    <p><code>--yolo</code> removes both: no prompts and no sandbox. OpenAI's own guidance is to keep it to throwaway environments such as containers and disposable branches. If you need the network or files outside the workspace, open them up one at a time rather than turning everything off.</p>
+
+    <h2 id="cursor">Cursor: auto-run and its lists</h2>
+    <p>Cursor's auto-run executes terminal commands without a prompt. Its allow and deny lists help, but they match how a command is written. <code>rm -rf build</code> on the deny list doesn't catch <code>find build -delete</code>, or the same delete inside a script the agent wrote a minute earlier. Cursor also runs hooks before shell commands, file edits and MCP calls, and that's where a check that reads the command belongs.</p>
+
+    <h2 id="a-safe-setup">A safe setup for all three</h2>
+    <ol class="steps">
+      <li><b>Keep the fast mode.</b> Let reads, tests, builds, edits to tracked files and commits run on their own.</li>
+      <li><b>Hold what can't be undone.</b> Force pushes, deploys, deletes outside the project, database migrations on production, payments and outbound messages wait for a person.</li>
+      <li><b>Block the few catastrophic commands</b> whatever mode the agent is in: deleting your home folder or a drive, formatting a disk.</li>
+      <li><b>Put the check in a hook,</b> so it survives whichever mode a developer picks.</li>
+    </ol>
+    <p>Squidbrake does this with one hook for Claude Code, Cursor, Codex, VS Code Copilot, Gemini CLI and Antigravity: <code>squidbrake connect all</code>. One set of rules covers every agent on the machine.</p>
+
+    <h2 id="faq">FAQ</h2>
+    <div class="faq"><details><summary>Is Claude Code auto mode the same as --dangerously-skip-permissions?</summary><p>No. Auto mode has a classifier decide each step and still blocks risky ones. --dangerously-skip-permissions asks nothing and checks nothing, apart from hooks you&#x27;ve set up.</p></details><details><summary>What does codex --yolo do?</summary><p>It&#x27;s short for --dangerously-bypass-approvals-and-sandbox: Codex runs every command without asking and without its sandbox. Use it only in a throwaway environment.</p></details><details><summary>Do hooks run in YOLO mode?</summary><p>Yes, in Claude Code, Codex and Cursor. Hooks are separate from the permission prompts, so a hook can still hold or block a call when the agent asks nothing. Codex skips a new hook until you trust it with /hooks.</p></details><details><summary>Which YOLO mode is safest?</summary><p>One that keeps a sandbox or a classifier, plus a hook that holds the irreversible actions for a person. No mode alone covers a force push or a cloud delete you didn&#x27;t intend.</p></details></div>
+    <div class="cta-box"><p><strong>Try it on your own agents.</strong> <code>pipx install squidbrake</code>, then
+      <code>squidbrake connect all</code>. Start in shadow mode: nothing is blocked in week one, you see what would have been.
+      <a href="/docs">Quickstart</a> · <a href="/benchmark">Benchmark</a> · <a href="/#demo">Book a demo</a></p></div>
+
+    <h2 id="related">Related guides</h2>
+    <ul class="related"><li><a href="/blog/claude-code-dangerously-skip-permissions"><b>Claude Code --dangerously-skip-permissions: how to use it safely</b><span>What Claude Code&#x27;s --dangerously-skip-permissions flag (YOLO mode) skips, what still runs, and five ways to keep auto mode without losing files or data.</span></a></li><li><a href="/blog/claude-code-deleted-my-files"><b>Claude Code deleted my files: how to get them back, and stop it next time</b><span>Claude Code deleted files and /rewind didn&#x27;t help? Why checkpoints miss rm, five places your files may still be, and how to stop it happening again.</span></a></li><li><a href="/blog/ai-agent-approval-fatigue"><b>Approval fatigue: why asking about every agent action makes you less safe</b><span>Asking a person before every AI agent action asked 117 times in our benchmark and held 40 of 41 routine steps. What to ask about instead, with numbers.</span></a></li></ul>
+    </article>
+  </main>
+
+
+  <footer><span>© 2026 Squidbrake, Inc.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="/">Home</a> · <a href="/docs">Docs</a> · <a href="/security">Security</a> · <a href="/pricing">Pricing</a> · <a href="/about">About</a> · <a href="/benchmark">Benchmark</a> · <a href="/blog">Blog</a> · <a href="/changelog">Changelog</a> · <a href="mailto:pulkit@squidbrake.com">pulkit@squidbrake.com</a></span></footer>
+</div>
+<script src="/assets/try.js" defer></script>
+<script src="/assets/menu.js" defer></script>
+</body>
+</html>
