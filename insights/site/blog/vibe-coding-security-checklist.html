@@ -120,7 +120,7 @@ figure.fig figcaption{margin:12px 0 0;color:var(--muted);font-size:.9rem;max-wid
 article code{overflow-wrap:anywhere}
 details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--muted);font-size:.9rem}
 </style>
-<style>.hero-img{display:block;width:100%;height:auto;border-radius:14px;margin:6px 0 26px;box-shadow:0 0 0 1px var(--line)}ol.steps{padding-left:1.3em}ol.steps li{margin:0 0 12px;padding-left:4px}</style>
+<style>ol.steps{list-style:none;counter-reset:s;padding:0;margin:18px 0 26px;display:grid;gap:10px}ol.steps li{counter-increment:s;position:relative;margin:0;padding:15px 18px 15px 60px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}ol.steps li::before{content:counter(s);position:absolute;left:16px;top:14px;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font:600 .9rem/30px var(--sans);text-align:center}.hero-img{display:block;width:100%;height:auto;border-radius:14px;margin:6px 0 26px;box-shadow:0 0 0 1px var(--line)}.stat b{color:var(--accent)}</style>
 </head>
 <body>
 <div class="wrap">
@@ -137,6 +137,7 @@ details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--mut
     <img class="hero-img" src="/assets/blog/vibe-coding-security-checklist.png" width="1200" height="630" alt="Vibe coding security: 10 checks before you ship">
     <p class="lead">Vibe coding gets an app live in an afternoon. In February 2026 researchers showed how fast it can also go the other way: one vibe-coded social network exposed its whole production database through a key sitting in its front-end JavaScript. Most of these failures come from the same short list, and you can check for all of them before you ship.</p>
     <div class="tldr"><p>In short</p><ul><li>The Moltbook leak came from a public database key with no row-level security behind it.</li><li>Coding agents build features that work. They don't reliably add the access rules you didn't ask for.</li><li>Check the ten points below on every app an agent built, and again after big changes.</li><li>Also control the agent itself: what it can read, and what it can change in production.</li></ul></div>
+    <div class="stats"><div class="stat"><b>1.5M</b><span>API tokens exposed by Moltbook</span></div><div class="stat"><b>minutes</b><span>for researchers to find the key</span></div><div class="stat"><b>10</b><span>checks in this list</span></div></div>
     <nav class="toc" aria-label="On this page"><p>On this page</p><ol><li><a href="#what-went-wrong-at-moltbook">What went wrong at Moltbook</a></li><li><a href="#the-checklist">The checklist</a></li><li><a href="#control-the-agent-too">Control the agent, not only the app</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
 
     <h2 id="what-went-wrong-at-moltbook">What went wrong at Moltbook</h2>

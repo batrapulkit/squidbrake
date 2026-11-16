@@ -120,7 +120,7 @@ figure.fig figcaption{margin:12px 0 0;color:var(--muted);font-size:.9rem;max-wid
 article code{overflow-wrap:anywhere}
 details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--muted);font-size:.9rem}
 </style>
-<style>.hero-img{display:block;width:100%;height:auto;border-radius:14px;margin:6px 0 26px;box-shadow:0 0 0 1px var(--line)}ol.steps{padding-left:1.3em}ol.steps li{margin:0 0 12px;padding-left:4px}</style>
+<style>ol.steps{list-style:none;counter-reset:s;padding:0;margin:18px 0 26px;display:grid;gap:10px}ol.steps li{counter-increment:s;position:relative;margin:0;padding:15px 18px 15px 60px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}ol.steps li::before{content:counter(s);position:absolute;left:16px;top:14px;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font:600 .9rem/30px var(--sans);text-align:center}.hero-img{display:block;width:100%;height:auto;border-radius:14px;margin:6px 0 26px;box-shadow:0 0 0 1px var(--line)}.stat b{color:var(--accent)}</style>
 </head>
 <body>
 <div class="wrap">
@@ -137,6 +137,7 @@ details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--mut
     <img class="hero-img" src="/assets/blog/ai-agent-found-a-token-pocketos.png" width="1200" height="630" alt="9 seconds. One token. No production left.">
     <p class="lead">In April 2026 a coding agent working on a staging task hit a credential error, went looking for a token that worked, found one in the codebase, and used it to delete PocketOS's production volume. The backups lived on the same volume. It took about nine seconds.</p>
     <div class="tldr"><p>In short</p><ul><li>The agent wasn't attacked. It solved a blocked task with the strongest credential it could find.</li><li>The token wasn't scoped: one key could reach production and delete it.</li><li>Backups on the same volume as the data aren't backups for this failure.</li><li>Fix it in layers: no long-lived admin tokens in repos, scoped and separate credentials, backups elsewhere, and a person approving any delete.</li></ul></div>
+    <div class="stats"><div class="stat"><b>9 s</b><span>to delete production and its backups</span></div><div class="stat"><b>1 token</b><span>found in the codebase</span></div><div class="stat"><b>~3 months</b><span>age of the newest backup they could restore</span></div></div>
     <nav class="toc" aria-label="On this page"><p>On this page</p><ol><li><a href="#what-happened">What happened</a></li><li><a href="#why-agents-do-this">Why agents do this</a></li><li><a href="#five-fixes">Five fixes, in order of effort</a></li><li><a href="#how-squidbrake-handles-it">How Squidbrake handles it</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
 
     <h2 id="what-happened">What happened</h2>

@@ -120,7 +120,7 @@ figure.fig figcaption{margin:12px 0 0;color:var(--muted);font-size:.9rem;max-wid
 article code{overflow-wrap:anywhere}
 details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--muted);font-size:.9rem}
 </style>
-<style>.hero-img{display:block;width:100%;height:auto;border-radius:14px;margin:6px 0 26px;box-shadow:0 0 0 1px var(--line)}ol.steps{padding-left:1.3em}ol.steps li{margin:0 0 12px;padding-left:4px}</style>
+<style>ol.steps{list-style:none;counter-reset:s;padding:0;margin:18px 0 26px;display:grid;gap:10px}ol.steps li{counter-increment:s;position:relative;margin:0;padding:15px 18px 15px 60px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}ol.steps li::before{content:counter(s);position:absolute;left:16px;top:14px;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font:600 .9rem/30px var(--sans);text-align:center}.hero-img{display:block;width:100%;height:auto;border-radius:14px;margin:6px 0 26px;box-shadow:0 0 0 1px var(--line)}.stat b{color:var(--accent)}</style>
 </head>
 <body>
 <div class="wrap">
@@ -137,6 +137,7 @@ details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--mut
     <img class="hero-img" src="/assets/blog/ai-agent-approval-fatigue.png" width="1200" height="630" alt="117 prompts later, nobody reads them">
     <p class="lead">The safest-sounding setting for an AI agent is to ask before everything. In practice, people who are asked a hundred times stop reading at about the tenth, and the one prompt that mattered gets the same reflex <em>yes</em> as the rest. We measured it.</p>
     <div class="tldr"><p>In short</p><ul><li>In our session benchmark, "ask for everything" asked a person 117 times and held 40 of 41 routine steps.</li><li>Checking whole sessions stopped 68 of 71 harmful steps and held only 3 routine ones.</li><li>Ask only about what can't be undone, show the effect rather than the raw command, and look at the session, not one step.</li><li>Fewer, better questions are what keep the yes meaningful.</li></ul></div>
+    <div class="stats"><div class="stat"><b>117</b><span>times &quot;ask for everything&quot; asked</span></div><div class="stat"><b>3 / 41</b><span>routine steps Squidbrake held</span></div><div class="stat"><b>68 / 71</b><span>harmful steps stopped</span></div></div>
     <nav class="toc" aria-label="On this page"><p>On this page</p><ol><li><a href="#the-numbers">The numbers</a></li><li><a href="#why-people-stop-reading">Why people stop reading</a></li><li><a href="#what-to-ask-about-instead">What to ask about instead</a></li><li><a href="#how-squidbrake-asks">How Squidbrake asks</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
 
     <h2 id="the-numbers">The numbers</h2>
