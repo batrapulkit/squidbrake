@@ -140,6 +140,7 @@ with db() as _c:
         last_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS devices (token_hash TEXT PRIMARY KEY, code TEXT NOT NULL, name TEXT NOT NULL,
         key_name TEXT, created_at TEXT NOT NULL, last_seen TEXT, version TEXT, os TEXT);
+    CREATE TABLE IF NOT EXISTS daily_sent (code TEXT NOT NULL, day TEXT NOT NULL, PRIMARY KEY (code, day));
     """)
     if "ref" not in {r[1] for r in _c.execute("PRAGMA table_info(installs)")}:
         _c.execute("ALTER TABLE installs ADD COLUMN ref TEXT")           # where they heard about it (telemetry.py)
@@ -165,7 +166,9 @@ with db() as _c:
                         # when the founder first took keys; unlike keys_revealed_at, new keys never clear it
                         ("keys_first_shown_at", "TEXT"),
                         # when an unused hosted gateway was put to sleep (_reclaim_unused), and why
-                        ("slept_at", "TEXT"), ("slept_why", "TEXT")):
+                        ("slept_at", "TEXT"), ("slept_why", "TEXT"),
+                        # the founder said "stop these daily emails" (daily-off link in the email)
+                        ("daily_off", "INTEGER NOT NULL DEFAULT 0")):
         if _col not in _have:
             _c.execute(f"ALTER TABLE pilots ADD COLUMN {_col} {_type}")
             if _col == "keys_first_shown_at":   # dashboards whose keys were already taken stay that way
@@ -710,6 +713,7 @@ def _forget(c, code: str) -> None:
     c.execute("DELETE FROM installs WHERE code=?", (code,))
     c.execute("DELETE FROM app_links WHERE code=?", (code,))
     c.execute("DELETE FROM devices WHERE code=?", (code,))
+    c.execute("DELETE FROM daily_sent WHERE code=?", (code,))
     c.execute("DELETE FROM pilots WHERE code=?", (code,))
 
 
@@ -2485,6 +2489,146 @@ def score_card(request: Request, n: int = Query(..., ge=0, le=100), of: int = Qu
     return _card(request, "/score", {"n": n, "of": of}, "Real AI agent incidents, replayed", f"{n} / {of}",
                  f"Squidbrake stopped {n} of {of} harmful actions from real AI agent incidents.",
                  ["each one replayed step by step against the rules", "squidbrake.com/benchmark shows every one"])
+
+
+# --------------------------------------------------------------------------- the end-of-day email (hosted)
+# Every hosted dashboard's owner gets daily.py's email once a day from INSIGHTS_DAILY_HOUR (UTC on the server), made
+# from the counts its gateway already shares (pilot.py: programs and sizes, never commands or their arguments).
+# A day with no actions gets a nudge instead. Unset INSIGHTS_SMTP_HOST: nothing is sent.
+import daily  # noqa: E402
+
+SMTP = {"host": os.getenv("INSIGHTS_SMTP_HOST", ""), "port": int(os.getenv("INSIGHTS_SMTP_PORT", "465") or 465),
+        "user": os.getenv("INSIGHTS_SMTP_USER", ""), "password": os.getenv("INSIGHTS_SMTP_PASSWORD", ""),
+        "from": os.getenv("INSIGHTS_SMTP_FROM", "")}
+DAILY_HOUR = int(os.getenv("INSIGHTS_DAILY_HOUR", "18") or 18)
+EMAIL_BASE = (PUBLIC_URL or "https://pilots.squidbrake.com").rstrip("/")
+
+
+def daily_off_token(code: str) -> str:
+    return hmac.new(ADMIN_KEY.encode(), b"daily-off|" + code.encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def send_mail(to: str, subject: str, text: str, html_body: str, unsubscribe: str) -> bool:
+    """One email through INSIGHTS_SMTP_*. Never raises."""
+    import smtplib
+    from email.message import EmailMessage
+    msg = EmailMessage()
+    msg["Subject"], msg["To"] = subject[:200], to
+    msg["From"] = SMTP["from"] or SMTP["user"]
+    msg["List-Unsubscribe"] = f"<{unsubscribe}>"
+    msg.set_content(text)
+    msg.add_alternative(html_body, subtype="html")
+    try:
+        smtp = smtplib.SMTP_SSL(SMTP["host"], SMTP["port"], timeout=20) if SMTP["port"] == 465 \
+            else smtplib.SMTP(SMTP["host"], SMTP["port"], timeout=20)
+        with smtp:
+            if SMTP["port"] != 465:
+                smtp.ehlo()
+                if smtp.has_extn("starttls"):
+                    smtp.starttls()
+            if SMTP["user"]:
+                smtp.login(SMTP["user"], SMTP["password"])
+            smtp.send_message(msg)
+        return True
+    except Exception as e:                              # noqa: BLE001  (tried again tomorrow)
+        print("daily email to a pilot failed:", str(e)[:200], flush=True)
+        return False
+
+
+def _effect(saved: dict) -> str | None:
+    parts = [f"{n:,} {unit}" for unit, n in saved.items() if n]
+    return ("Touches " + " and ".join(parts)) if parts else None
+
+
+def daily_for(c, p, day: str) -> dict:
+    """The day's report for one hosted pilot, in the shape daily.build reads, from the shared counts."""
+    ids = [r[0] for r in c.execute("SELECT install_id FROM installs WHERE code=? AND left_at IS NULL", (p["code"],))]
+    marks = ",".join("?" * len(ids))
+    tot: dict[str, int] = {}
+    caught, waits = [], []
+    if ids:
+        for (counts,) in c.execute(f"SELECT counts FROM days WHERE day=? AND install_id IN ({marks})", (day, *ids)):
+            for k, v in json.loads(counts).items():
+                tot[k] = tot.get(k, 0) + _int(v)
+        for (data,) in c.execute(f"SELECT data FROM catches WHERE t LIKE ? AND install_id IN ({marks}) ORDER BY t DESC",
+                                 (day + "%", *ids)):
+            x = json.loads(data)
+            if x.get("decide_s") is not None and x.get("outcome") in ("approved", "rejected"):
+                waits.append(x["decide_s"])
+            if x.get("outcome") not in ("blocked", "rejected"):
+                continue
+            prog = x.get("program")
+            caught.append({"at": x["t"] + ":00Z", "agent": x.get("agent") or "", "tool": x.get("tool") or "",
+                           "what": f"{prog} …" if prog else (x.get("tool") or "an action"), "outcome": x["outcome"],
+                           "why": x.get("why") or "", "by": None, "note": None, "effect": _effect(x.get("saved") or {}),
+                           "share": {"rule": x.get("rule")}})
+    seen, picked = set(), []
+    for x in sorted(caught, key=lambda x: x["outcome"] != "blocked"):     # blocked first, the same thing once
+        if (x["outcome"], x["what"], x["share"]["rule"]) not in seen:
+            seen.add((x["outcome"], x["what"], x["share"]["rule"]))
+            picked.append(x)
+    waits.sort()
+    real = tot.get("real", tot.get("events", 0))
+    report = {"total": real, "by_status": {"failed": tot.get("failed", 0)}, "agents": [], "top_tools": [],
+              "blocked_by_rule": [{"count": tot.get("blocked", 0)}] if tot.get("blocked") else [],
+              "approvals": {"held": tot.get("held", 0), "approved": tot.get("approved", 0),
+                            "rejected": tot.get("rejected", 0), "waiting_now": 0,
+                            "median_seconds_to_decide": waits[len(waits) // 2] if waits else None},
+              "shadow": {"would_block": tot.get("would_block", 0), "would_hold": tot.get("would_hold", 0)},
+              "audit": None}
+    return {"report": report, "catches": picked[:8], "ever_used": _connected(c, p["code"])}
+
+
+def maybe_send_daily(now_utc: datetime | None = None, send=None) -> int:
+    """Once a day per hosted dashboard, from DAILY_HOUR: its owner's email. Returns how many went out."""
+    send = send or send_mail
+    t = now_utc or datetime.now(timezone.utc)
+    if not ((SMTP["host"] and ADMIN_KEY) or send is not send_mail) or t.hour < DAILY_HOUR:
+        return 0
+    day, sent = t.date().isoformat(), 0
+    with db() as c:
+        pilots = c.execute("SELECT code, email, subdomain, state FROM pilots WHERE hosted=1 AND email IS NOT NULL "
+                           "AND email != '' AND COALESCE(daily_off, 0) = 0 AND state IN ('running', 'sleeping')").fetchall()
+    for p in pilots:
+        with _lock, db() as c:
+            if c.execute("INSERT OR IGNORE INTO daily_sent (code, day) VALUES (?, ?)", (p["code"], day)).rowcount != 1:
+                continue                                  # already sent today (or another process is sending it)
+            got = daily_for(c, p, day)
+        start = f"{EMAIL_BASE}/start/{quote(p['code'])}"
+        off = f"{EMAIL_BASE}/daily-off/{quote(p['code'])}?t={daily_off_token(p['code'])}"
+        # a sleeping dashboard wakes from its start page; an awake one opens straight away
+        dash = (dashboard_url(p["subdomain"]) or "") if p["state"] == "running" else ""
+        d = daily.build(got["report"], got["catches"], f"{t:%A} {t.day} {t:%B}", dash, day_number=t.toordinal(),
+                        ever_used=got["ever_used"], connect_url=start, unsubscribe=off)
+        if not dash and d["nudge"]:
+            d["nudge"]["cta"] = (d["nudge"]["cta"][0], start)
+        sent += bool(send(p["email"], daily.subject(d), daily.text(d), daily.html(d), off))
+    return sent
+
+
+def _daily_loop() -> None:
+    while True:
+        try:
+            maybe_send_daily()
+        except Exception as e:                          # noqa: BLE001
+            print("daily emails failed:", str(e)[:200], flush=True)
+        time.sleep(600)
+
+
+if SMTP["host"] and ADMIN_KEY:           # the key signs each email's "stop these" link
+    threading.Thread(target=_daily_loop, daemon=True).start()
+
+
+@app.get("/daily-off/{code}", response_class=HTMLResponse, include_in_schema=False)
+def daily_off(code: str, t: str = ""):
+    if not hmac.compare_digest(t, daily_off_token(code)):
+        raise HTTPException(404)
+    with _lock, db() as c:
+        c.execute("UPDATE pilots SET daily_off=1 WHERE code=?", (code,))
+    return HTMLResponse("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>"
+                        "<title>Squidbrake</title><body style='font:16px/1.5 Arial,sans-serif;max-width:520px;"
+                        "margin:60px auto;padding:0 16px;color:#1E2A23'><h1>Done 🦑</h1><p>No more daily emails. "
+                        "Your dashboard keeps working exactly as before.</p></body>")
 
 
 # HEAD too: crawlers and link checkers send it, and a 405 reads to them as a broken page.

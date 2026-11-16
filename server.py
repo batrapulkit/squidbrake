@@ -3244,7 +3244,8 @@ DAILY_REPORT_HOUR = int(os.getenv("DAILY_REPORT_HOUR", "18") or 18)   # server l
 
 def maybe_send_daily() -> None:
     """Every day from DAILY_REPORT_HOUR (server local time), once a day, email the day's report: what the agents did,
-    what Squidbrake stopped and what that could have meant. Email only; nothing on a day with no agent actions."""
+    what Squidbrake stopped and what that could have meant. Email only. A day with no agent actions gets a short nudge
+    and a real incident instead. Dashboards we host get theirs from squidbrake.com instead (insights maybe_send_daily)."""
     cfg, now = settings(), datetime.now()
     if not (email_ready(cfg) and cfg.get("daily_digest")) or now.hour < DAILY_REPORT_HOUR:
         return
@@ -3254,10 +3255,10 @@ def maybe_send_daily() -> None:
             return
         state_set(conn, "daily_date", day)
     report = build_report(1)
-    if not report["total"]:
-        return
-    d = daily.build(report, caught(1), f"{now:%A} {now.day} {now:%B}",
-                    cfg.get("public_url") or "")
+    with engine.connect() as conn:          # a quiet day still gets its email: a nudge, not numbers
+        ever_used = bool(conn.execute(select(events.c.id).where(events.c.kind != "prompt").limit(1)).first())
+    d = daily.build(report, caught(1), f"{now:%A} {now.day} {now:%B}", cfg.get("public_url") or "",
+                    day_number=now.toordinal(), ever_used=ever_used)
     send_email(cfg, daily.subject(d), daily.text(d), daily.html(d))
 
 

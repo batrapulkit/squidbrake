@@ -33,10 +33,11 @@ class _Morning(server.datetime):
 
 def test_every_story_is_a_real_incident_squidbrake_stops():
     by_id = {s["id"]: s for s in SCENARIOS}
-    for rules, _pattern, sid, title, when, url in daily.STORIES:
+    for rules, _pattern, sid, title, when, url, what in daily.STORIES:
         s = by_id[sid]
         assert s.get("expected_outcome", "stopped") == "stopped", sid
         assert (when, url) == (s["when"], s["source"]), sid
+        assert what and len(what) < 200, sid
         expected = [st["expect"]["rule"] for st in s["steps"] if st.get("expect", {}).get("rule")]
         assert not expected or any(r.startswith(e) for e in expected for r in rules), sid
 
@@ -58,7 +59,7 @@ def test_the_email_tells_the_day_with_and_without_squidbrake(c, shipped):
     d = daily.build(server.build_report(1), catches, "Tuesday 13 October", "https://gw.test")
     page, plain = daily.html(d), daily.text(d)
 
-    assert "Squidbrake stepped in" in d["title"] and "save" in daily.subject(d)
+    assert "Squidbrake stepped in" in d["title"] and daily.kind(d) == "saves"
     assert "$ rm -rf ~/" in page and "With Squidbrake" in page and "Without Squidbrake" in page
     assert "docker.com/blog/coding-agent-horror-stories" in page                    # the real incident, linked
     assert "<script>" not in page and "&lt;script&gt;" in page                       # agent text is escaped
@@ -80,7 +81,7 @@ def test_a_calm_day_says_so():
          "approvals": {"held": 0, "approved": 0, "rejected": 0, "waiting_now": 0, "median_seconds_to_decide": None},
          "audit": {"ok": True, "first_bad_seq": None}}
     d = daily.build(r, [], "Tuesday 13 October")
-    assert "calm day" in d["title"] and "calm day" in daily.subject(d)
+    assert "calm day" in d["title"] and daily.kind(d) == "calm" and "12" in daily.subject(d)
     assert "No saves today" in daily.html(d) and "Busiest agent: claude-code (12 actions)" in daily.text(d)
 
 
@@ -100,7 +101,8 @@ def test_sent_once_each_evening_as_html_email(c, shipped, monkeypatch):
     server.maybe_send_daily()                                  # the loop checks every 10 minutes: still one email
     assert len(mails) == 1
     subject, text, html = mails[0]
-    assert subject.startswith("🦑 Today with your AI agents") and "Tuesday 13 October" in text
+    assert subject in [x.format(n=1, k=1, s="") for x in daily.SUBJECTS["saves"]] or "close call" in subject
+    assert "Tuesday 13 October" in text
     assert html.startswith("<!doctype html>") and "Without Squidbrake" in html
 
 
@@ -133,3 +135,44 @@ def test_send_email_adds_the_html_version(monkeypatch):
     assert server.send_email({"smtp_host": "smtp.test", "email_to": "a@b.co"}, "Hi", "plain", "<p>rich</p>")
     parts = [p.get_content_type() for p in sent[0].iter_parts()]
     assert parts == ["text/plain", "text/html"]
+
+
+QUIET = {"total": 0, "by_status": {}, "agents": [], "top_tools": [], "blocked_by_rule": [], "shadow": {},
+         "approvals": {"held": 0, "approved": 0, "rejected": 0, "waiting_now": 0, "median_seconds_to_decide": None},
+         "audit": None}
+
+
+def test_a_day_without_actions_still_gets_a_fun_nudge():
+    d = daily.build(QUIET, [], "Tuesday 13 October", "https://acme.app.example.com", day_number=3, ever_used=True)
+    page, plain = daily.html(d), daily.text(d)
+    assert daily.kind(d) == "miss" and "took the day off" in d["title"] and not d["stats"]
+    assert "Meanwhile, somewhere without a brake" in page and "Try this tomorrow" in page
+    assert d["nudge"]["story"]["url"] in page and d["nudge"]["story"]["url"] in plain
+    assert "https://acme.app.example.com/dashboard" in page
+
+
+def test_never_connected_gets_crickets_and_a_connect_button():
+    d = daily.build(QUIET, [], "Tuesday 13 October", day_number=0, ever_used=False,
+                    connect_url="https://pilots.example.com/start/acme")
+    assert daily.kind(d) == "new" and "Crickets" in d["title"]
+    assert "Connect my first agent" in daily.html(d) and "https://pilots.example.com/start/acme" in daily.html(d)
+
+
+def test_subjects_are_catchy_and_change_day_to_day():
+    miss = {daily.subject(daily.build(QUIET, [], "x", day_number=i)) for i in range(3)}
+    assert len(miss) == 3 and "We miss you 💌 (and so does your dashboard)" in miss
+    assert all(daily.subject(daily.build(QUIET, [], "x", day_number=i, ever_used=False)) in daily.SUBJECTS["new"]
+               for i in range(3))
+    one = [{"at": "2026-10-13T10:00:00Z", "agent": "a", "tool": "Bash", "what": "rm -rf ~/", "outcome": "blocked",
+            "why": "", "share": {"rule": "command:catastrophic_command"}}]
+    d = daily.build({**QUIET, "total": 5}, one, "x", day_number=0)
+    assert daily.subject(d) == "🛑 1 close call today. Handled."
+
+
+def test_a_story_a_day_in_turn():
+    assert len({daily.story_of_the_day(i)["id"] for i in range(len(daily.STORIES))}) == len(daily.STORIES)
+
+
+def test_the_insights_copy_is_the_same_file():
+    # the insights image is built from insights/ alone, so it carries its own copy of daily.py
+    assert (ROOT / "insights" / "daily.py").read_bytes() == (ROOT / "daily.py").read_bytes()
