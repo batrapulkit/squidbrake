@@ -211,7 +211,8 @@ CLOUD = {"aws", "gcloud", "gsutil", "az", "doctl", "flyctl", "fly", "heroku", "v
 CLOUD_VALUE_OPTIONS = {"--profile", "--region", "--project", "--output", "-o", "--endpoint-url", "--subscription",
                        "--account", "--configuration", "--zone", "--app", "-a", "--remote", "-r", "--org", "--team",
                        "--context", "--config", "--format", "--query", "--color", "--verbosity", "--resource-group",
-                       "-g", "--impersonate-service-account", "--billing-project", "--env", "-e", "--cwd", "--scope"}
+                       "-g", "--impersonate-service-account", "--billing-project", "--env", "-e", "--cwd", "--scope",
+                       "-s", "--service"}
 DESTRUCTIVE_WORDS = re.compile(r"^(delete|destroy|terminate|remove|rm|rb|purge|deregister|drop|wipe|erase|"
                                r"uninstall|disable-backup|delete-.*|.*-delete|remove-.*|terminate-.*|"
                                r".*:(destroy|delete|remove|reset|wipe|purge|rm))$", re.I)   # heroku pg:reset, apps:destroy
@@ -890,6 +891,8 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
             verbs.append(w); i += 1
         if any(DESTRUCTIVE_WORDS.match(v) for v in verbs) or (prog == "aws" and verbs[:2] == ["s3", "rm"]):
             cmd.kind, cmd.why = "irreversible", f"deletes cloud resources ({' '.join(words[:4])})"
+        elif prog == "railway" and verbs[:1] == ["down"]:
+            cmd.kind, cmd.why = "irreversible", "takes the latest deployment down (railway down)"
         elif prog == "aws" and verbs[:2] == ["iam", "create-access-key"]:
             cmd.kind, cmd.why = "irreversible", "creates a new long-lived AWS access key that keeps working after this session"
         elif verbs[1:2] == ["mv"] and verbs[:1] in (["s3"], ["storage"]) or (prog == "gsutil" and verbs[:1] == ["mv"]):
@@ -978,6 +981,8 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
             why = "merges a pull request with administrator privileges, which can bypass required checks"
         elif gh_lower[:2] == ["repo", "edit"] and _gh_option(gh_words[2:], "--visibility") == "public":
             why = "makes a GitHub repository public"
+        elif gh_lower[:2] == ["repo", "archive"]:
+            why = "makes a repository read-only for everyone (gh repo archive)"
         if why:
             cmd.kind, cmd.why = "irreversible", why
             return [cmd], []
