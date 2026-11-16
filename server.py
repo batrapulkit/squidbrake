@@ -73,6 +73,7 @@ import risk
 import integrity
 import selfguard
 import weekly
+import daily
 import license
 import siem
 import signing
@@ -2443,6 +2444,7 @@ def settings() -> dict:
     defaults = {"public_url": PUBLIC_URL, "slack_webhook": APPROVAL_WEBHOOK_URL,
                 "ntfy_topic": os.getenv("NTFY_TOPIC", ""), "ntfy_server": os.getenv("NTFY_SERVER", "https://ntfy.sh"),
                 "notify_as": os.getenv("NOTIFY_APPROVER", "admin"), "weekly_digest": True,
+                "daily_digest": True,
                 "second_person": os.getenv("SECOND_PERSON_APPROVAL", "").lower() in ("1", "true", "yes"),
                 "customers": [], "slack_signing_secret": os.getenv("SLACK_SIGNING_SECRET", ""),
                 "teams_webhook": os.getenv("TEAMS_WEBHOOK_URL", ""), "telegram_bot_token": os.getenv("TELEGRAM_BOT_TOKEN", ""), "telegram_chat_id": os.getenv("TELEGRAM_CHAT_ID", ""), "email_to": os.getenv("APPROVAL_EMAIL_TO", ""),
@@ -2563,8 +2565,9 @@ def email_ready(cfg: dict) -> bool:
     return bool(cfg.get("smtp_host") and cfg.get("email_to"))
 
 
-def send_email(cfg: dict, subject: str, text: str) -> bool:
-    """Email `text` to the addresses in Settings, through the SMTP server set there. Never raises."""
+def send_email(cfg: dict, subject: str, text: str, html: str | None = None) -> bool:
+    """Email `text` (and `html`, when given, as the version mail apps show) to the addresses in Settings, through the
+    SMTP server set there. Never raises."""
     if not email_ready(cfg):
         return False
     import smtplib
@@ -2574,6 +2577,8 @@ def send_email(cfg: dict, subject: str, text: str) -> bool:
     msg["From"] = cfg.get("smtp_from") or cfg.get("smtp_user") or "squidbrake@localhost"
     msg["To"] = ", ".join(a.strip() for a in str(cfg["email_to"]).split(",") if a.strip())
     msg.set_content(text)
+    if html:
+        msg.add_alternative(html, subtype="html")
     port = int(cfg.get("smtp_port") or 587)
     try:
         smtp = smtplib.SMTP_SSL(cfg["smtp_host"], port, timeout=15) if port == 465 else smtplib.SMTP(cfg["smtp_host"], port, timeout=15)
@@ -3234,12 +3239,38 @@ def maybe_send_digest() -> None:
     send_email(cfg, "What your AI agents did this week", plain)
 
 
+DAILY_REPORT_HOUR = int(os.getenv("DAILY_REPORT_HOUR", "18") or 18)   # server local time
+
+
+def maybe_send_daily() -> None:
+    """Every day from DAILY_REPORT_HOUR (server local time), once a day, email the day's report: what the agents did,
+    what Squidbrake stopped and what that could have meant. Email only; nothing on a day with no agent actions."""
+    cfg, now = settings(), datetime.now()
+    if not (email_ready(cfg) and cfg.get("daily_digest")) or now.hour < DAILY_REPORT_HOUR:
+        return
+    day = now.strftime("%Y-%m-%d")
+    with audited_tx() as conn:
+        if conn.execute(select(gateway_state.c.value).where(gateway_state.c.key == "daily_date")).scalar() == json.dumps(day):
+            return
+        state_set(conn, "daily_date", day)
+    report = build_report(1)
+    if not report["total"]:
+        return
+    d = daily.build(report, caught(1), f"{now:%A} {now.day} {now:%B}",
+                    cfg.get("public_url") or "")
+    send_email(cfg, daily.subject(d), daily.text(d), daily.html(d))
+
+
 async def _digest_loop():
     while True:
         try:
             await run_in_threadpool(maybe_send_digest)
         except Exception:
             log.exception("weekly digest check failed")
+        try:
+            await run_in_threadpool(maybe_send_daily)
+        except Exception:
+            log.exception("daily report check failed")
         await asyncio.sleep(600)
 
 
@@ -3786,6 +3817,7 @@ class SettingsIn(BaseModel):
     ntfy_server: str | None = Field(None, max_length=300)
     notify_as: str | None = Field(None, max_length=64)
     weekly_digest: bool | None = None
+    daily_digest: bool | None = None                             # the end-of-day report by email
     second_person: bool | None = None
     customers: list[str] | None = Field(None, max_length=5000)   # names to keep out of PRs, issues, posts (data_checks)
     slack_signing_secret: str | None = Field(None, max_length=200)  # Squidbrake's Slack app: Approve / Reject buttons

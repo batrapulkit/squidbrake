@@ -886,6 +886,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
           <select name="notify_as" id="notifyAs"></select>
           <span class="hint">Whoever can see the notification can use its link, so pick the person who owns that phone / channel.</span></label>
         <label class="check"><input type="checkbox" name="weekly_digest"> Post a weekly summary to Slack (Mondays 9:00)</label>
+        <label class="check"><input type="checkbox" name="daily_digest"> Email a report at the end of each day (18:00): what your agents did and what Squidbrake caught</label>
         <label class="check full"><input type="checkbox" name="second_person"> Second-person approval: nobody approves what their own agent asked for
           <span class="hint">Set who each agent works for in Team. Approvals then always come from someone else, which is what auditors look for.
             Rolling it out to a team? <a href="https://pilots.squidbrake.com/team?from=dashboard" target="_blank" rel="noopener">We'll help</a>.</span></label>
@@ -3025,6 +3026,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     if (s.slack_signing_secret_set) $("#slackSetup").open = true;
     api("/v1/slack/manifest").then((m) => { $("#slackManifest").textContent = JSON.stringify(m.manifest, null, 2); }).catch(() => {});
     sForm.weekly_digest.checked = !!s.weekly_digest;
+    sForm.daily_digest.checked = !!s.daily_digest;
     sForm.second_person.checked = !!s.second_person;
     const approvers = team.members.filter((m) => m.approver).map((m) => m.name);
     $("#notifyAs").replaceChildren(...approvers.map((n) => el("option", { value: n, text: n, selected: n === s.notify_as ? "" : null })));
@@ -3281,7 +3283,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
         smtp_host: sForm.smtp_host.value.trim(), smtp_port: sForm.smtp_port.value ? +sForm.smtp_port.value : null,
         smtp_user: sForm.smtp_user.value.trim(), smtp_password: sForm.smtp_password.value,
         smtp_from: sForm.smtp_from.value.trim(),
-        notify_as: sForm.notify_as.value || null, weekly_digest: sForm.weekly_digest.checked,
+        notify_as: sForm.notify_as.value || null, weekly_digest: sForm.weekly_digest.checked, daily_digest: sForm.daily_digest.checked,
         second_person: sForm.second_person.checked };
       // a channel paused by the plan shows empty here: leave it out, so saving something else doesn't wipe it
       const PAUSED_FIELDS = { phone: ["ntfy_topic"], slack: ["slack_webhook"], teams: ["teams_webhook"], email: ["email_to"] };

@@ -69,6 +69,7 @@ packages = ["squidbrake"]
 "siem.py" = "squidbrake/siem.py"
 "selfguard.py" = "squidbrake/selfguard.py"
 "weekly.py" = "squidbrake/weekly.py"
+"daily.py" = "squidbrake/daily.py"
 "desktop.py" = "squidbrake/desktop.py"
 "app_signin.html" = "squidbrake/app_signin.html"
 "integrity.py" = "squidbrake/integrity.py"
@@ -106,6 +107,6 @@ packages = ["squidbrake"]
 "approve.html" = "squidbrake/approve.html"
 
 [tool.hatch.build.targets.sdist]
-only-include = ["squidbrake", "server.py", "commands.py", "risk.py", "mcp_hub.py", "mcp_catalog.py", "outbound.py", "mcp_oauth.py", "policy_edit.py", "siem.py", "selfguard.py", "weekly.py", "integrity.py", "onboard.py", "taint.py", "pilot.py", "telemetry.py", "flow.py", "verify.py", "signing.py", "offline.py", "proof.py", "brief.py", "passkeys.py", "sso.py", "evidence.py", "lockdown.py", "license.py", "effects.py", "undo.py", "shell_guard.py", "runs.py", "hooklog.py", "connect.py", "service.py", "claude_hook.py", "agent_hook.py", "desktop.py", "app_signin.html",
+only-include = ["squidbrake", "server.py", "commands.py", "risk.py", "mcp_hub.py", "mcp_catalog.py", "outbound.py", "mcp_oauth.py", "policy_edit.py", "siem.py", "selfguard.py", "weekly.py", "daily.py", "integrity.py", "onboard.py", "taint.py", "pilot.py", "telemetry.py", "flow.py", "verify.py", "signing.py", "offline.py", "proof.py", "brief.py", "passkeys.py", "sso.py", "evidence.py", "lockdown.py", "license.py", "effects.py", "undo.py", "shell_guard.py", "runs.py", "hooklog.py", "connect.py", "service.py", "claude_hook.py", "agent_hook.py", "desktop.py", "app_signin.html",
                 "gw_async.py", "gateway_proxy.py", "gateway_mcp.py", "demo_apps_mcp.py", "client.py", "rules.yaml", "rules.shipped",
                 "dashboard.html", "approve.html", "README.md", "LICENSE", "pyproject.toml"]
