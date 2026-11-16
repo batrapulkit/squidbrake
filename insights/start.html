@@ -193,7 +193,10 @@ function planNote() {
     pay(`Pay $${price} a month`));
 }
 // a view counts only once the page runs in a browser: link previews fetch the page but don't run it
-if (!D.missing) fetch(`/v1/pilot/${encodeURIComponent(D.code)}/seen`, { method: "POST" }).catch(() => {});
+// one view, and the time zone the daily email goes out in (7 pm there)
+const tz = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch { return ""; } })();
+if (!D.missing) fetch(`/v1/pilot/${encodeURIComponent(D.code)}/seen`, { method: "POST",
+  headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tz }) }).catch(() => {});
 
 if (D.hosted && !D.missing) {
   hostedPage();

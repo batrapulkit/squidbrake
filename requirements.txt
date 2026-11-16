@@ -8,3 +8,4 @@ mcp>=2.2,<3            # only for gateway_mcp.py (agent database tools)
 segno>=1.6             # QR code for "link your phone"
 # Postgres (optional): psycopg[binary]>=3.1   then DATABASE_URL=postgresql+psycopg://user:pass@host/db
 anthropic>=1.0           # optional: AI approval briefs (Settings > AI approval briefs), with your own key
+tzdata; sys_platform == "win32"   # time zone names (insights daily email); Linux and macOS have them built in
