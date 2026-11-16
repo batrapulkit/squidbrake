@@ -82,3 +82,34 @@ def test_without_smtp_nothing_is_sent(hosted, monkeypatch):
     ia, _ = hosted
     monkeypatch.setitem(ia.SMTP, "host", "")
     assert ia.maybe_send_daily(EVENING) == 0
+
+
+def test_the_start_page_gives_the_time_zone(hosted):
+    ia, client = hosted
+    tz = lambda: ia.db().execute("SELECT tz FROM pilots WHERE code='daily-busy'").fetchone()[0]
+    assert client.post("/v1/pilot/daily-busy/seen", json={"tz": "Asia/Kolkata"}).json()["ok"]
+    assert tz() == "Asia/Kolkata"
+    client.post("/v1/pilot/daily-busy/seen", json={"tz": "Not/A_Zone"})           # unknown: kept as it was
+    client.post("/v1/pilot/daily-busy/seen", json={"tz": "../../etc/passwd"})
+    client.post("/v1/pilot/daily-busy/seen")                                      # an older start page: no body
+    assert tz() == "Asia/Kolkata"
+
+
+def test_sent_at_7pm_in_each_owners_own_time(hosted):
+    ia, _ = hosted
+    with ia.db() as c:
+        c.execute("UPDATE pilots SET tz='Asia/Kolkata' WHERE code='daily-busy'")
+        c.execute("UPDATE pilots SET tz='America/New_York' WHERE code='daily-quiet'")
+    got = []
+    send = lambda to, subject, text, html, off: got.append((to, html)) or True
+    at = lambda h, m: datetime(2026, 10, 13, h, m, tzinfo=timezone.utc)
+    ia.maybe_send_daily(at(13, 0), send)                  # 18:30 in Kolkata, 09:00 in New York
+    assert not [to for to, _ in got if to in ("founder@busy.example", "founder@quiet.example")]
+    ia.maybe_send_daily(at(13, 40), send)                 # 19:10 in Kolkata
+    busy = [h for to, h in got if to == "founder@busy.example"]
+    assert len(busy) == 1 and "17:12 IST" in busy[0]      # the catch at 11:42 UTC, in their time
+    assert "founder@quiet.example" not in [to for to, _ in got]
+    ia.maybe_send_daily(at(23, 10), send)                 # 19:10 in New York
+    ia.maybe_send_daily(at(23, 50), send)
+    assert [to for to, _ in got].count("founder@quiet.example") == 1
+    assert [to for to, _ in got].count("founder@busy.example") == 1   # 04:40 the next day in Kolkata: not yet again

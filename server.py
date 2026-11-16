@@ -3239,7 +3239,7 @@ def maybe_send_digest() -> None:
     send_email(cfg, "What your AI agents did this week", plain)
 
 
-DAILY_REPORT_HOUR = int(os.getenv("DAILY_REPORT_HOUR", "18") or 18)   # server local time
+DAILY_REPORT_HOUR = int(os.getenv("DAILY_REPORT_HOUR", "19") or 19)   # local time where it runs (TZ in Docker)
 
 
 def maybe_send_daily() -> None:

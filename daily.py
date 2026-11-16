@@ -20,6 +20,7 @@ Standard library only.
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from html import escape
 
 # What has happened when this kind of action ran unchecked: (rule ids, a pattern the command must match or None,
@@ -109,8 +110,18 @@ def headline(r: dict, catches: list[dict], ever_used: bool) -> tuple[str, str]:
             "Here's what they tried, what happened instead, and what could have gone wrong.")
 
 
+def clock(at: str, zone=None) -> str:
+    """"2026-10-13T11:42:07Z" as the reader's time ("17:12 IST"), or the server's local time without a zone."""
+    try:
+        t = datetime.fromisoformat(at.replace("Z", "+00:00"))
+    except ValueError:
+        return at[11:16]
+    t = t.astimezone(zone) if zone else t.astimezone()
+    return f"{t:%H:%M} {t.tzname() or ''}".strip()
+
+
 def build(r: dict, catches: list[dict], day: str, dashboard: str = "", *, day_number: int = 0,
-          ever_used: bool = True, connect_url: str = "", unsubscribe: str = "") -> dict:
+          ever_used: bool = True, connect_url: str = "", unsubscribe: str = "", zone=None) -> dict:
     """Everything the email says, as data (the tests read this; html() and text() only lay it out).
 
     r: the day's report in server.build_report's shape (insights builds the same keys from shared counts; its
@@ -153,7 +164,7 @@ def build(r: dict, catches: list[dict], day: str, dashboard: str = "", *, day_nu
     return {"day": day, "title": title, "sub": sub, "stats": stats, "facts": facts, "dashboard": dashboard.rstrip("/"),
             "shadow": bool(shadow.get("would_block") or shadow.get("would_hold")), "nudge": nudge,
             "unsubscribe": unsubscribe, "day_number": day_number, "total": r["total"],
-            "catches": [{**c, "did": OUTCOME[c["outcome"]], "without": without(c), "story": story(c)}
+            "catches": [{**c, "did": OUTCOME[c["outcome"]], "without": without(c), "story": story(c), "clock": clock(c["at"], zone)}
                         for c in catches]}
 
 
@@ -205,7 +216,7 @@ def _snapshot(c: dict) -> str:
                   f'<a href="{escape(st["url"])}" style="color:{ACCENT}">Read the story</a></td></tr>') if st else ""
     return f"""
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{CARD};border:1px solid {LINE};border-radius:12px;margin:0 0 16px;border-collapse:separate">
-  <tr><td style="padding:12px 16px 6px;font:12px/1.4 Arial,sans-serif;color:{MUTED}">{escape(c['at'][11:16])} UTC · {escape(c['agent'] or 'an agent')} · {escape(c['tool'])}</td></tr>
+  <tr><td style="padding:12px 16px 6px;font:12px/1.4 Arial,sans-serif;color:{MUTED}">{escape(c['clock'])} · {escape(c['agent'] or 'an agent')} · {escape(c['tool'])}</td></tr>
   <tr><td style="padding:0 16px">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#16201B;border-radius:8px">
       <tr><td style="padding:8px 12px 0;font:10px Arial,sans-serif;color:#6B7A72">● ● ●&nbsp;&nbsp;what the agent tried</td></tr>

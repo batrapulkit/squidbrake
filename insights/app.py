@@ -26,6 +26,7 @@ import time
 import urllib.request
 from urllib.parse import quote, urlencode
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -168,7 +169,9 @@ with db() as _c:
                         # when an unused hosted gateway was put to sleep (_reclaim_unused), and why
                         ("slept_at", "TEXT"), ("slept_why", "TEXT"),
                         # the founder said "stop these daily emails" (daily-off link in the email)
-                        ("daily_off", "INTEGER NOT NULL DEFAULT 0")):
+                        ("daily_off", "INTEGER NOT NULL DEFAULT 0"),
+                        # the founder's time zone, from their browser on the start page: the daily email goes at 7 pm there
+                        ("tz", "TEXT")):
         if _col not in _have:
             _c.execute(f"ALTER TABLE pilots ADD COLUMN {_col} {_type}")
             if _col == "keys_first_shown_at":   # dashboards whose keys were already taken stay that way
@@ -1077,14 +1080,30 @@ PREVIEW_BOTS = re.compile(r"bot|crawl|spider|preview|facebookexternalhit|slack|w
                           r"linkedin|embedly|headless|lighthouse|python-|curl|wget|go-http|okhttp", re.I)
 
 
+class SeenIn(BaseModel):
+    tz: str = Field(default="", max_length=64)    # the browser's time zone, e.g. "Asia/Kolkata"
+
+
+def valid_tz(tz: str) -> str | None:
+    if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_+\-]*(/[A-Za-z0-9_+\-]+){0,2}", tz or ""):
+        return None
+    try:
+        ZoneInfo(tz)
+        return tz
+    except Exception:                                   # noqa: BLE001  (unknown name, or no time zone data)
+        return None
+
+
 @app.post("/v1/pilot/{code}/seen")
-def pilot_seen(code: str, request: Request):
-    """The start page, open in a browser: one view. Link previews and scanners don't run the page, or say what they are."""
+def pilot_seen(code: str, request: Request, s: SeenIn | None = None):
+    """The start page, open in a browser: one view, and the time zone the daily email goes out in. Link previews and
+    scanners don't run the page, or say what they are."""
     if not CODE_RE.match(code) or PREVIEW_BOTS.search(request.headers.get("user-agent", "")):
         return {"ok": False}
+    tz = valid_tz(s.tz) if s else None
     with _lock, db() as c:
-        c.execute("UPDATE pilots SET page_views=page_views+1, first_view=COALESCE(first_view, ?), last_view=? WHERE code=?",
-                  (now(), now(), code))
+        c.execute("UPDATE pilots SET page_views=page_views+1, first_view=COALESCE(first_view, ?), last_view=?, "
+                  "tz=COALESCE(?, tz) WHERE code=?", (now(), now(), tz, code))
     return {"ok": True}
 
 
@@ -2492,7 +2511,8 @@ def score_card(request: Request, n: int = Query(..., ge=0, le=100), of: int = Qu
 
 
 # --------------------------------------------------------------------------- the end-of-day email (hosted)
-# Every hosted dashboard's owner gets daily.py's email once a day from INSIGHTS_DAILY_HOUR (UTC on the server), made
+# Every hosted dashboard's owner gets daily.py's email once a day from 7 pm in their own time zone (INSIGHTS_DAILY_HOUR,
+# the tz their browser gave the start page; INSIGHTS_DAILY_TZ until it has), about their own day so far, made
 # from the counts its gateway already shares (pilot.py: programs and sizes, never commands or their arguments).
 # A day with no actions gets a nudge instead. Unset INSIGHTS_SMTP_HOST: nothing is sent.
 import daily  # noqa: E402
@@ -2500,7 +2520,8 @@ import daily  # noqa: E402
 SMTP = {"host": os.getenv("INSIGHTS_SMTP_HOST", ""), "port": int(os.getenv("INSIGHTS_SMTP_PORT", "465") or 465),
         "user": os.getenv("INSIGHTS_SMTP_USER", ""), "password": os.getenv("INSIGHTS_SMTP_PASSWORD", ""),
         "from": os.getenv("INSIGHTS_SMTP_FROM", "")}
-DAILY_HOUR = int(os.getenv("INSIGHTS_DAILY_HOUR", "18") or 18)
+DAILY_HOUR = int(os.getenv("INSIGHTS_DAILY_HOUR", "19") or 19)      # in each founder's own time zone
+DEFAULT_TZ = os.getenv("INSIGHTS_DAILY_TZ", "UTC")                    # theirs isn't known yet (start page not opened)
 EMAIL_BASE = (PUBLIC_URL or "https://pilots.squidbrake.com").rstrip("/")
 
 
@@ -2540,8 +2561,10 @@ def _effect(saved: dict) -> str | None:
     return ("Touches " + " and ".join(parts)) if parts else None
 
 
-def daily_for(c, p, day: str) -> dict:
-    """The day's report for one hosted pilot, in the shape daily.build reads, from the shared counts."""
+def daily_for(c, p, day: str, since: str, until: str) -> dict:
+    """The day's report for one hosted pilot, in the shape daily.build reads, from the shared counts. Catches are
+    those between since and until (UTC, "YYYY-MM-DDTHH:MM"): the founder's own day so far. Counts come per UTC day
+    (pilot.py), so `day` is the UTC date that holds most of it (the one their noon falls on)."""
     ids = [r[0] for r in c.execute("SELECT install_id FROM installs WHERE code=? AND left_at IS NULL", (p["code"],))]
     marks = ",".join("?" * len(ids))
     tot: dict[str, int] = {}
@@ -2550,8 +2573,8 @@ def daily_for(c, p, day: str) -> dict:
         for (counts,) in c.execute(f"SELECT counts FROM days WHERE day=? AND install_id IN ({marks})", (day, *ids)):
             for k, v in json.loads(counts).items():
                 tot[k] = tot.get(k, 0) + _int(v)
-        for (data,) in c.execute(f"SELECT data FROM catches WHERE t LIKE ? AND install_id IN ({marks}) ORDER BY t DESC",
-                                 (day + "%", *ids)):
+        for (data,) in c.execute(f"SELECT data FROM catches WHERE t >= ? AND t <= ? AND install_id IN ({marks}) "
+                                 "ORDER BY t DESC", (since, until, *ids)):
             x = json.loads(data)
             if x.get("decide_s") is not None and x.get("outcome") in ("approved", "rejected"):
                 waits.append(x["decide_s"])
@@ -2579,27 +2602,43 @@ def daily_for(c, p, day: str) -> dict:
     return {"report": report, "catches": picked[:8], "ever_used": _connected(c, p["code"])}
 
 
+def _zone(tz: str | None):
+    try:
+        return ZoneInfo(tz or DEFAULT_TZ)
+    except Exception:                                   # noqa: BLE001
+        return timezone.utc
+
+
 def maybe_send_daily(now_utc: datetime | None = None, send=None) -> int:
-    """Once a day per hosted dashboard, from DAILY_HOUR: its owner's email. Returns how many went out."""
+    """Once a day per hosted dashboard, from DAILY_HOUR in its owner's time zone (until their midnight, so a restart
+    at 7 pm doesn't lose the day): its owner's email. Returns how many went out."""
     send = send or send_mail
-    t = now_utc or datetime.now(timezone.utc)
-    if not ((SMTP["host"] and ADMIN_KEY) or send is not send_mail) or t.hour < DAILY_HOUR:
+    t = (now_utc or datetime.now(timezone.utc)).astimezone(timezone.utc)
+    if not ((SMTP["host"] and ADMIN_KEY) or send is not send_mail):
         return 0
-    day, sent = t.date().isoformat(), 0
+    sent = 0
     with db() as c:
-        pilots = c.execute("SELECT code, email, subdomain, state FROM pilots WHERE hosted=1 AND email IS NOT NULL "
+        pilots = c.execute("SELECT code, email, subdomain, state, tz FROM pilots WHERE hosted=1 AND email IS NOT NULL "
                            "AND email != '' AND COALESCE(daily_off, 0) = 0 AND state IN ('running', 'sleeping')").fetchall()
     for p in pilots:
+        local = t.astimezone(_zone(p["tz"]))
+        if local.hour < DAILY_HOUR:
+            continue
+        midnight = local.replace(hour=0, minute=0, second=0, microsecond=0)
+        utc = lambda x: x.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M")
+        counts_day = (midnight + timedelta(hours=12)).astimezone(timezone.utc).date().isoformat()
         with _lock, db() as c:
-            if c.execute("INSERT OR IGNORE INTO daily_sent (code, day) VALUES (?, ?)", (p["code"], day)).rowcount != 1:
+            if c.execute("INSERT OR IGNORE INTO daily_sent (code, day) VALUES (?, ?)",
+                         (p["code"], local.date().isoformat())).rowcount != 1:
                 continue                                  # already sent today (or another process is sending it)
-            got = daily_for(c, p, day)
+            got = daily_for(c, p, counts_day, utc(midnight), utc(t))
         start = f"{EMAIL_BASE}/start/{quote(p['code'])}"
         off = f"{EMAIL_BASE}/daily-off/{quote(p['code'])}?t={daily_off_token(p['code'])}"
         # a sleeping dashboard wakes from its start page; an awake one opens straight away
         dash = (dashboard_url(p["subdomain"]) or "") if p["state"] == "running" else ""
-        d = daily.build(got["report"], got["catches"], f"{t:%A} {t.day} {t:%B}", dash, day_number=t.toordinal(),
-                        ever_used=got["ever_used"], connect_url=start, unsubscribe=off)
+        d = daily.build(got["report"], got["catches"], f"{local:%A} {local.day} {local:%B}", dash,
+                        day_number=local.toordinal(), ever_used=got["ever_used"], connect_url=start, unsubscribe=off,
+                        zone=local.tzinfo)
         if not dash and d["nudge"]:
             d["nudge"]["cta"] = (d["nudge"]["cta"][0], start)
         sent += bool(send(p["email"], daily.subject(d), daily.text(d), daily.html(d), off))

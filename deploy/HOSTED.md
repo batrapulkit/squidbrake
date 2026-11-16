@@ -40,4 +40,4 @@ installers are attached by `native.yml` some minutes after a release is publishe
 | `INSIGHTS_RECLAIM_KEYS_MINUTES` (30), `INSIGHTS_RECLAIM_IDLE_HOURS` (24) | when an unused hosted dashboard goes to sleep |
 | `INSIGHTS_APP_DOWNLOADS` | optional, see 4 |
 | `INSIGHTS_SMTP_HOST`, `INSIGHTS_SMTP_PORT` (465), `INSIGHTS_SMTP_USER`, `INSIGHTS_SMTP_PASSWORD`, `INSIGHTS_SMTP_FROM` | the end-of-day email to every hosted dashboard's owner (`maybe_send_daily`). Unset host: none is sent. Needs `INSIGHTS_ADMIN_KEY` (it signs the "stop these emails" link) |
-| `INSIGHTS_DAILY_HOUR` (18) | from when the daily email goes out, server time (UTC on the VM) |
+| `INSIGHTS_DAILY_HOUR` (19), `INSIGHTS_DAILY_TZ` (UTC) | the daily email goes out from 7 pm in each founder's own time zone (their browser tells the start page); `INSIGHTS_DAILY_TZ` until it's known |
