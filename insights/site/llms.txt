@@ -2,7 +2,7 @@
 
 > Squidbrake is change control for AI agents: agents propose, people approve. It checks every tool call an AI agent makes against your rules and what the agent already did, and allows it, holds it for a second person (with what it will change shown first, such as rows deleted or resources destroyed), or blocks it, before the call runs. Approved deletes can be undone, and decisions land in a tamper-evident log with a one-page evidence pack for auditors. Decisions come from rules, not an LLM.
 
-Squidbrake runs where you run it: a laptop, Docker, or your own cloud. It is backed by Entrepreneur First.
+Squidbrake runs where you run it: a laptop, Docker, or your own cloud. It is backed by Entrepreneurs First.
 
 ## Start here
 
