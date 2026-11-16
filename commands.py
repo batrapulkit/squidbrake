@@ -671,6 +671,43 @@ def _local_account_change(prog: str, lower: list[str]) -> str | None:
     return None
 
 
+def _docker_control_reason(prog: str, lower: list[str], sub: list[str]) -> str | None:
+    """A container started with --privileged, the host's process namespace, the whole disk mounted,
+    or the Docker socket can take over the machine it runs on."""
+    action = f"{prog} {' '.join(sub[:1])}" if sub else f"{prog} run"
+    if "--privileged" in lower or any(w.startswith("--privileged=") for w in lower):
+        return f"gives the container control of this machine ({action} --privileged)"
+    if "--pid=host" in lower or any(
+        lower[i] == "--pid" and i + 1 < len(lower) and lower[i + 1] == "host"
+        for i in range(len(lower))
+    ):
+        return f"gives the container control of this machine ({action} --pid=host)"
+    if any("docker.sock" in w for w in lower):
+        return "gives the container control of this machine (the Docker socket)"
+    for i, w in enumerate(lower):
+        val = ""
+        if w in ("-v", "--volume") and i + 1 < len(lower):
+            val = lower[i + 1]
+        elif w.startswith("--volume=") or w.startswith("-v="):
+            val = w.split("=", 1)[1]
+        if val:
+            parts = val.split(":")
+            if len(parts) >= 2:
+                host_path = parts[0].strip().strip("'\"")
+                if host_path in ("/", "//"):
+                    return "gives the container control of this machine (the whole disk mounted)"
+        mount_val = ""
+        if w == "--mount" and i + 1 < len(lower):
+            mount_val = lower[i + 1]
+        elif w.startswith("--mount="):
+            mount_val = w.split("=", 1)[1]
+        if mount_val:
+            clean_mount = mount_val.strip("'\"")
+            if re.search(r"\b(source|src)=/(,|$)", clean_mount):
+                return "gives the container control of this machine (the whole disk mounted)"
+    return None
+
+
 def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Command], list[str]]:
     """One simple command (already split into words). -> (commands, hidden-reasons)."""
     words = words[1:] if words[:1] == ["{"] else words       # a group, `{ curl URL > x.sh; } && bash x.sh`
@@ -923,6 +960,8 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         elif sub[:1] == ["push"] or sub == ["image", "push"]:
             cmd.kind, cmd.why = "irreversible", \
                 f"pushes an image to a registry, overwriting the tag for everyone who pulls it ({' '.join(words[:3])})"
+        elif (why := _docker_control_reason(prog, lower, sub)):
+            cmd.kind, cmd.why = "irreversible", why
         return [cmd], []
 
     # ---- API calls that delete (curl -X DELETE, GraphQL mutations like volumeDelete / deleteRepository)

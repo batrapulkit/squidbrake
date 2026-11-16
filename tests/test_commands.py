@@ -185,6 +185,10 @@ def test_catastrophic(line):
     "rclone sync ./empty remote:bucket",
     "rclone purge remote:bucket",
     "gsutil rsync -d . gs://bucket",
+    # Containers that get control of this machine (#209)
+    "docker run --privileged -v /:/host alpine",
+    "docker run --pid=host -it alpine",
+    "docker run -v /var/run/docker.sock:/var/run/docker.sock alpine",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -325,6 +329,10 @@ def test_no_false_alarm(line):
     "podman ps",
     "cdk diff",
     "cdk synth",
+    # Containers without elevated control (#209)
+    "docker run alpine echo hi",
+    "docker run -v $(pwd):/app -w /app node npm test",
+    "docker ps",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
@@ -357,6 +365,8 @@ def test_summary_explains():
     assert "etcd" in commands.read("etcdctl del --prefix /").summary()
     assert "containers" in commands.read("podman system reset -f").summary()
     assert "infrastructure" in commands.read("cdk destroy --force").summary()
+    assert "gives the container control of this machine" in commands.read("docker run --privileged -v /:/host alpine").summary()
+    assert "the Docker socket" in commands.read("docker run -v /var/run/docker.sock:/var/run/docker.sock alpine").summary()
 
 
 def test_account_reasons_dont_repeat_the_password():
