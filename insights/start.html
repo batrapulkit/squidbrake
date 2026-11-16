@@ -582,14 +582,24 @@ function hostedPage() {
       ${row("Admin key", "signs you in, approves", k.admin_key)}
       ${k.agent_key ? row("Agent key", "for your agents (in step 2)", k.agent_key)
         : `<p class="note">Your agent key is already with the Squidbrake app on your computer.</p>`}
-      <div class="warnbar">⚠ Save both in your password manager now: this page won't show them again.</div>
+      <div class="warnbar">⚠ Save both now (your password manager is best): this page won't show them again.</div>
       <div class="btns"><button id="copyBoth" class="btn">Copy both keys</button>
+        <button id="saveKeys" class="btn ghost">Download as a text file</button>
         <a class="btn ghost" href="${esc(k.dashboard)}/dashboard#key=${encodeURIComponent(k.admin_key)}" target="_blank" rel="noopener">Open my dashboard ↗</a></div>`;
     keys.querySelectorAll(".mini").forEach((m) => m.onclick = async () => {
       try { await navigator.clipboard.writeText(m.dataset.v); m.textContent = "Copied ✓"; } catch { m.textContent = "Select it"; }
     });
     document.getElementById("copyBoth").onclick = async (e) => {
       try { await navigator.clipboard.writeText(both); e.target.textContent = "Copied ✓"; } catch { prompt("Copy this:", both); }
+    };
+    document.getElementById("saveKeys").onclick = (e) => {     // a .txt made here in the browser: nothing is sent anywhere
+      const file = new Blob([`${both}\n\nKeep this file private: anyone with the admin key can sign in to your dashboard.\n`],
+                            { type: "text/plain" });
+      const a = Object.assign(document.createElement("a"),
+                              { href: URL.createObjectURL(file), download: `squidbrake-keys-${host.split(".")[0]}.txt` });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+      e.target.textContent = "Downloaded ✓";
     };
     done("s1"); unlock(k.agent_key);
   };
