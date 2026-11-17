@@ -27,6 +27,8 @@ def hosted():
     with ia.db() as c:
         for code in CODES:
             ia._forget(c, code)
+            for table in ("days", "catches", "installs"):     # a deleted pilot's counts are kept: clear this test's own
+                c.execute(f"DELETE FROM {table} WHERE install_id=?", (f"i-{code}",))
         for code, sub in zip(CODES, ("busy", "quiet", "newbie", "offco")):
             c.execute("INSERT INTO pilots (code, company, created_at, hosted, subdomain, state, email) "
                       "VALUES (?,?,?,1,?,'running',?)", (code, code, ia.now(), sub, f"founder@{sub}.example"))
@@ -44,6 +46,8 @@ def hosted():
     with ia.db() as c:
         for code in CODES:
             ia._forget(c, code)
+            for table in ("days", "catches", "installs"):     # a deleted pilot's counts are kept: clear this test's own
+                c.execute(f"DELETE FROM {table} WHERE install_id=?", (f"i-{code}",))
 
 
 def test_every_hosted_owner_gets_one_email_a_day(hosted):
