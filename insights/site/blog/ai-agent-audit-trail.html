@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI agent audit trail: what to log, and how to prove it</title>
+<meta name="description" content="What an AI agent audit trail should record (who asked, what ran, who approved), why traces aren&#x27;t enough, and how to make the log tamper-evident.">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+<meta name="author" content="Karishma Sinha">
+<link rel="canonical" href="https://squidbrake.com/blog/ai-agent-audit-trail">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://squidbrake.com/blog/ai-agent-audit-trail">
+<meta property="og:site_name" content="Squidbrake">
+<meta property="og:title" content="AI agent audit trail: what to log, and how to prove it">
+<meta property="og:description" content="What an AI agent audit trail should record (who asked, what ran, who approved), why traces aren&#x27;t enough, and how to make the log tamper-evident.">
+<meta property="og:image" content="https://squidbrake.com/assets/blog/ai-agent-audit-trail.png">
+<meta property="article:published_time" content="2026-11-17">
+<meta property="article:author" content="https://squidbrake.com/about">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="AI agent audit trail: what to log, and how to prove it">
+<meta name="twitter:description" content="What an AI agent audit trail should record (who asked, what ran, who approved), why traces aren&#x27;t enough, and how to make the log tamper-evident.">
+<meta name="twitter:image" content="https://squidbrake.com/assets/blog/ai-agent-audit-trail.png">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "BlogPosting", "headline": "Audit trails for AI agents: what to log, and how to make the record tamper-evident", "description": "What an AI agent audit trail should record (who asked, what ran, who approved), why traces aren't enough, and how to make the log tamper-evident.", "url": "https://squidbrake.com/blog/ai-agent-audit-trail", "mainEntityOfPage": "https://squidbrake.com/blog/ai-agent-audit-trail", "datePublished": "2026-11-17", "dateModified": "2026-11-17", "image": "https://squidbrake.com/assets/blog/ai-agent-audit-trail.png", "inLanguage": "en", "keywords": "ai agent audit trail, ai agent audit log, audit logging for ai agents, tamper-evident audit log, ai agent observability, llm agent logging for compliance", "articleSection": "Audit", "wordCount": 1094, "author": {"@type": "Person", "@id": "https://squidbrake.com/about#karishma", "name": "Karishma Sinha", "url": "https://squidbrake.com/about"}, "publisher": {"@type": "Organization", "@id": "https://squidbrake.com/#org", "name": "Squidbrake", "url": "https://squidbrake.com/", "logo": "https://squidbrake.com/assets/logo-512.png"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://squidbrake.com/"}, {"@type": "ListItem", "position": 2, "name": "Blog", "item": "https://squidbrake.com/blog"}, {"@type": "ListItem", "position": 3, "name": "Audit trails for AI agents: what to log, and how to make the record tamper-evident", "item": "https://squidbrake.com/blog/ai-agent-audit-trail"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What should an AI agent audit log contain?", "acceptedAnswer": {"@type": "Answer", "text": "Time, agent, the person it works for, the session, the exact tool call with secrets redacted, the decision with the rule and rules version, the approver and their reason, what changed, and the outcome."}}, {"@type": "Question", "name": "Is a hash-chained audit log tamper-proof?", "acceptedAnswer": {"@type": "Answer", "text": "No, it is tamper-evident: any edit or removed entry breaks the chain and shows up on verification. Someone with full access could still delete the whole log, so keep a copy in a second system such as a SIEM."}}, {"@type": "Question", "name": "Are OpenTelemetry traces enough for an AI agent audit trail?", "acceptedAnswer": {"@type": "Answer", "text": "Usually not on their own. Traces show what the agent did, but often not which rule allowed it or who approved it, and they're often sampled or short-lived. Use them for debugging alongside a decision record."}}, {"@type": "Question", "name": "How long should AI agent audit logs be kept?", "acceptedAnswer": {"@type": "Answer", "text": "As long as your other change-management evidence, which your auditor or legal team sets. Many teams keep at least the audit period plus a year."}}]}]}</script>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preload" href="/assets/fonts/host-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/fonts/fonts.css">
+<style>
+:root{
+  --bg:#E6EBE2; --surface:#F4F6F1; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5;
+  --go:#237447; --stop:#C0301C; --hold:#A5560C; --accent:#F2622E; --accent-hover:#E4541F;
+  --code-bg:#1E2A23; --code-ink:#E6EDE4; --code-muted:#93A196;
+  --sans:"Host Grotesk","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:4px}
+.wrap{width:min(1120px,100% - 32px);margin-inline:auto}
+main p,main li,main dd,main>h1{max-width:80ch}   /* the page uses the width, a line of text stays readable */
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 0;border-bottom:1px solid var(--line)}
+.brand{display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:1.2rem;letter-spacing:-0.03em;text-decoration:none}
+.brand svg{width:32px;height:32px}
+header nav{display:flex;gap:20px;font-size:.95rem}
+header nav a{color:var(--muted);text-decoration:none}
+header nav a:hover{color:var(--ink)}
+main{padding:56px 0 80px}
+.kicker{margin:0 0 14px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-weight:500;font-size:clamp(2.2rem,6vw,3.4rem);line-height:1;letter-spacing:-0.05em;margin:0 0 18px}
+.lead{color:var(--muted);font-size:1.1rem;margin:0 0 40px;max-width:52ch}
+h2{display:flex;align-items:baseline;gap:12px;font-weight:500;font-size:1.6rem;letter-spacing:-0.035em;margin:56px 0 12px}
+h2 .n{font:400 .9rem var(--mono);color:var(--muted)}
+p{margin:0 0 14px}
+.muted{color:var(--muted)}
+code{font:400 .9em var(--mono)}
+p code,li code{background:var(--surface);padding:1px 5px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line)}
+pre{margin:0 0 18px;padding:18px 20px;border-radius:10px;background:var(--code-bg);color:var(--code-ink);font:400 .86rem/1.6 var(--mono);overflow-x:auto}
+pre .c{color:var(--code-muted)}
+pre .d{color:#FF8A75}
+pre .h{color:#F7B267}
+.file{display:block;margin:0 0 -6px;padding:8px 20px 14px;border-radius:10px 10px 0 0;background:var(--code-bg);color:var(--code-muted);font:400 .76rem var(--mono)}
+.file+pre{border-radius:0 0 10px 10px}
+.note{margin:18px 0;padding:14px 18px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0;font-size:.95rem}
+ul{padding-left:1.2em;margin:0 0 14px}
+li{margin:4px 0}
+footer{padding:28px 0 40px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem;display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between}
+footer a{text-decoration:none}
+footer a:hover{color:var(--ink)}
+@media (max-width:560px){ header nav a:not(:last-child){display:none} main{padding:36px 0 56px} pre{font-size:.78rem;padding:14px} }
+.ph-badge{display:inline-block;line-height:0}.ph-badge img{max-width:100%;height:auto}
+</style>
+<style>.posts{list-style:none;padding:0;margin:0}.posts li{padding:22px 0;border-bottom:1px solid var(--line)}.posts a{color:var(--ink);font-size:1.3rem;font-weight:500;letter-spacing:-0.02em}.posts p{margin:6px 0 0;color:var(--muted)}.posts time,.byline{font:400 .82rem var(--mono);color:var(--muted)}article h2{display:block}article li{margin:6px 0}.cta-box{margin:48px 0 0;padding:20px 22px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}.cta-box p{margin:0}.cmp{width:100%;border-collapse:collapse;margin:8px 0 0;font-size:.95rem}.cmp th,.cmp td{text-align:left;vertical-align:top;padding:10px 12px 10px 0;border-bottom:1px solid var(--line)}.cmp th{font-weight:500}.cmp td:first-child{color:var(--muted)}.tbl{overflow-x:auto}@media (max-width:560px){.tbl .cmp:has(th:nth-child(4)){min-width:540px}}</style>
+<style>
+.toc{margin:0 0 36px;padding:16px 20px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);max-width:80ch}
+.toc p{margin:0 0 6px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.toc ol{margin:0;padding-left:1.2em}.toc li{margin:2px 0}.toc a{text-decoration:none}.toc a:hover{text-decoration:underline}
+.tldr{margin:0 0 32px;padding:18px 22px;border-radius:12px;border-left:3px solid var(--accent);background:var(--surface);max-width:80ch}
+.tldr p{margin:0 0 6px;font-weight:500}.tldr ul{margin:0}
+figure.fig{margin:28px 0 30px;padding:20px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+figure.fig .scroll{overflow-x:auto}
+figure.fig svg{display:block;width:100%;min-width:560px;height:auto;font-family:var(--sans)}
+figure.fig figcaption{margin:12px 0 0;color:var(--muted);font-size:.9rem;max-width:80ch}
+.fig .bx{fill:var(--bg);stroke:var(--line);stroke-width:1.5}
+.fig .bx-go{fill:var(--bg);stroke:var(--go);stroke-width:2}
+.fig .bx-hold{fill:var(--bg);stroke:var(--hold);stroke-width:2}
+.fig .bx-stop{fill:var(--bg);stroke:var(--stop);stroke-width:2}
+.fig .bx-acc{fill:var(--bg);stroke:var(--accent);stroke-width:2}
+.fig .bx-off{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:5 5}
+.fig .t{fill:var(--ink);font-size:15px;font-weight:500}
+.fig .s{fill:var(--muted);font-size:12.5px}
+.fig .m{fill:var(--muted);font:400 11.5px var(--mono);letter-spacing:.06em}
+.fig .ln{stroke:var(--muted);stroke-width:1.5;fill:none}
+.fig .ah{fill:var(--muted)}
+.fig .go{fill:var(--go)}.fig .hold{fill:var(--hold)}.fig .stop{fill:var(--stop)}.fig .acc{fill:var(--accent)}.fig .mut{fill:var(--muted)}
+.fig .bar{fill:var(--muted)}.fig .bar-hi{fill:var(--accent)}.fig .grid{stroke:var(--line);stroke-width:1}
+.fig .ring-a{fill:var(--go);fill-opacity:.13;stroke:var(--go);stroke-width:1.5}
+.fig .ring-b{fill:var(--hold);fill-opacity:.13;stroke:var(--hold);stroke-width:1.5}
+.fig .ring-c{fill:var(--accent);fill-opacity:.13;stroke:var(--accent);stroke-width:1.5}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:24px 0 30px}
+.stat{padding:16px 18px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+.stat b{display:block;font-size:1.9rem;font-weight:500;letter-spacing:-0.04em;line-height:1.1}
+.stat span{color:var(--muted);font-size:.88rem}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;font:400 .76rem var(--mono);white-space:nowrap;box-shadow:inset 0 0 0 1px currentColor}
+.pill.go{color:var(--go)}.pill.hold{color:var(--hold)}.pill.stop{color:var(--stop)}
+.faq details{padding:14px 0;border-bottom:1px solid var(--line);max-width:80ch}
+.faq summary{cursor:pointer;font-weight:500}
+.faq details p{margin:10px 0 0}
+.related{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0 0;padding:0;list-style:none}
+.related li{margin:0}
+.related a{display:block;height:100%;padding:14px 16px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);text-decoration:none}
+.related a:hover{box-shadow:inset 0 0 0 1px var(--ink)}
+.related b{display:block;font-weight:500}.related span{color:var(--muted);font-size:.88rem}
+article code{overflow-wrap:anywhere}
+details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+</style>
+<style>ol.steps{list-style:none;counter-reset:s;padding:0;margin:18px 0 26px;display:grid;gap:10px}ol.steps li{counter-increment:s;position:relative;margin:0;padding:15px 18px 15px 60px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}ol.steps li::before{content:counter(s);position:absolute;left:16px;top:14px;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font:600 .9rem/30px var(--sans);text-align:center}.hero-img{display:block;width:100%;height:auto;border-radius:14px;margin:6px 0 26px;box-shadow:0 0 0 1px var(--line)}.stat b{color:var(--accent)}</style>
+<link rel="stylesheet" href="/assets/footer.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>Squidbrake</a>
+    <nav aria-label="Docs"><a href="/#how">How it works</a><a href="/security">Security</a><a href="/pricing">Pricing</a><a href="/about">About</a><a href="/blog">Blog</a><a href="/changelog">Changelog</a><a href="/signup"><b>Try now</b></a></nav>
+  </header>
+
+  <main>
+    <p class="kicker">Audit</p>
+    <article>
+    <h1>Audit trails for AI agents: what to log, and how to make the record tamper-evident</h1>
+    <p class="byline">By <a href="/about">Karishma Sinha</a> · <time datetime="2026-11-17">17 November 2026</time> · 6 min read</p>
+    <img class="hero-img" src="/assets/blog/ai-agent-audit-trail.png" width="1200" height="630" alt="An AI agent audit trail: a test run allowed, a push to main approved by a person, a delete blocked">
+    <p class="lead">When an agent changes something important, three people will ask about it: the engineer who wants to know what happened, the security lead who wants to know why it was allowed, and the auditor who wants proof that someone approved it. Traces and chat transcripts answer the first. An audit trail has to answer all three.</p>
+    <div class="tldr"><p>In short</p><ul><li>Observability traces show how an agent reasoned. An audit trail shows what it did, why it was allowed and who approved it.</li><li>Record the person the agent works for, the exact action, the rule and rules version that decided, the approver and the outcome.</li><li>Redact secrets before they're stored, not after.</li><li>Chain each entry to the one before it, so an edit or a deleted entry shows. That is tamper-evident, not tamper-proof.</li></ul></div>
+    <nav class="toc" aria-label="On this page"><p>On this page</p><ol><li><a href="#traces-vs-audit-trail">Traces are not an audit trail</a></li><li><a href="#what-to-log">What an AI agent audit log should record</a></li><li><a href="#tamper-evident">Making the record tamper-evident</a></li><li><a href="#redaction-and-retention">Redaction and retention</a></li><li><a href="#what-auditors-ask">What auditors will ask for</a></li><li><a href="#with-squidbrake">How Squidbrake records agent actions</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+    <div class="stats"><div class="stat"><b>70%</b><span>of enterprises had an agent failure their team couldn&#x27;t trace (Kore.ai survey, 2026)</span></div><div class="stat"><b>78%</b><span>of US executives aren&#x27;t confident they&#x27;d pass an independent AI governance audit within 90 days (Grant Thornton, 2026)</span></div></div>
+    
+    <h2 id="traces-vs-audit-trail">Traces are not an audit trail</h2>
+    <p>LLM observability tools record prompts, completions, tool calls and latency. They're built for debugging, and they're good at it. They tend to fall short as evidence for three reasons:</p>
+<ul>
+<li>They record what the agent <em>did</em>, not what it was <em>allowed</em> to do, by which rule, and who agreed.</li>
+<li>They're often sampled, rotated after days, and editable by the team they're meant to hold to account.</li>
+<li>They're hard for anyone outside engineering to read.</li>
+</ul>
+<p>Keep your traces. Add a record of decisions next to them.</p>
+    
+    <h2 id="what-to-log">What an AI agent audit log should record</h2>
+    <div class="tbl"><table class="cmp"><thead><tr><th>Field</th><th>Why it matters</th></tr></thead><tbody>
+<tr><td>Time, agent and agent version</td><td>Which agent, on which machine or service</td></tr>
+<tr><td>The person or team it works for</td><td>An agent acts for someone; the record should say who</td></tr>
+<tr><td>Conversation or session</td><td>Groups steps, so you can see what led to an action</td></tr>
+<tr><td>The tool and its input, with secrets redacted</td><td>The exact command, query or API call, not a summary</td></tr>
+<tr><td>Decision, rule and rules version</td><td>Allowed, held or blocked, and by which version of which rule</td></tr>
+<tr><td>Approver, time to decide and reason</td><td>Proof of sign-off, and that the approver wasn't the requester</td></tr>
+<tr><td>What it changed</td><td>"deleted 4,312 rows", "destroyed 12 resources", shown before approval</td></tr>
+<tr><td>Outcome</td><td>Ran, failed, rejected, timed out, undone</td></tr>
+</tbody></table></div>
+    
+    <h2 id="tamper-evident">Making the record tamper-evident</h2>
+    <p>A log that the people it covers can quietly edit is weak evidence. The standard fix is a hash chain: each entry includes a hash of the entry before it, so changing or removing any entry breaks every hash after it. Add periodic signed checkpoints and anyone can verify the chain offline, without trusting the server that wrote it.</p>
+<div class="note">Be precise about the claim. A hash chain is <b>tamper-evident</b>: it shows that the record was changed. It is not tamper-proof: someone with full access can still delete the whole log. Copying entries to a second system you don't administer, such as your SIEM, closes most of that gap.</div>
+    
+    <h2 id="redaction-and-retention">Redaction and retention</h2>
+    <ul>
+<li><b>Redact on the way in.</b> Agents read <code>.env</code> files and print tokens. Strip secrets before the entry is written; an audit log full of keys is a new risk.</li>
+<li><b>Keep it as long as your other change records.</b> Many teams keep change-management evidence for at least the audit period plus a year. Your auditor or legal team sets the number.</li>
+<li><b>Stream a copy out.</b> Send each decision to Splunk, Datadog or an OpenTelemetry collector, so security sees agent actions next to everything else.</li>
+</ul>
+    
+    <h2 id="what-auditors-ask">What auditors will ask for</h2>
+    <p>Auditors don't yet have agent-specific checklists. They apply the change controls they already test, such as SOC 2 CC8.1, to changes an agent made. Expect questions like: which changes reached production, who approved each one, was the approver independent of the requester, and can you show the record wasn't altered. A one-page evidence pack per period answers most of them. More in <a href="/blog/soc-2-ai-agents">SOC 2 for AI agents</a>.</p>
+    
+    <h2 id="with-squidbrake">How Squidbrake records agent actions</h2>
+    <p>Every decision Squidbrake makes, allowed, held, approved, rejected or blocked, goes into a hash-chained record with signed checkpoints:</p>
+<pre>squidbrake audit verify      <span class="c"># check the chain and checkpoints, offline</span>
+squidbrake evidence          <span class="c"># a one-page evidence pack for auditors</span></pre>
+<ul>
+<li>Each entry has who asked, which agent, the redacted input, the rule and rules version, the approver and the steps that led to it.</li>
+<li>Every rules version that decided something is kept, with a diff.</li>
+<li><i>Settings → Send to your SIEM</i> streams decisions to Splunk, Datadog or an OTLP collector.</li>
+</ul>
+    
+    <h2 id="faq">FAQ</h2>
+    <div class="faq"><details><summary>What should an AI agent audit log contain?</summary><p>Time, agent, the person it works for, the session, the exact tool call with secrets redacted, the decision with the rule and rules version, the approver and their reason, what changed, and the outcome.</p></details><details><summary>Is a hash-chained audit log tamper-proof?</summary><p>No, it is tamper-evident: any edit or removed entry breaks the chain and shows up on verification. Someone with full access could still delete the whole log, so keep a copy in a second system such as a SIEM.</p></details><details><summary>Are OpenTelemetry traces enough for an AI agent audit trail?</summary><p>Usually not on their own. Traces show what the agent did, but often not which rule allowed it or who approved it, and they&#x27;re often sampled or short-lived. Use them for debugging alongside a decision record.</p></details><details><summary>How long should AI agent audit logs be kept?</summary><p>As long as your other change-management evidence, which your auditor or legal team sets. Many teams keep at least the audit period plus a year.</p></details></div>
+    <div class="cta-box"><p><strong>Try it on your own agents.</strong> <code>pipx install squidbrake</code>, then
+      <code>squidbrake connect all</code>. Start in shadow mode: nothing is blocked in week one, you see what would have been.
+      <a href="/docs">Quickstart</a> · <a href="/benchmark">Benchmark</a> · <a href="/#demo">Book a demo</a></p></div>
+    
+    <h2 id="related">Related guides</h2>
+    <ul class="related"><li><a href="/blog/soc-2-ai-agents"><b>SOC 2 for AI agents: the change-management evidence auditors will ask for</b><span>When AI agents change production, SOC 2 CC8.1 still applies. What auditors ask about agent changes, and how to produce approval and audit-trail evidence.</span></a></li><li><a href="/blog/ai-agent-governance-framework"><b>AI agent governance: a practical framework for teams putting agents in production</b><span>A practical AI agent governance framework: inventory, identity, least privilege, approvals, a kill switch, an audit trail and a weekly review.</span></a></li><li><a href="/blog/eu-ai-act-article-14-human-oversight-ai-agents"><b>EU AI Act Article 14: human oversight for AI agents</b><span>What Article 14 of the EU AI Act asks for in human oversight of high-risk AI, what it means for AI agents that act, and how to produce the evidence.</span></a></li></ul>
+    </article>
+  </main>
+
+
+  <footer class="sf">
+    <div class="sf-about"><a class="brand" href="/" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>Squidbrake</a><p>Squidbrake is open-source change control for AI agents. Routine actions by Claude Code, Cursor, Codex and MCP tools run on their own, risky changes wait for a person, and catastrophic ones are blocked. Every decision lands in a tamper-evident audit log.</p><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" loading="lazy" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a></div>
+    <div class="sf-grid">
+      <nav class="sf-col" aria-label="Product"><p class="sf-h">Product</p><ul><li><a href="/#how">How it works</a></li><li><a href="/docs">Quickstart and docs</a></li><li><a href="/pricing">Pricing</a></li><li><a href="/security">Security and compliance</a></li><li><a href="/benchmark">Benchmark: 16 real incidents</a></li><li><a href="/changelog">Changelog</a></li><li><a href="/signup">Try Squidbrake</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Guides"><p class="sf-h">Guides</p><ul><li><a href="/blog/ai-agent-governance-framework">AI agent governance</a></li><li><a href="/blog/least-privilege-ai-agents">Least privilege for AI agents</a></li><li><a href="/blog/ai-agent-audit-trail">AI agent audit trail</a></li><li><a href="/blog/ai-agent-kill-switch">AI agent kill switch</a></li><li><a href="/blog/human-in-the-loop-approval-for-ai-agents">Human-in-the-loop approval</a></li><li><a href="/blog/ai-agent-guardrails">AI agent guardrails</a></li><li><a href="/blog/prompt-injection-ai-agents">Prompt injection in AI agents</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Coding agents"><p class="sf-h">Coding agents</p><ul><li><a href="/blog/claude-code-enterprise-security">Claude Code for teams</a></li><li><a href="/blog/claude-code-dangerously-skip-permissions">Claude Code skip-permissions</a></li><li><a href="/blog/yolo-mode-claude-code-cursor-codex">YOLO mode: Claude Code, Cursor, Codex</a></li><li><a href="/blog/claude-code-deleted-my-files">Claude Code deleted my files</a></li><li><a href="/blog/ai-agent-git-force-push">Stop agents force-pushing</a></li><li><a href="/blog/ai-coding-agent-policy-template">AI coding agent policy template</a></li><li><a href="/blog/vibe-coding-security-checklist">Vibe coding security</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Compliance"><p class="sf-h">Compliance</p><ul><li><a href="/blog/soc-2-ai-agents">SOC 2 for AI agents</a></li><li><a href="/blog/eu-ai-act-article-14-human-oversight-ai-agents">EU AI Act Article 14</a></li><li><a href="/blog/owasp-top-10-agentic-applications">OWASP Top 10 for agents</a></li><li><a href="/blog/mcp-security-checklist">MCP security checklist</a></li><li><a href="/blog/ai-agent-deleted-production-database">AI agent deleted a prod database</a></li><li><a href="/blog/squidbrake-vs-kontext">Squidbrake vs Kontext</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Company"><p class="sf-h">Company</p><ul><li><a href="/about">About</a></li><li><a href="/blog">Blog</a></li><li><a href="mailto:pulkit@squidbrake.com">Contact</a></li><li><a href="https://github.com/batrapulkit/squidbrake" target="_blank" rel="noopener">GitHub</a></li><li><a href="https://pypi.org/project/squidbrake/" target="_blank" rel="noopener">PyPI</a></li><li><a href="https://www.linkedin.com/company/squidbrake" target="_blank" rel="noopener">LinkedIn</a></li></ul></nav>
+    </div>
+    <div class="sf-bot"><span>© 2026 Squidbrake, Inc.</span><span class="agents">For AI agents: <a href="/llms.txt">llms.txt</a> · <a href="/index.md">site as markdown</a> · <a href="/sitemap.xml">sitemap</a></span><a href="/security">Security and privacy</a></div>
+  </footer>
+</div>
+<script src="/assets/try.js" defer></script>
+<script src="/assets/menu.js" defer></script>
+</body>
+</html>

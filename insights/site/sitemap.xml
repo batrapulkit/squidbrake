@@ -7,7 +7,7 @@
   <url><loc>https://squidbrake.com/security</loc><lastmod>2026-11-13</lastmod></url>
   <url><loc>https://squidbrake.com/changelog</loc><lastmod>2026-11-14</lastmod></url>
   <url><loc>https://squidbrake.com/about</loc><lastmod>2026-11-12</lastmod></url>
-  <url><loc>https://squidbrake.com/blog</loc><lastmod>2026-11-12</lastmod></url>
+  <url><loc>https://squidbrake.com/blog</loc><lastmod>2026-11-17</lastmod></url>
   <url><loc>https://squidbrake.com/blog/ai-agent-deleted-production-database</loc><lastmod>2026-11-12</lastmod></url>
   <url><loc>https://squidbrake.com/blog/human-in-the-loop-approval-for-ai-agents</loc><lastmod>2026-11-12</lastmod></url>
   <url><loc>https://squidbrake.com/blog/mcp-security-checklist</loc><lastmod>2026-11-12</lastmod></url>
@@ -24,4 +24,10 @@
   <url><loc>https://squidbrake.com/blog/vibe-coding-security-checklist</loc><lastmod>2026-11-16</lastmod></url>
   <url><loc>https://squidbrake.com/blog/ai-agent-git-force-push</loc><lastmod>2026-11-16</lastmod></url>
   <url><loc>https://squidbrake.com/blog/ai-agent-approval-fatigue</loc><lastmod>2026-11-16</lastmod></url>
+  <url><loc>https://squidbrake.com/blog/ai-agent-governance-framework</loc><lastmod>2026-11-17</lastmod></url>
+  <url><loc>https://squidbrake.com/blog/ai-agent-audit-trail</loc><lastmod>2026-11-17</lastmod></url>
+  <url><loc>https://squidbrake.com/blog/claude-code-enterprise-security</loc><lastmod>2026-11-17</lastmod></url>
+  <url><loc>https://squidbrake.com/blog/least-privilege-ai-agents</loc><lastmod>2026-11-17</lastmod></url>
+  <url><loc>https://squidbrake.com/blog/ai-agent-kill-switch</loc><lastmod>2026-11-17</lastmod></url>
+  <url><loc>https://squidbrake.com/blog/ai-coding-agent-policy-template</loc><lastmod>2026-11-17</lastmod></url>
 </urlset>

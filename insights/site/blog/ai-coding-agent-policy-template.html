@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI coding agent policy template for engineering teams</title>
+<meta name="description" content="A copy-ready AI coding agent policy for engineering teams: approved tools, data rules, what agents may do alone, what needs a person, and how to enforce it.">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+<meta name="author" content="Karishma Sinha">
+<link rel="canonical" href="https://squidbrake.com/blog/ai-coding-agent-policy-template">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://squidbrake.com/blog/ai-coding-agent-policy-template">
+<meta property="og:site_name" content="Squidbrake">
+<meta property="og:title" content="AI coding agent policy template for engineering teams">
+<meta property="og:description" content="A copy-ready AI coding agent policy for engineering teams: approved tools, data rules, what agents may do alone, what needs a person, and how to enforce it.">
+<meta property="og:image" content="https://squidbrake.com/assets/blog/ai-coding-agent-policy-template.png">
+<meta property="article:published_time" content="2026-11-17">
+<meta property="article:author" content="https://squidbrake.com/about">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="AI coding agent policy template for engineering teams">
+<meta name="twitter:description" content="A copy-ready AI coding agent policy for engineering teams: approved tools, data rules, what agents may do alone, what needs a person, and how to enforce it.">
+<meta name="twitter:image" content="https://squidbrake.com/assets/blog/ai-coding-agent-policy-template.png">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "BlogPosting", "headline": "AI coding agent policy: a template for engineering teams (2026)", "description": "A copy-ready AI coding agent policy for engineering teams: approved tools, data rules, what agents may do alone, what needs a person, and how to enforce it.", "url": "https://squidbrake.com/blog/ai-coding-agent-policy-template", "mainEntityOfPage": "https://squidbrake.com/blog/ai-coding-agent-policy-template", "datePublished": "2026-11-17", "dateModified": "2026-11-17", "image": "https://squidbrake.com/assets/blog/ai-coding-agent-policy-template.png", "inLanguage": "en", "keywords": "ai coding assistant policy, ai coding agent policy template, ai acceptable use policy for developers, generative ai policy for engineering teams, claude code cursor company policy", "articleSection": "Policy", "wordCount": 1027, "author": {"@type": "Person", "@id": "https://squidbrake.com/about#karishma", "name": "Karishma Sinha", "url": "https://squidbrake.com/about"}, "publisher": {"@type": "Organization", "@id": "https://squidbrake.com/#org", "name": "Squidbrake", "url": "https://squidbrake.com/", "logo": "https://squidbrake.com/assets/logo-512.png"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://squidbrake.com/"}, {"@type": "ListItem", "position": 2, "name": "Blog", "item": "https://squidbrake.com/blog"}, {"@type": "ListItem", "position": 3, "name": "AI coding agent policy: a template for engineering teams (2026)", "item": "https://squidbrake.com/blog/ai-coding-agent-policy-template"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "What should an AI coding agent policy include?", "acceptedAnswer": {"@type": "Answer", "text": "Scope, approved agents, data rules, what agents may do alone, what needs a person's approval, what is never allowed, rules on auto-run modes and MCP servers, record keeping, incident steps and exceptions."}}, {"@type": "Question", "name": "Should companies allow Claude Code, Cursor or Copilot?", "acceptedAnswer": {"@type": "Answer", "text": "Most do, on company accounts, with a policy and enforced settings. Banning them tends to push use onto personal accounts where nothing is controlled or recorded."}}, {"@type": "Question", "name": "Is a written AI policy enough?", "acceptedAnswer": {"@type": "Answer", "text": "No. A policy says what should happen; enforcement makes sure it does. Map each clause to a managed setting, a server-side rule or a check before the action."}}, {"@type": "Question", "name": "Should developers use YOLO or skip-permissions mode at work?", "acceptedAnswer": {"@type": "Answer", "text": "Only inside disposable containers or VMs without production credentials. On a laptop that can reach production, turn it off in managed settings."}}]}]}</script>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preload" href="/assets/fonts/host-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/fonts/fonts.css">
+<style>
+:root{
+  --bg:#E6EBE2; --surface:#F4F6F1; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5;
+  --go:#237447; --stop:#C0301C; --hold:#A5560C; --accent:#F2622E; --accent-hover:#E4541F;
+  --code-bg:#1E2A23; --code-ink:#E6EDE4; --code-muted:#93A196;
+  --sans:"Host Grotesk","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:4px}
+.wrap{width:min(1120px,100% - 32px);margin-inline:auto}
+main p,main li,main dd,main>h1{max-width:80ch}   /* the page uses the width, a line of text stays readable */
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 0;border-bottom:1px solid var(--line)}
+.brand{display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:1.2rem;letter-spacing:-0.03em;text-decoration:none}
+.brand svg{width:32px;height:32px}
+header nav{display:flex;gap:20px;font-size:.95rem}
+header nav a{color:var(--muted);text-decoration:none}
+header nav a:hover{color:var(--ink)}
+main{padding:56px 0 80px}
+.kicker{margin:0 0 14px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-weight:500;font-size:clamp(2.2rem,6vw,3.4rem);line-height:1;letter-spacing:-0.05em;margin:0 0 18px}
+.lead{color:var(--muted);font-size:1.1rem;margin:0 0 40px;max-width:52ch}
+h2{display:flex;align-items:baseline;gap:12px;font-weight:500;font-size:1.6rem;letter-spacing:-0.035em;margin:56px 0 12px}
+h2 .n{font:400 .9rem var(--mono);color:var(--muted)}
+p{margin:0 0 14px}
+.muted{color:var(--muted)}
+code{font:400 .9em var(--mono)}
+p code,li code{background:var(--surface);padding:1px 5px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line)}
+pre{margin:0 0 18px;padding:18px 20px;border-radius:10px;background:var(--code-bg);color:var(--code-ink);font:400 .86rem/1.6 var(--mono);overflow-x:auto}
+pre .c{color:var(--code-muted)}
+pre .d{color:#FF8A75}
+pre .h{color:#F7B267}
+.file{display:block;margin:0 0 -6px;padding:8px 20px 14px;border-radius:10px 10px 0 0;background:var(--code-bg);color:var(--code-muted);font:400 .76rem var(--mono)}
+.file+pre{border-radius:0 0 10px 10px}
+.note{margin:18px 0;padding:14px 18px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0;font-size:.95rem}
+ul{padding-left:1.2em;margin:0 0 14px}
+li{margin:4px 0}
+footer{padding:28px 0 40px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem;display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between}
+footer a{text-decoration:none}
+footer a:hover{color:var(--ink)}
+@media (max-width:560px){ header nav a:not(:last-child){display:none} main{padding:36px 0 56px} pre{font-size:.78rem;padding:14px} }
+.ph-badge{display:inline-block;line-height:0}.ph-badge img{max-width:100%;height:auto}
+</style>
+<style>.posts{list-style:none;padding:0;margin:0}.posts li{padding:22px 0;border-bottom:1px solid var(--line)}.posts a{color:var(--ink);font-size:1.3rem;font-weight:500;letter-spacing:-0.02em}.posts p{margin:6px 0 0;color:var(--muted)}.posts time,.byline{font:400 .82rem var(--mono);color:var(--muted)}article h2{display:block}article li{margin:6px 0}.cta-box{margin:48px 0 0;padding:20px 22px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}.cta-box p{margin:0}.cmp{width:100%;border-collapse:collapse;margin:8px 0 0;font-size:.95rem}.cmp th,.cmp td{text-align:left;vertical-align:top;padding:10px 12px 10px 0;border-bottom:1px solid var(--line)}.cmp th{font-weight:500}.cmp td:first-child{color:var(--muted)}.tbl{overflow-x:auto}@media (max-width:560px){.tbl .cmp:has(th:nth-child(4)){min-width:540px}}</style>
+<style>
+.toc{margin:0 0 36px;padding:16px 20px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);max-width:80ch}
+.toc p{margin:0 0 6px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.toc ol{margin:0;padding-left:1.2em}.toc li{margin:2px 0}.toc a{text-decoration:none}.toc a:hover{text-decoration:underline}
+.tldr{margin:0 0 32px;padding:18px 22px;border-radius:12px;border-left:3px solid var(--accent);background:var(--surface);max-width:80ch}
+.tldr p{margin:0 0 6px;font-weight:500}.tldr ul{margin:0}
+figure.fig{margin:28px 0 30px;padding:20px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+figure.fig .scroll{overflow-x:auto}
+figure.fig svg{display:block;width:100%;min-width:560px;height:auto;font-family:var(--sans)}
+figure.fig figcaption{margin:12px 0 0;color:var(--muted);font-size:.9rem;max-width:80ch}
+.fig .bx{fill:var(--bg);stroke:var(--line);stroke-width:1.5}
+.fig .bx-go{fill:var(--bg);stroke:var(--go);stroke-width:2}
+.fig .bx-hold{fill:var(--bg);stroke:var(--hold);stroke-width:2}
+.fig .bx-stop{fill:var(--bg);stroke:var(--stop);stroke-width:2}
+.fig .bx-acc{fill:var(--bg);stroke:var(--accent);stroke-width:2}
+.fig .bx-off{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:5 5}
+.fig .t{fill:var(--ink);font-size:15px;font-weight:500}
+.fig .s{fill:var(--muted);font-size:12.5px}
+.fig .m{fill:var(--muted);font:400 11.5px var(--mono);letter-spacing:.06em}
+.fig .ln{stroke:var(--muted);stroke-width:1.5;fill:none}
+.fig .ah{fill:var(--muted)}
+.fig .go{fill:var(--go)}.fig .hold{fill:var(--hold)}.fig .stop{fill:var(--stop)}.fig .acc{fill:var(--accent)}.fig .mut{fill:var(--muted)}
+.fig .bar{fill:var(--muted)}.fig .bar-hi{fill:var(--accent)}.fig .grid{stroke:var(--line);stroke-width:1}
+.fig .ring-a{fill:var(--go);fill-opacity:.13;stroke:var(--go);stroke-width:1.5}
+.fig .ring-b{fill:var(--hold);fill-opacity:.13;stroke:var(--hold);stroke-width:1.5}
+.fig .ring-c{fill:var(--accent);fill-opacity:.13;stroke:var(--accent);stroke-width:1.5}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:24px 0 30px}
+.stat{padding:16px 18px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+.stat b{display:block;font-size:1.9rem;font-weight:500;letter-spacing:-0.04em;line-height:1.1}
+.stat span{color:var(--muted);font-size:.88rem}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;font:400 .76rem var(--mono);white-space:nowrap;box-shadow:inset 0 0 0 1px currentColor}
+.pill.go{color:var(--go)}.pill.hold{color:var(--hold)}.pill.stop{color:var(--stop)}
+.faq details{padding:14px 0;border-bottom:1px solid var(--line);max-width:80ch}
+.faq summary{cursor:pointer;font-weight:500}
+.faq details p{margin:10px 0 0}
+.related{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0 0;padding:0;list-style:none}
+.related li{margin:0}
+.related a{display:block;height:100%;padding:14px 16px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);text-decoration:none}
+.related a:hover{box-shadow:inset 0 0 0 1px var(--ink)}
+.related b{display:block;font-weight:500}.related span{color:var(--muted);font-size:.88rem}
+article code{overflow-wrap:anywhere}
+details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+</style>
+<style>ol.steps{list-style:none;counter-reset:s;padding:0;margin:18px 0 26px;display:grid;gap:10px}ol.steps li{counter-increment:s;position:relative;margin:0;padding:15px 18px 15px 60px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}ol.steps li::before{content:counter(s);position:absolute;left:16px;top:14px;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font:600 .9rem/30px var(--sans);text-align:center}.hero-img{display:block;width:100%;height:auto;border-radius:14px;margin:6px 0 26px;box-shadow:0 0 0 1px var(--line)}.stat b{color:var(--accent)}</style>
+<link rel="stylesheet" href="/assets/footer.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>Squidbrake</a>
+    <nav aria-label="Docs"><a href="/#how">How it works</a><a href="/security">Security</a><a href="/pricing">Pricing</a><a href="/about">About</a><a href="/blog">Blog</a><a href="/changelog">Changelog</a><a href="/signup"><b>Try now</b></a></nav>
+  </header>
+
+  <main>
+    <p class="kicker">Policy</p>
+    <article>
+    <h1>AI coding agent policy: a template for engineering teams (2026)</h1>
+    <p class="byline">By <a href="/about">Karishma Sinha</a> · <time datetime="2026-11-17">17 November 2026</time> · 6 min read</p>
+    <img class="hero-img" src="/assets/blog/ai-coding-agent-policy-template.png" width="1200" height="630" alt="An enforceable AI coding agent policy: edits allowed, pushes to main held, destructive commands blocked">
+    <p class="lead">Most companies now have engineers using Claude Code, Cursor, Codex or Copilot, and many don't have a written policy for it. Below is a template you can copy, cut down and adopt. The second half matters more than the first: for each clause, how to enforce it so it isn't only a document.</p>
+    <div class="tldr"><p>In short</p><ul><li>A policy says which agents are approved, what data they may see, what they may do alone and what needs a person.</li><li>Copy the template below and edit it to fit; it's short on purpose.</li><li>A written rule isn't a control. Map each clause to a setting, a server rule or a check.</li><li>Review it every quarter: the agents change faster than most policies.</li></ul></div>
+    <nav class="toc" aria-label="On this page"><p>On this page</p><ol><li><a href="#why-a-policy">Why you need one</a></li><li><a href="#template">The template</a></li><li><a href="#enforcing-it">Enforcing each clause</a></li><li><a href="#policy-isnt-a-control">A policy isn&#x27;t a control</a></li><li><a href="#with-squidbrake">Enforcing it with Squidbrake</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+    <div class="stats"><div class="stat"><b>82%</b><span>of organisations use AI agents (SailPoint survey, 2025)</span></div><div class="stat"><b>44%</b><span>have policies to secure them (same survey)</span></div></div>
+    
+    <h2 id="why-a-policy">Why you need one</h2>
+    <p>Coding agents now run commands, edit code and call tools on engineers' machines, with those engineers' credentials. Without a policy, every engineer picks their own settings, including skip-permissions mode on a laptop that can reach production. A short policy sets the floor and tells people what's expected. Enforcement makes the floor real.</p>
+    
+    <h2 id="template">The template</h2>
+    <p>Copy it, replace the bracketed parts, delete what doesn't apply.</p>
+<pre>AI CODING AGENT POLICY: [Company], v1, [date]
+Owner: [Head of Engineering]   Review: every quarter
+
+1. SCOPE
+   Covers AI agents that read, write or run code or commands on company
+   systems or with company credentials: [Claude Code, Cursor, Codex,
+   GitHub Copilot, ...], including MCP servers they connect to.
+
+2. APPROVED AGENTS
+   Only agents on the approved list, on company accounts. To add one,
+   ask [#security] with what it needs access to.
+
+3. DATA
+   No customer personal data, secrets or credentials in prompts.
+   Agents must not read .env files, key files or credential stores.
+
+4. WHAT AGENTS MAY DO ALONE
+   Read code, run tests and linters, edit files in the repo, commit
+   and push to their own branches, run read-only queries on dev data.
+
+5. WHAT NEEDS A PERSON'S APPROVAL (not the person who asked)
+   Pushing or merging to main/release branches, production deploys,
+   infrastructure changes (terraform, kubectl), deleting data,
+   database migrations, sending data outside the company.
+
+6. NEVER
+   Destructive commands outside the repo (rm -rf ~/, disk wipes),
+   force-pushing shared branches, disabling backups or logging,
+   switching off these controls.
+
+7. MODES
+   No skip-permissions / YOLO / auto-run modes on machines with
+   production access. Allowed inside disposable containers only.
+
+8. MCP SERVERS
+   Only servers on the approved list. Tokens scoped to the task.
+
+9. RECORDS
+   Agent actions and approvals are recorded and kept for [period].
+
+10. INCIDENTS
+   Stop the agent, revoke its credentials, tell [#security] at once.
+
+11. EXCEPTIONS
+   Written, time-limited, approved by [owner].</pre>
+    
+    <h2 id="enforcing-it">Enforcing each clause</h2>
+    <div class="tbl"><table class="cmp"><thead><tr><th>Clause</th><th>How to enforce it</th></tr></thead><tbody>
+<tr><td>2. Approved agents</td><td>MDM installs; company SSO for agent accounts; managed settings pushed to each machine</td></tr>
+<tr><td>3. Data</td><td>Deny rules for <code>.env</code> and key files in managed settings; secrets manager instead of files</td></tr>
+<tr><td>4 and 5. Alone vs approval</td><td>Branch protection on <code>main</code>; a hook or gateway that holds risky actions for a second person</td></tr>
+<tr><td>6. Never</td><td>Block rules that run outside the agent, before the command</td></tr>
+<tr><td>7. Modes</td><td>Turn off bypass mode in managed settings (Claude Code); equivalent settings for other agents</td></tr>
+<tr><td>8. MCP</td><td>MCP allowlists in managed settings; scoped tokens</td></tr>
+<tr><td>9. Records</td><td>A tamper-evident record of every decision, streamed to your SIEM</td></tr>
+<tr><td>10. Incidents</td><td>A kill switch outside the agent; see <a href="/blog/ai-agent-kill-switch">kill switch</a></td></tr>
+</tbody></table></div>
+<p>For Claude Code specifically, see <a href="/blog/claude-code-enterprise-security">securing Claude Code for your team</a>.</p>
+    
+    <h2 id="policy-isnt-a-control">A policy isn&#x27;t a control</h2>
+    <p>During a code freeze, Replit's agent was told not to change anything. It deleted the production database anyway (<a href="/blog/ai-agent-deleted-production-database">write-up</a>). The instruction was clear; nothing enforced it. Put the same rules in your agents' instruction files (<code>CLAUDE.md</code>, <code>AGENTS.md</code>, Cursor rules) so agents know them, and enforce them somewhere the agent can't edit.</p>
+    
+    <h2 id="with-squidbrake">Enforcing it with Squidbrake</h2>
+    <p>Clauses 4 to 10 map directly onto a Squidbrake <code>rules.yaml</code>: allow, hold for a second person, or block, for every agent your team runs. <code>squidbrake lockdown</code> writes the managed-settings files that make each agent use it and turn off skip-permissions modes, for IT to push with MDM. Every decision lands in a tamper-evident record. Start in observe mode and use the first week's report to tune the policy before you enforce it.</p>
+    
+    <h2 id="faq">FAQ</h2>
+    <div class="faq"><details><summary>What should an AI coding agent policy include?</summary><p>Scope, approved agents, data rules, what agents may do alone, what needs a person&#x27;s approval, what is never allowed, rules on auto-run modes and MCP servers, record keeping, incident steps and exceptions.</p></details><details><summary>Should companies allow Claude Code, Cursor or Copilot?</summary><p>Most do, on company accounts, with a policy and enforced settings. Banning them tends to push use onto personal accounts where nothing is controlled or recorded.</p></details><details><summary>Is a written AI policy enough?</summary><p>No. A policy says what should happen; enforcement makes sure it does. Map each clause to a managed setting, a server-side rule or a check before the action.</p></details><details><summary>Should developers use YOLO or skip-permissions mode at work?</summary><p>Only inside disposable containers or VMs without production credentials. On a laptop that can reach production, turn it off in managed settings.</p></details></div>
+    <div class="cta-box"><p><strong>Try it on your own agents.</strong> <code>pipx install squidbrake</code>, then
+      <code>squidbrake connect all</code>. Start in shadow mode: nothing is blocked in week one, you see what would have been.
+      <a href="/docs">Quickstart</a> · <a href="/benchmark">Benchmark</a> · <a href="/#demo">Book a demo</a></p></div>
+    
+    <h2 id="related">Related guides</h2>
+    <ul class="related"><li><a href="/blog/claude-code-enterprise-security"><b>Securing Claude Code for your team: managed settings, permissions, hooks and approvals</b><span>Rolling Claude Code out to a team? Managed settings, allow, ask and deny rules, turning off bypass mode, hooks, sandboxing, MCP allowlists and an audit trail.</span></a></li><li><a href="/blog/yolo-mode-claude-code-cursor-codex"><b>YOLO mode in Claude Code, Cursor and Codex, compared (2026)</b><span>Claude Code auto mode and skip-permissions, Cursor auto-run, Codex --yolo: what each skips, what still protects you, and a safe setup for each.</span></a></li><li><a href="/blog/vibe-coding-security-checklist"><b>Vibe coding security: 10 checks before you ship (2026)</b><span>Moltbook leaked 1.5M API keys from a vibe-coded app. A 10-point checklist for apps built with AI agents: Supabase RLS, keys, auth on every route, backups.</span></a></li></ul>
+    </article>
+  </main>
+
+
+  <footer class="sf">
+    <div class="sf-about"><a class="brand" href="/" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>Squidbrake</a><p>Squidbrake is open-source change control for AI agents. Routine actions by Claude Code, Cursor, Codex and MCP tools run on their own, risky changes wait for a person, and catastrophic ones are blocked. Every decision lands in a tamper-evident audit log.</p><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" loading="lazy" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a></div>
+    <div class="sf-grid">
+      <nav class="sf-col" aria-label="Product"><p class="sf-h">Product</p><ul><li><a href="/#how">How it works</a></li><li><a href="/docs">Quickstart and docs</a></li><li><a href="/pricing">Pricing</a></li><li><a href="/security">Security and compliance</a></li><li><a href="/benchmark">Benchmark: 16 real incidents</a></li><li><a href="/changelog">Changelog</a></li><li><a href="/signup">Try Squidbrake</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Guides"><p class="sf-h">Guides</p><ul><li><a href="/blog/ai-agent-governance-framework">AI agent governance</a></li><li><a href="/blog/least-privilege-ai-agents">Least privilege for AI agents</a></li><li><a href="/blog/ai-agent-audit-trail">AI agent audit trail</a></li><li><a href="/blog/ai-agent-kill-switch">AI agent kill switch</a></li><li><a href="/blog/human-in-the-loop-approval-for-ai-agents">Human-in-the-loop approval</a></li><li><a href="/blog/ai-agent-guardrails">AI agent guardrails</a></li><li><a href="/blog/prompt-injection-ai-agents">Prompt injection in AI agents</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Coding agents"><p class="sf-h">Coding agents</p><ul><li><a href="/blog/claude-code-enterprise-security">Claude Code for teams</a></li><li><a href="/blog/claude-code-dangerously-skip-permissions">Claude Code skip-permissions</a></li><li><a href="/blog/yolo-mode-claude-code-cursor-codex">YOLO mode: Claude Code, Cursor, Codex</a></li><li><a href="/blog/claude-code-deleted-my-files">Claude Code deleted my files</a></li><li><a href="/blog/ai-agent-git-force-push">Stop agents force-pushing</a></li><li><a href="/blog/ai-coding-agent-policy-template">AI coding agent policy template</a></li><li><a href="/blog/vibe-coding-security-checklist">Vibe coding security</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Compliance"><p class="sf-h">Compliance</p><ul><li><a href="/blog/soc-2-ai-agents">SOC 2 for AI agents</a></li><li><a href="/blog/eu-ai-act-article-14-human-oversight-ai-agents">EU AI Act Article 14</a></li><li><a href="/blog/owasp-top-10-agentic-applications">OWASP Top 10 for agents</a></li><li><a href="/blog/mcp-security-checklist">MCP security checklist</a></li><li><a href="/blog/ai-agent-deleted-production-database">AI agent deleted a prod database</a></li><li><a href="/blog/squidbrake-vs-kontext">Squidbrake vs Kontext</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Company"><p class="sf-h">Company</p><ul><li><a href="/about">About</a></li><li><a href="/blog">Blog</a></li><li><a href="mailto:pulkit@squidbrake.com">Contact</a></li><li><a href="https://github.com/batrapulkit/squidbrake" target="_blank" rel="noopener">GitHub</a></li><li><a href="https://pypi.org/project/squidbrake/" target="_blank" rel="noopener">PyPI</a></li><li><a href="https://www.linkedin.com/company/squidbrake" target="_blank" rel="noopener">LinkedIn</a></li></ul></nav>
+    </div>
+    <div class="sf-bot"><span>© 2026 Squidbrake, Inc.</span><span class="agents">For AI agents: <a href="/llms.txt">llms.txt</a> · <a href="/index.md">site as markdown</a> · <a href="/sitemap.xml">sitemap</a></span><a href="/security">Security and privacy</a></div>
+  </footer>
+</div>
+<script src="/assets/try.js" defer></script>
+<script src="/assets/menu.js" defer></script>
+</body>
+</html>
