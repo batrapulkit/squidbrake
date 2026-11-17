@@ -89,6 +89,8 @@ h2.plain{display:block;margin:44px 0 6px}
 @media (max-width:560px){ .rel{grid-template-columns:80px 1fr} .rel time{display:none} td:first-child{white-space:normal} }
 .ph-badge{display:inline-block;line-height:0}.ph-badge img{max-width:100%;height:auto}
 </style>
+<script defer data-domain="squidbrake.com" src="https://plausible.io/js/script.tagged-events.js"></script>
+<script src="/assets/touch.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -160,6 +162,7 @@ h2.plain{display:block;margin:44px 0 6px}
         <div><dt>Hosted dashboards, for pilots</dt><dd>We run the gateway for you on a server we operate. It stores the same things, there. If it has to stay inside your network, self-host it: it's the same software.</dd></div>
         <div><dt>It fails closed, rule by rule</dt><dd>If an agent can't reach Squidbrake, its tool calls don't run. Each rule can say otherwise (<code>when_unreachable: allow</code>, say for reads), and agents keep a copy of those answers so they follow them while it's down. What runs then isn't recorded, so allow only what you'd accept unrecorded.</dd></div>
         <div><dt>Usage stats, and how to turn them off</dt><dd>Squidbrake sends usage stats, always on, and says so the first time you run <code>squidbrake</code> in a terminal. A pip install also asks once for your name and work email before it runs (a pilot or a hosted dashboard doesn't: we already know who it is). They come to us once, with the names of the coding agents installed here, and that computer's usage stats are then linked to you. Sent with the stats: a random id, the command name (never its arguments), version, operating system, CPU type, Python version, country, counts of what was allowed, held and blocked, and for each held or blocked action the program (like <code>rm</code>), the rule and its size as numbers. Never sent: commands an agent ran, file names or contents, prompts, rules, keys, the audit trail. A gateway started without a terminal (Docker, a background service) writes the same notice to its log, then shares its counts; set the switch below before starting it, and <code>SQUIDBRAKE_NAME</code> and <code>SQUIDBRAKE_EMAIL</code> to give the name and email there. Agent hooks send nothing, and nothing is sent from CI. <code>SQUIDBRAKE_TELEMETRY=0</code> or <code>DO_NOT_TRACK=1</code> turns the usage stats off; a pip install still asks for the name and email once and sends them to us; <code>squidbrake telemetry status</code> shows exactly what is sent.</dd></div>
+        <div><dt>This website</dt><dd>Page visits on squidbrake.com are counted with Plausible, which sets no cookies. The site also keeps, in your browser only, where you first came from: a link&#39;s campaign tags, the site that sent you (without its query string) and the first page you opened. It comes to us only when you sign up, ask for a demo or book a call, with your name, email and company, so we know how you found us. Your setup and dashboard pages aren&#39;t counted.</dd></div>
       </dl>
         </div>
       </details>

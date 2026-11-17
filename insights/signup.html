@@ -196,6 +196,8 @@ footer a { color:var(--muted); }
 }
 @media (prefers-reduced-motion: reduce) { .feed .body, .spin { transition:none; animation-duration:3s; } }
 </style>
+<script defer data-domain="squidbrake.com" src="https://plausible.io/js/script.tagged-events.js"></script>
+<script src="/assets/touch.js"></script>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
@@ -553,7 +555,7 @@ if (!CONFIG.supabase_url && !LOCAL_ONLY && !PICK) document.getElementById("fine"
   document.getElementById("fine").innerHTML.replace(/Sign up again with the same email: you get your setup page back\./,
     "Use your setup link from last time, or write to pulkit@squidbrake.com.");
 function choose(body, token) {
-  const extra = { source: SOURCE, ...(PLAN ? { plan: PLAN } : {}), ...(NEW_KEYS ? { new_keys: true } : {}) };
+  const extra = { source: SOURCE, attribution: (window.sbFirstTouch && window.sbFirstTouch()) || {}, ...(PLAN ? { plan: PLAN } : {}), ...(NEW_KEYS ? { new_keys: true } : {}) };
   if (LOCAL_ONLY) return finish({ ...body, ...extra, setup: "local" }, token);
   if (!pick()) return finish({ ...body, ...extra, setup: "hosted" }, token);
   state(`<h2>How do you want to run Squidbrake?</h2><p>Same checks either way. You can switch later.</p>

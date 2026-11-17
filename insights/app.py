@@ -24,7 +24,7 @@ import sqlite3
 import threading
 import time
 import urllib.request
-from urllib.parse import quote, urlencode
+from urllib.parse import quote, urlencode, urlsplit
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pathlib import Path
@@ -171,11 +171,17 @@ with db() as _c:
                         # the founder said "stop these daily emails" (daily-off link in the email)
                         ("daily_off", "INTEGER NOT NULL DEFAULT 0"),
                         # the founder's time zone, from their browser on the start page: the daily email goes at 7 pm there
-                        ("tz", "TEXT")):
+                        ("tz", "TEXT"),
+                        # where a website sign-up came from: the ?from= word, and first touch (utm tags, referring
+                        # site, first page) as JSON, from site/assets/touch.js (_attribution)
+                        ("source", "TEXT"), ("attribution", "TEXT")):
         if _col not in _have:
             _c.execute(f"ALTER TABLE pilots ADD COLUMN {_col} {_type}")
             if _col == "keys_first_shown_at":   # dashboards whose keys were already taken stay that way
                 _c.execute("UPDATE pilots SET keys_first_shown_at=keys_revealed_at WHERE keys_revealed_at IS NOT NULL")
+
+    if "attribution" not in {r[1] for r in _c.execute("PRAGMA table_info(team_requests)")}:
+        _c.execute("ALTER TABLE team_requests ADD COLUMN attribution TEXT")   # first touch, as for pilots
 
 # Every install that says yes to the first-run question (telemetry.py) joins this code. It has gone missing from the
 # database twice (deleted with the other test links), and then every one of those joins was refused with a 404 that
@@ -542,6 +548,128 @@ def registrations():
     out.sort(key=lambda e: e["first"], reverse=True)
     return {"people": out, "total": len(out), "computers": len(rows),
             "this_week": sum(1 for e in out if e["first"][:10] >= (datetime.now(timezone.utc).date() - timedelta(days=6)).isoformat())}
+
+
+_EMAIL_IN = re.compile(r"[^@\s<>(),;·]+@[^@\s<>(),;·]+\.[a-z]{2,}", re.I)
+
+
+@app.get("/v1/admin/people", dependencies=[Depends(admin)])
+def people():
+    """Everyone we know by email, one row each, from every way in: a pip install's registration, a website sign-up
+    (hosted or local), a pilot made from the admin, and a demo request. Per person: who they are, how they came (the
+    ?from= word or install link, and the website's first touch), what they signed up for, and what their installs and
+    hosted gateway have done, as counts (pilot.py): never commands, files or prompts."""
+    week = (datetime.now(timezone.utc).date() - timedelta(days=6)).isoformat()
+    out: dict[str, dict] = {}
+
+    def person(email: str, at: str) -> dict:
+        e = out.setdefault(email, {"email": email, "name": None, "company": None, "ways": [], "first": at, "last": at,
+                                   "source": None, "attribution": None, "agents": set(), "codes": [], "plan": None,
+                                   "state": None, "hosted": None, "mrr": 0, "paid": False, "trial_ends": None,
+                                   "computers": 0, "os": set(), "version": None, "devices": 0, "page_views": 0,
+                                   "notes": []})
+        e["first"], e["last"] = min(e["first"], at), max(e["last"], at)
+        return e
+
+    def way(e, w):
+        if w not in e["ways"]:
+            e["ways"].append(w)
+
+    with db() as c:
+        for r in c.execute("SELECT * FROM registrations ORDER BY created_at"):
+            e = person(r["email"], r["created_at"])
+            way(e, "pip")
+            e["name"], e["company"] = r["name"] or e["name"], r["company"] or e["company"]
+            e["source"] = e["source"] or r["ref"]
+            e["agents"] |= set(json.loads(r["agents"] or "[]"))
+            e["computers"] += 1
+            e["os"].add((r["os"] or "").split(" ")[0] or "unknown")
+            e["version"] = r["version"] or e["version"]
+            e["last"] = max(e["last"], r["last_at"] or "")
+        pilots = [dict(r) for r in c.execute("SELECT * FROM pilots WHERE code != ? ORDER BY created_at", (COMMUNITY_CODE,))]
+        for p in pilots:
+            m = _EMAIL_IN.search(p["contact"] or "")
+            email = (p["email"] or (m.group(0) if m else "")).strip().lower()
+            if not email:
+                continue
+            e = person(email, p["created_at"])
+            note = p["note"] or ""
+            if note == "first run":
+                way(e, "pip")
+                e["name"] = e["name"] or p["contact"]
+            else:
+                way(e, ("hosted" if p["hosted"] else "signup") if note.startswith("signup") else "pilot")
+                contact = (p["contact"] or "").split(" · ")[0].strip()
+                e["name"] = e["name"] or (contact if contact and "@" not in contact else None)
+                e["company"] = e["company"] or p["company"]
+                if not note.startswith("signup") and note:
+                    e["notes"].append(note)
+            e["codes"].append(p["code"])
+            e["source"] = e["source"] or p.get("source")
+            e["attribution"] = e["attribution"] or (json.loads(p["attribution"]) if p.get("attribution") else None)
+            e["agents"] |= set(json.loads(p["uses_agents"] or "[]"))
+            e["plan"] = p["plan"] or e["plan"]
+            e["state"] = p["state"] or e["state"]
+            e["hosted"] = p["subdomain"] or e["hosted"]
+            e["mrr"] += p["mrr"] or 0
+            e["paid"] = e["paid"] or bool(p["paid_once"] or p["paying_since"] or p["mrr"])
+            e["trial_ends"] = p["trial_ends"] or e["trial_ends"]
+            e["page_views"] += p["page_views"] or 0
+            if p["last_view"]:
+                e["last"] = max(e["last"], p["last_view"])
+        for r in c.execute("SELECT * FROM team_requests ORDER BY created_at"):
+            email = (r["email"] or "").strip().lower()
+            if not email:
+                continue
+            e = person(email, r["created_at"])
+            way(e, "demo request")
+            e["name"], e["company"] = e["name"] or r["name"], e["company"] or r["company"]
+            e["source"] = e["source"] or r["source"] or None
+            e["attribution"] = e["attribution"] or (json.loads(r["attribution"]) if r["attribution"] else None)
+            if r["team_size"]:
+                e["notes"].append(f"team of {r['team_size']}")
+            if r["note"]:
+                e["notes"].append(r["note"])
+        # what their installs did: every install under one of their pilot codes (a hosted gateway is one)
+        code_of = {code: email for email, e in out.items() for code in e["codes"]}
+        installs = [dict(r) for r in c.execute("SELECT install_id, code, last_seen, total_events, connected, left_at "
+                                                "FROM installs")]
+        mine = {i["install_id"]: code_of[i["code"]] for i in installs if i["code"] in code_of}
+        for i in installs:
+            if i["install_id"] not in mine:
+                continue
+            e = out[mine[i["install_id"]]]
+            e["actions"] = e.get("actions", 0) + (i["total_events"] or 0)
+            e["sharing"] = e.get("sharing", 0) + (i["left_at"] is None)
+            if i["last_seen"]:
+                e["last_active"] = max(e.get("last_active") or "", i["last_seen"])
+                e["last"] = max(e["last"], i["last_seen"])
+            e["agents"] |= set(json.loads(i["connected"] or "[]") if (i["connected"] or "").startswith("[") else [])
+        for iid, day, counts in c.execute("SELECT install_id, day, counts FROM days WHERE day >= ?", (week,)):
+            if iid in mine:
+                n = json.loads(counts)
+                e = out[mine[iid]]
+                e["actions_7d"] = e.get("actions_7d", 0) + _int(n.get("events"))
+                e["held_7d"] = e.get("held_7d", 0) + _int(n.get("held"))
+                e["blocked_7d"] = e.get("blocked_7d", 0) + _int(n.get("blocked")) + _int(n.get("rejected"))
+                if _int(n.get("events")):
+                    e["active_days_7d"] = e.get("active_days_7d", 0) + 1
+        for d in c.execute("SELECT code, last_seen FROM devices"):
+            if d["code"] in code_of:
+                e = out[code_of[d["code"]]]
+                e["devices"] += 1
+                if d["last_seen"]:
+                    e["last"] = max(e["last"], d["last_seen"])
+    rows = []
+    for e in out.values():
+        rows.append({**e, "agents": sorted(a for a in e["agents"] if isinstance(a, str)), "os": sorted(e["os"]),
+                     "actions": e.get("actions", 0), "actions_7d": e.get("actions_7d", 0), "held_7d": e.get("held_7d", 0),
+                     "blocked_7d": e.get("blocked_7d", 0), "active_days_7d": e.get("active_days_7d", 0),
+                     "sharing": e.get("sharing", 0), "last_active": e.get("last_active")})
+    rows.sort(key=lambda e: e["first"], reverse=True)
+    return {"people": rows, "total": len(rows), "paying": sum(1 for e in rows if e["paid"]),
+            "active_7d": sum(1 for e in rows if e["actions_7d"]),
+            "new_7d": sum(1 for e in rows if e["first"][:10] >= week)}
 
 
 @app.post("/v1/pilot/leave")
@@ -1718,6 +1846,32 @@ class TeamRequestIn(BaseModel):
     note: str = Field(default="", max_length=1000)
     source: str = Field(default="", max_length=20)
     website: str = Field(default="", max_length=200)   # a field people don't see: bots fill it in
+    attribution: dict = Field(default_factory=dict)     # first touch on the site (_attribution)
+
+
+# First touch on squidbrake.com, kept by site/assets/touch.js and sent with a sign-up or demo request: the link's
+# utm tags, the ?from= word, the site that sent them (no query string) and the first page they opened. Only these
+# keys, as short text: anything else, or anything that isn't text, is dropped, so a bad value never stops a sign-up.
+TOUCH_KEYS = {"utm_source": 100, "utm_medium": 100, "utm_campaign": 150, "utm_term": 100, "utm_content": 100,
+              "from": 30, "referrer": 200, "landing": 200, "first_seen": 40}
+
+
+def _attribution(a: dict | None) -> str | None:
+    out = {}
+    for k, cap in TOUCH_KEYS.items():
+        v = (a or {}).get(k)
+        if not isinstance(v, str) or not v.strip():
+            continue
+        v = v.strip()
+        if k == "referrer":                     # where they came from, never what was in its address bar
+            u = urlsplit(v)
+            if u.scheme not in ("http", "https") or not u.hostname:
+                continue
+            v = f"{u.scheme}://{u.hostname}{u.path}"
+        if k == "landing":
+            v = urlsplit(v).path or "/"
+        out[k] = "".join(ch for ch in v if ch.isprintable())[:cap]
+    return json.dumps(out) if out else None
 
 
 @app.post("/v1/team-request")
@@ -1732,10 +1886,10 @@ def team_request(t: TeamRequestIn, request: Request):
     if t.website:                                       # a bot: say thanks, keep nothing
         return {"ok": True}
     with _lock, db() as c:
-        c.execute("INSERT INTO team_requests (created_at, name, email, company, team_size, agents, note, source) "
-                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        c.execute("INSERT INTO team_requests (created_at, name, email, company, team_size, agents, note, source, "
+                  "attribution) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                   (now(), t.name.strip(), t.email.strip(), t.company.strip(), t.team_size.strip(), t.agents.strip(),
-                   t.note.strip(), t.source if t.source in SOURCES else ""))
+                   t.note.strip(), t.source if t.source in SOURCES else "", _attribution(t.attribution)))
     notify(f"Squidbrake demo request: {t.name.strip()} ({t.email.strip()}), {t.company.strip() or 'no company'}. "
            f"See {PUBLIC_URL}/admin")
     return {"ok": True}
@@ -1755,6 +1909,7 @@ class BookingIn(BaseModel):
     name: str = Field(default="", max_length=80)
     email: str = Field(default="", max_length=200)
     company: str = Field(default="", max_length=120)
+    attribution: dict = Field(default_factory=dict)     # first touch on the site (_attribution)
 
 
 def calendly_get(uri: str) -> dict:
@@ -1782,11 +1937,12 @@ def booking(b: BookingIn, request: Request):
         if c.execute("SELECT 1 FROM settings WHERE key=?", (f"booking:{b.invitee}",)).fetchone():
             return {"ok": True}                              # the same booking, sent twice
         c.execute("INSERT INTO settings (key, value) VALUES (?, ?)", (f"booking:{b.invitee}", now()))
-        c.execute("INSERT INTO team_requests (created_at, name, email, company, team_size, agents, note, source) "
-                  "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        c.execute("INSERT INTO team_requests (created_at, name, email, company, team_size, agents, note, source, "
+                  "attribution) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                   (now(), name or "Booked a call", email, company, "", "",
                    (f"Call booked for {when} UTC" if when else "Call booked") + f" on Calendly from {b.page or 'the site'}. "
-                   + ("" if CALENDLY_TOKEN else "Name and email as typed on the page; details in Calendly."), "calendly"))
+                   + ("" if CALENDLY_TOKEN else "Name and email as typed on the page; details in Calendly."), "calendly",
+                   _attribution(b.attribution)))
     notify(f"Squidbrake call booked: {name or 'someone'}{f' ({email})' if email else ''}"
            f"{f', {company}' if company else ''}{f', at {when} UTC' if when else ''}. See {PUBLIC_URL}/admin")
     return {"ok": True}
@@ -2053,6 +2209,7 @@ class SignupIn(BaseModel):
     plan: str = Field(default="", pattern="^(|free|starter|pro|team|scale)$")   # a hosted plan (Team, Scale: 14 days free)
     source: str = Field(default="", pattern="^[a-z0-9-]{0,30}$")        # e.g. "invite" from the dashboard's Team page
     new_keys: bool = False     # signed in again because they lost their hosted keys: make new ones (Supabase only)
+    attribution: dict = Field(default_factory=dict)     # first touch on the site (_attribution)
 
 
 HOSTED_PER_IP_DAY = int(os.getenv("INSIGHTS_HOSTED_PER_IP_DAY", "2"))   # hosted sign-ups a day from one address, without
@@ -2121,12 +2278,12 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
                 queued = datetime.fromisoformat(last) + timedelta(microseconds=1)
             queued = queued.isoformat()
         c.execute("INSERT INTO pilots (code, company, contact, note, created_at, email, uses_agents, hosted, subdomain, "
-                  "state, plan, trial_ends, started_at, queued_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  "state, plan, trial_ends, started_at, queued_at, source, attribution) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                   (code, s.company.strip(), f"{s.name.strip()} · {email}",
                    f"signup ({s.plan or setup})" + (f" from {s.source}" if s.source else "") + " · agents: "
                    + (", ".join(agents) or "-"), now(), email, json.dumps(agents),
                    int(bool(sub)), sub, ("requested" if auto else "waiting") if sub else None, plan, trial,
-                   now() if auto else None, queued))
+                   now() if auto else None, queued, s.source or None, _attribution(s.attribution)))
     if sub:
         notify(f"Squidbrake {(s.plan or 'free').capitalize()} sign-up: {s.name.strip()} ({email}), {s.company.strip()}. "
                + ("It starts when they pay." if pay_first else f"It started on its own; see {PUBLIC_URL}/admin" if auto else
@@ -2282,7 +2439,8 @@ def get_page(request: Request, ref: str = ""):
 
 @app.get("/v1/admin/sources", dependencies=[Depends(admin)])
 def sources(days: int = 30):
-    """Per channel: link clicks -> installs that share stats -> used this week -> stopped something."""
+    """Per channel: link clicks -> installs that share stats -> used this week -> stopped something, and website
+    sign-ups and demo requests (their ?from= word, else the utm source of their first touch, else "website")."""
     days = max(1, min(days, 365))
     since = (datetime.now(timezone.utc).date() - timedelta(days=days - 1)).isoformat()
     week = (datetime.now(timezone.utc).date() - timedelta(days=6)).isoformat()
@@ -2295,17 +2453,25 @@ def sources(days: int = 30):
         for iid, data in c.execute("SELECT install_id, data FROM catches"):
             if json.loads(data).get("outcome") in ("rejected", "blocked"):
                 stopped[iid] = stopped.get(iid, 0) + 1
+        web = [tuple(r) for r in c.execute("SELECT source, attribution FROM pilots WHERE note LIKE 'signup%' AND created_at >= ?",
+                                           (since,))]
+        web += [tuple(r) for r in c.execute("SELECT source, attribution FROM team_requests WHERE created_at >= ?", (since,))]
     rows: dict[str, dict] = {}
+    blank = {"clicks": 0, "installs": 0, "new": 0, "used_this_week": 0, "stopped": 0, "signups": 0}
     for iid, code, ref, joined in installs:
         ch = ref or ("pilot" if code != COMMUNITY_CODE else "not said")
-        r = rows.setdefault(ch, {"channel": ch, "clicks": 0, "installs": 0, "new": 0, "used_this_week": 0, "stopped": 0})
+        r = rows.setdefault(ch, {"channel": ch, **blank})
         r["installs"] += 1
         r["new"] += (joined or "") >= since
         r["used_this_week"] += iid in used
         r["stopped"] += stopped.get(iid, 0)
     for ch, n in clicks.items():
-        rows.setdefault(ch, {"channel": ch, "clicks": 0, "installs": 0, "new": 0, "used_this_week": 0, "stopped": 0})["clicks"] = n
-    return {"days": days, "rows": sorted(rows.values(), key=lambda r: (-r["installs"], -r["clicks"], r["channel"]))}
+        rows.setdefault(ch, {"channel": ch, **blank})["clicks"] = n
+    for source, touch in web:
+        utm = (json.loads(touch).get("utm_source") or "") if touch else ""
+        ch = (source or re.sub(r"[^a-z0-9-]+", "-", utm.lower()).strip("-")[:30] or "website")
+        rows.setdefault(ch, {"channel": ch, **blank})["signups"] += 1
+    return {"days": days, "rows": sorted(rows.values(), key=lambda r: (-r["installs"] - r["signups"], -r["clicks"], r["channel"]))}
 
 
 @app.get("/team", response_class=HTMLResponse)

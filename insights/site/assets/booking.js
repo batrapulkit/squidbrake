@@ -30,6 +30,7 @@
     const p = e.data.payload || {};
     fetch("/v1/booking", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
       event: p.event?.uri || "", invitee: p.invitee?.uri || "", page: location.pathname,
-      name: val("wlName"), email: val("wlEmail"), company: val("wlCompany") }) }).catch(() => {});
+      name: val("wlName"), email: val("wlEmail"), company: val("wlCompany"),
+      attribution: (window.sbFirstTouch && window.sbFirstTouch()) || {} }) }).catch(() => {});
   });
 })();

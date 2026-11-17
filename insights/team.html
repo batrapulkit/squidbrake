@@ -37,6 +37,8 @@ button:disabled { opacity:.6; cursor:default; }
 a { color:var(--accent); }
 @media (max-width:560px) { form { grid-template-columns:1fr; } h1 { font-size:26px; } }
 </style>
+<script defer data-domain="squidbrake.com" src="https://plausible.io/js/script.tagged-events.js"></script>
+<script src="/assets/touch.js"></script>
 </head>
 <body>
 <main>
@@ -89,7 +91,7 @@ f.addEventListener("submit", async (e) => {
   go.disabled = true; go.textContent = "Sending...";
   try {
     const r = await fetch("/v1/team-request", { method: "POST", headers: { "Content-Type": "application/json" },
-                                                body: JSON.stringify({ ...data, source }) });
+                                                body: JSON.stringify({ ...data, source, attribution: (window.sbFirstTouch && window.sbFirstTouch()) || {} }) });
     if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || "Something went wrong, please try again.");
     document.getElementById("box").className = "card done";
     document.getElementById("box").innerHTML = `<b>Thanks, ${esc(data.name.trim())}.</b>
