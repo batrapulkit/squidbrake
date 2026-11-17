@@ -2429,10 +2429,12 @@ SITE_PAGES = {"": "index.html", "docs": "docs.html", "security": "security.html"
 if (SITE / "blog").is_dir():
     SITE_PAGES |= {f"blog/{p.stem}": f"blog/{p.name}" for p in (SITE / "blog").glob("*.html") if p.stem != "index"}
 CLEAN = {v: k for k, v in SITE_PAGES.items() if v.endswith(".html")}   # docs.html -> /docs: one address per page
-# Inline scripts and styles are part of every page; everything else is listed. Calendly is the booking widget.
+# Inline scripts and styles are part of every page; everything else is listed. Calendly is the booking widget,
+# Google Tag Manager (GTM-5SHCVGFS) loads tags that send to Google Analytics.
 SITE_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://assets.calendly.com "
-            "https://plausible.io; style-src 'self' 'unsafe-inline' https://assets.calendly.com; img-src 'self' data: https:; "
-            "font-src 'self'; connect-src 'self' https://plausible.io; frame-src https://calendly.com; "
+            "https://plausible.io https://*.googletagmanager.com; style-src 'self' 'unsafe-inline' https://assets.calendly.com; img-src 'self' data: https:; "
+            "font-src 'self'; connect-src 'self' https://plausible.io https://*.googletagmanager.com https://*.google-analytics.com "
+            "https://*.analytics.google.com; frame-src https://calendly.com; "
             "frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'")
 SECURITY_HEADERS = {"Strict-Transport-Security": "max-age=31536000", "X-Content-Type-Options": "nosniff",
                     "Referrer-Policy": "strict-origin-when-cross-origin"}
