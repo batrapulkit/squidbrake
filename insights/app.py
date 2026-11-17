@@ -710,10 +710,10 @@ def create_pilot(p: PilotIn, request: Request):
 
 
 def _forget(c, code: str) -> None:
-    ids = [r[0] for r in c.execute("SELECT install_id FROM installs WHERE code=?", (code,))]
-    c.executemany("DELETE FROM days WHERE install_id=?", [(i,) for i in ids])
-    c.executemany("DELETE FROM catches WHERE install_id=?", [(i,) for i in ids])
-    c.execute("DELETE FROM installs WHERE code=?", (code,))
+    """A deleted pilot goes, with its keys and computers. What its agents did stays: the day counts and catches are
+    history (counts and program names only), so the all-time totals don't shrink when a pilot is deleted. Its installs
+    are marked as left, so nothing counts them as in use."""
+    c.execute("UPDATE installs SET left_at=COALESCE(left_at, ?) WHERE code=?", (now(), code))
     c.execute("DELETE FROM app_links WHERE code=?", (code,))
     c.execute("DELETE FROM devices WHERE code=?", (code,))
     c.execute("DELETE FROM daily_sent WHERE code=?", (code,))
@@ -1219,6 +1219,9 @@ def rule_approvals(caught: list[dict]) -> list[dict]:
     return out
 
 
+DELETED_PILOTS = "deleted-pilots"      # all_time's row for the counts of pilots that were deleted
+
+
 @app.get("/v1/admin/all-time", dependencies=[Depends(admin)])
 def all_time():
     """Every day's counts ever received, per pilot and in total (the overview shows the last 14 days)."""
@@ -1230,9 +1233,12 @@ def all_time():
                                         "days": set(), **{k: 0 for k in SUMS}} for p in pilots}
     by_day: dict[str, int] = {}
     for iid, day, counts in days:
-        row = per.get(code_of.get(iid))
-        if row is None:
+        code = code_of.get(iid)
+        if code is None:
             continue
+        # a deleted pilot's days still count, together, as one row
+        row = per.get(code) or per.setdefault(DELETED_PILOTS, {"code": DELETED_PILOTS, "company": "Deleted pilots",
+                                                              "community": False, "days": set(), **{k: 0 for k in SUMS}})
         cnt = json.loads(counts)
         if row["code"] != COMMUNITY_CODE:
             by_day[day] = by_day.get(day, 0) + cnt.get("events", 0)
