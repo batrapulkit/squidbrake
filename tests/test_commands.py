@@ -142,6 +142,14 @@ def test_catastrophic(line):
     "setenforce 0",
     "Set-MpPreference -DisableRealtimeMonitoring $true",
 
+    # Sending a message outside the team (#208)
+    "sendmail ceo@example.com < msg.txt",
+    "mail -s hi team@example.com < body.txt",
+    "swaks --to a@example.com --body x",
+    "twilio api:core:messages:create --to +1 --from +2 --body hi",
+    "gh issue comment 5 --body hi",
+    "gh pr comment 5 --body hi",
+
     # Skipping git hooks (#172)
     "git commit --no-verify -m x",
     "git push --no-verify",
@@ -325,12 +333,19 @@ def test_no_false_alarm(line):
     "podman ps",
     "cdk diff",
     "cdk synth",
+    # Messages and comments inspection (#208)
+    "gh issue view 5",
+    "gh pr view 5",
+    "gh issue list",
+    "twilio api:core:messages:list",
+    "mail",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
 
 
 def test_summary_explains():
+    assert "sends a message outside the team" in commands.read("gh issue comment 5 --body hi").summary()
     assert "home folder" in commands.read("rm -rf ~/").summary()
     assert "whole drive" in commands.read("rmdir /s /q d:\\").summary()
     assert "remote" in commands.read("git push --force").summary()
