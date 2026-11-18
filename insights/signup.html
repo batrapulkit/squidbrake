@@ -292,7 +292,7 @@ footer a { color:var(--muted); }
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="/assets/supabase-2.45.4.js"></script>   <!-- served here: some networks block jsdelivr, and sign-in is the whole page -->
 <script>
 const CONFIG = __CONFIG__;   // filled in by the server: { supabase_url, supabase_key, hosted, offer_local }
 // a sign-in link that failed (expired, already used, opened by a mail scanner) comes back as #error=...: read it before
@@ -575,12 +575,18 @@ async function finish(body, token) {
   state(`<h2>Creating your dashboard…</h2><p>Taking you to your setup page.</p><div class="bar"><i></i></div>`,
         body.setup === "local" ? "" : "dash");
   const r = await fetch("/v1/signup", { method: "POST", body: JSON.stringify(body),
-    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) } });
-  const j = await r.json().catch(() => ({}));
-  if (r.ok && j.link) { location.href = j.link; return; }
-  if (r.ok) { state(`<div class="big">✓</div><h2>Thanks!</h2><p>We'll be in touch.</p>`); return; }
+    headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) } }).catch(() => null);
+  const j = r ? await r.json().catch(() => ({})) : { detail: "Couldn't reach Squidbrake. Check your connection." };
+  if (r && r.ok && j.link) { location.href = j.link; return; }
+  if (r && r.ok) { state(`<div class="big">✓</div><h2>Thanks!</h2><p>We'll be in touch.</p>`); return; }
+  // not a plain link to /signup: still signed in, it would send the same request again and fail the same way
   state(`<div class="big">!</div><h2>That didn't work</h2><p>${esc(typeof j.detail === "string" ? j.detail : "Please try again.")}</p>
-         <p><a href="/signup">Start again</a></p>`, "dash");
+         <p><button type="button" class="linkbtn" id="retry">Try again</button> · <button type="button" class="linkbtn" id="over">Start over with a new link</button></p>`, "dash");
+  document.getElementById("retry").onclick = () => finish(body, token);
+  document.getElementById("over").onclick = async () => {
+    if (sb) await sb.auth.signOut().catch(() => {});
+    location.replace("/signup" + location.search);
+  };
 }
 
 f.addEventListener("submit", async (e) => {
@@ -593,6 +599,8 @@ f.addEventListener("submit", async (e) => {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]{2,}$/.test(body.email)) return fail("That email address doesn't look right.");
   go.disabled = true; go.textContent = "One moment…";
   try {
+    // sign-in by email is on but its script didn't load: without it the server can only say "sign in with the link"
+    if (!sb && CONFIG.supabase_url) return fail("The sign-in part of this page didn't load. Refresh the page and try again.");
     if (!sb) return choose(body);
     if (SESSION) return choose({ ...body, email: SESSION.user.email }, SESSION.access_token);   // signed in already
     if (body.website) return state(`<div class="big">✓</div><h2>Thanks!</h2>`);   // a bot
@@ -684,7 +692,7 @@ function signedIn(sess) {
   const meta = sess.user.user_metadata || {};
   const body = { name: saved.name || meta.name || "", company: saved.company || meta.company || "", email: sess.user.email,
                  agents: saved.agents || (Array.isArray(meta.agents) ? meta.agents : []) };
-  if (!body.name || !body.company) {     // signed in, details missing: ask for them, and the form finishes without a link
+  if ((!body.name || !body.company) && !NEW_KEYS) {     // (back for new keys: the server needs no details) signed in, details missing: ask for them, and the form finishes without a link
     if (!document.getElementById("f")) return location.replace("/signup" + location.search);
     f.elements.email.value = body.email; f.elements.email.readOnly = true;
     if (body.name) f.elements.name.value = body.name;
