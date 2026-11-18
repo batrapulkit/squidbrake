@@ -185,6 +185,12 @@ def test_catastrophic(line):
     "rclone sync ./empty remote:bucket",
     "rclone purge remote:bucket",
     "gsutil rsync -d . gs://bucket",
+    # Opening a local service to the internet (#207)
+    "ngrok http 3000",
+    "cloudflared tunnel --url http://localhost:3000",
+    "ssh -R 80:localhost:3000 serveo.net",
+    "lt --port 3000",
+    "tailscale funnel 3000",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -325,6 +331,12 @@ def test_no_false_alarm(line):
     "podman ps",
     "cdk diff",
     "cdk synth",
+    # Everyday networking and tunnel commands (#207)
+    "ngrok version",
+    "cloudflared tunnel list",
+    "tailscale status",
+    "ssh user@host",
+    "ssh -L 5432:localhost:5432 bastion",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
@@ -357,6 +369,8 @@ def test_summary_explains():
     assert "etcd" in commands.read("etcdctl del --prefix /").summary()
     assert "containers" in commands.read("podman system reset -f").summary()
     assert "infrastructure" in commands.read("cdk destroy --force").summary()
+    assert "opens a local service to the internet" in commands.read("ngrok http 3000").summary()
+    assert "opens a local service to the internet (ssh -R)" == commands.read("ssh -R 80:localhost:3000 serveo.net").summary()
 
 
 def test_account_reasons_dont_repeat_the_password():
