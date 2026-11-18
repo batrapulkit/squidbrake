@@ -295,6 +295,10 @@ footer a { color:var(--muted); }
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
 <script>
 const CONFIG = __CONFIG__;   // filled in by the server: { supabase_url, supabase_key, hosted, offer_local }
+// a sign-in link that failed (expired, already used, opened by a mail scanner) comes back as #error=...: read it before
+// supabase-js sees the address, or the page shows the empty form again with no word why
+const LINK_ERROR = new URLSearchParams(location.hash.slice(1)).get("error_code") ||
+                   new URLSearchParams(location.hash.slice(1)).get("error");
 // (no supabase_url: no email sign-in; the dashboard starts straight away and unused ones are freed again)
 const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
 let brakeFlash = () => {};
@@ -590,9 +594,11 @@ f.addEventListener("submit", async (e) => {
   go.disabled = true; go.textContent = "One moment…";
   try {
     if (!sb) return choose(body);
+    if (SESSION) return choose({ ...body, email: SESSION.user.email }, SESSION.access_token);   // signed in already
     if (body.website) return state(`<div class="big">✓</div><h2>Thanks!</h2>`);   // a bot
     const error = await sendLink(body);
     if (error) return fail(error.message || "Couldn't send the email. Please try again.");
+    try { localStorage.setItem("sb_signup", JSON.stringify(body)); } catch {}   // a new link in one click if this one fails
     checkInbox(body);
   } catch (x) { fail("Couldn't reach Squidbrake. Please try again."); }
 });
@@ -614,8 +620,24 @@ function checkInbox(body) {
          <p>We sent a sign-in link to</p><span class="to">${esc(body.email)}</span>
          <p>${pick() ? "Click it on this computer, then pick where Squidbrake runs." : "Click it on this computer and your dashboard starts right away."}</p>
          ${box ? `<a class="inbox" href="${box[2]}" target="_blank" rel="noopener">Open ${box[1]} ↗</a>` : ""}
+         <form id="otp" class="again" autocomplete="off">Opened it on your phone? Type the code from the email:<br>
+           <input name="code" inputmode="numeric" pattern="[0-9]{6,10}" maxlength="10" placeholder="123456" aria-label="Code from the email"
+             style="width:9em;padding:8px 10px;border:1px solid var(--line, #ccc);border-radius:8px;font:inherit;letter-spacing:.15em;margin-top:6px">
+           <button class="linkbtn" type="submit">Continue</button> <span id="otpErr" role="alert"></span></form>
          <p class="again">Nothing after a minute? Check spam or Promotions.<br>
            <button class="linkbtn" id="resend" disabled></button> · <a href="/signup">Use a different email</a></p>`, "verify");
+  // the same email carries a code: works on any device, and a mail scanner opening the link can't use it up
+  const otp = document.getElementById("otp"), otpErr = document.getElementById("otpErr");
+  otp.onsubmit = async (e) => {
+    e.preventDefault();
+    const token = otp.elements.code.value.replace(/\D/g, "");
+    if (token.length < 6) { otpErr.textContent = "That's not the full code."; return; }
+    otpErr.textContent = "Checking…";
+    const { data, error } = await sb.auth.verifyOtp({ email: body.email, token, type: "email" })
+      .catch((x) => ({ error: x }));
+    if (error || !data || !data.session) { otpErr.textContent = "That code didn't work: use the newest email."; return; }
+    signedIn(data.session);
+  };
   const b = document.getElementById("resend");
   let left = 60;
   const tick = () => {
@@ -631,13 +653,50 @@ function checkInbox(body) {
   tick();
 }
 
+// back from an email link that didn't work: say so, and send a fresh one with what they typed before
+function linkFailed() {
+  history.replaceState(null, "", location.pathname + location.search);
+  let body = null;
+  try { body = JSON.parse(localStorage.getItem("sb_signup") || "null"); } catch {}
+  const why = "That sign-in link has expired or was already used. Links work once, and only the newest one works.";
+  if (!body || !body.email) { err.textContent = `${why} Fill this in again for a fresh link.`; err.hidden = false; return; }
+  state(`<div class="big">!</div><h2>That link didn't work</h2><p>${why}</p>
+         <p><button type="button" id="fresh" style="border:0;background:var(--accent);color:#fff;border-radius:10px;padding:12px 20px;font:inherit;font-weight:650;cursor:pointer">Email me a new link</button></p>
+         <p class="again">It goes to <span class="mono">${esc(body.email)}</span> · <a href="/signup${esc(location.search)}">Use a different email</a></p>`, "verify");
+  const b = document.getElementById("fresh");
+  b.onclick = async () => {
+    b.disabled = true; b.textContent = "Sending…";
+    const error = await sendLink(body).catch((x) => x);
+    if (error) { b.disabled = false; b.textContent = "Couldn't send: try again in a minute"; return; }
+    checkInbox(body);
+  };
+}
+
 // back from the email link: signed in, so finish the sign-up with what they told us the first time
+// (what they typed this time first: Supabase keeps the name and company only from an address's FIRST sign-in, so an
+// address it already knew, e.g. from the desktop app, has none, and the sign-up failed the same way on every new link)
+let SESSION = null;
+function signedIn(sess) {
+  SESSION = sess;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem("sb_signup") || "null"); } catch {}
+  if (!saved || saved.email !== sess.user.email) saved = {};
+  const meta = sess.user.user_metadata || {};
+  const body = { name: saved.name || meta.name || "", company: saved.company || meta.company || "", email: sess.user.email,
+                 agents: saved.agents || (Array.isArray(meta.agents) ? meta.agents : []) };
+  if (!body.name || !body.company) {     // signed in, details missing: ask for them, and the form finishes without a link
+    if (!document.getElementById("f")) return location.replace("/signup" + location.search);
+    f.elements.email.value = body.email; f.elements.email.readOnly = true;
+    if (body.name) f.elements.name.value = body.name;
+    return fail("You're signed in. Add your name and company to finish.");
+  }
+  try { localStorage.removeItem("sb_signup"); } catch {}
+  choose(body, sess.access_token);
+}
 if (sb) sb.auth.getSession().then(({ data }) => {
   const sess = data && data.session;
-  if (!sess) return;
-  const meta = sess.user.user_metadata || {};
-  choose({ name: meta.name || "", company: meta.company || "", email: sess.user.email,
-           agents: Array.isArray(meta.agents) ? meta.agents : [] }, sess.access_token);
+  if (!sess) return LINK_ERROR && linkFailed();
+  signedIn(sess);
 });
 </script>
 <script src="/assets/menu.js" defer></script>
