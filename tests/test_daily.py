@@ -101,7 +101,7 @@ def test_sent_once_each_evening_as_html_email(c, shipped, monkeypatch):
     server.maybe_send_daily()                                  # the loop checks every 10 minutes: still one email
     assert len(mails) == 1
     subject, text, html = mails[0]
-    assert subject in [x.format(n=1, k=1, s="") for x in daily.SUBJECTS["saves"]] or "close call" in subject
+    assert subject in [x.format(n=1, k=k, s="" if k == 1 else "s") for k in range(1, 6) for x in daily.SUBJECTS["saves"]]
     assert "Tuesday 13 October" in text
     assert html.startswith("<!doctype html>") and "Without Squidbrake" in html
 
@@ -160,13 +160,13 @@ def test_never_connected_gets_crickets_and_a_connect_button():
 
 def test_subjects_are_catchy_and_change_day_to_day():
     miss = {daily.subject(daily.build(QUIET, [], "x", day_number=i)) for i in range(3)}
-    assert len(miss) == 3 and "We miss you 💌 (and so does your dashboard)" in miss
+    assert len(miss) == 3 and "Squidbrake daily: no agent actions today" in miss
     assert all(daily.subject(daily.build(QUIET, [], "x", day_number=i, ever_used=False)) in daily.SUBJECTS["new"]
                for i in range(3))
     one = [{"at": "2026-10-13T10:00:00Z", "agent": "a", "tool": "Bash", "what": "rm -rf ~/", "outcome": "blocked",
             "why": "", "share": {"rule": "command:catastrophic_command"}}]
     d = daily.build({**QUIET, "total": 5}, one, "x", day_number=0)
-    assert daily.subject(d) == "🛑 1 close call today. Handled."
+    assert daily.subject(d) == "Squidbrake daily: 1 risky action stopped"
 
 
 def test_a_story_a_day_in_turn():

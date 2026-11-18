@@ -2539,12 +2539,16 @@ def daily_off_token(code: str) -> str:
 
 def send_mail(to: str, subject: str, text: str, html_body: str, unsubscribe: str) -> bool:
     """One email through INSIGHTS_SMTP_*. Never raises."""
+    import email.utils
     import smtplib
     from email.message import EmailMessage
     msg = EmailMessage()
     msg["Subject"], msg["To"] = subject[:200], to
     msg["From"] = SMTP["from"] or SMTP["user"]
     msg["List-Unsubscribe"] = f"<{unsubscribe}>"
+    msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"    # Gmail and Yahoo unsubscribe without opening a page
+    msg["Date"] = email.utils.formatdate(usegmt=True)
+    msg["Message-ID"] = email.utils.make_msgid(domain=(msg["From"].rsplit("@", 1)[-1].strip("> ") or None))
     msg.set_content(text)
     msg.add_alternative(html_body, subtype="html")
     try:
@@ -2626,7 +2630,7 @@ def maybe_send_daily(now_utc: datetime | None = None, send=None) -> int:
         return 0
     sent = 0
     with db() as c:
-        pilots = c.execute("SELECT code, email, subdomain, state, tz FROM pilots WHERE hosted=1 AND email IS NOT NULL "
+        pilots = c.execute("SELECT code, email, subdomain, state, tz, created_at FROM pilots WHERE hosted=1 AND email IS NOT NULL "
                            "AND email != '' AND COALESCE(daily_off, 0) = 0 AND state IN ('running', 'sleeping')").fetchall()
     for p in pilots:
         local = t.astimezone(_zone(p["tz"]))
@@ -2647,6 +2651,11 @@ def maybe_send_daily(now_utc: datetime | None = None, send=None) -> int:
         d = daily.build(got["report"], got["catches"], f"{local:%A} {local.day} {local:%B}", dash,
                         day_number=local.toordinal(), ever_used=got["ever_used"], connect_url=start, unsubscribe=off,
                         zone=local.tzinfo)
+        if d["nudge"]:      # a quiet day: every day for the first three, then once a week, so it isn't a daily nag
+            age = (local.date() - datetime.fromisoformat(p["created_at"]).astimezone(local.tzinfo).date()).days \
+                if p["created_at"] else 0
+            if age >= 3 and age % 7:
+                continue
         if not dash and d["nudge"]:
             d["nudge"]["cta"] = (d["nudge"]["cta"][0], start)
         sent += bool(send(p["email"], daily.subject(d), daily.text(d), daily.html(d), off))
@@ -2666,7 +2675,7 @@ if SMTP["host"] and ADMIN_KEY:           # the key signs each email's "stop thes
     threading.Thread(target=_daily_loop, daemon=True).start()
 
 
-@app.get("/daily-off/{code}", response_class=HTMLResponse, include_in_schema=False)
+@app.api_route("/daily-off/{code}", methods=["GET", "POST"], response_class=HTMLResponse, include_in_schema=False)
 def daily_off(code: str, t: str = ""):
     if not hmac.compare_digest(t, daily_off_token(code)):
         raise HTTPException(404)

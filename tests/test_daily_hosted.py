@@ -72,6 +72,21 @@ def test_every_hosted_owner_gets_one_email_a_day(hosted):
     assert new[0] in ia.daily.SUBJECTS["new"] and "/start/daily-new" in new[2] and "Connect my first agent" in new[2]
 
 
+def test_a_quiet_dashboard_gets_the_email_for_three_days_then_weekly(hosted):
+    # nothing to report (never connected, or no actions today): a daily nag would teach the inbox it's spam
+    ia, _ = hosted
+    from datetime import timedelta
+    for age, expect in ((1, True), (4, False), (7, True), (9, False), (14, True)):
+        with ia.db() as c:
+            c.execute("DELETE FROM daily_sent WHERE code IN ('daily-quiet', 'daily-new', 'daily-busy')")
+            for code in ("daily-quiet", "daily-new", "daily-busy"):
+                c.execute("UPDATE pilots SET created_at=? WHERE code=?", ((EVENING - timedelta(days=age)).isoformat(), code))
+        got = []
+        ia.maybe_send_daily(EVENING, lambda to, s, t, h, off: got.append(to) or True)
+        assert ("founder@quiet.example" in got) is expect and ("founder@newbie.example" in got) is expect, age
+        assert "founder@busy.example" in got, age                     # a day with actions always gets its email
+
+
 def test_stop_these_emails_link(hosted):
     ia, client = hosted
     assert client.get("/daily-off/daily-off-co?t=wrong").status_code == 404
