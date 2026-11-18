@@ -212,8 +212,9 @@ def test_pilot_join_never_asks_the_usage_question(monkeypatch, tmp_path):
     monkeypatch.delenv("CI", raising=False)
     monkeypatch.setattr(telemetry, "_interactive", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _: pytest.fail("asked during pilot join"))
+    monkeypatch.setattr(telemetry, "_post", lambda body: None)            # counted, but never really sent from a test
     telemetry.maybe(["pilot", "join", "acme-abc", "--server", "https://p.example"], "1.0")
-    assert "enabled" not in telemetry.load()
+    assert telemetry.load()["quiet"] is True        # the questions wait for a terminal run that isn't `pilot`
 
 
 def test_names_the_console_cant_show_dont_stop_the_command():
