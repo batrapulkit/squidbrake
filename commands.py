@@ -671,6 +671,28 @@ def _local_account_change(prog: str, lower: list[str]) -> str | None:
     return None
 
 
+def _os_protection_bypass(prog: str, words: list[str], lower: list[str]) -> str | None:
+    """Disabling operating system security controls: SIP, Gatekeeper, quarantine, execution policy, UAC, sudoers, SUID."""
+    if prog == "csrutil" and lower[1:2] == ["disable"]:
+        return "switches off System Integrity Protection (csrutil disable)"
+    if prog == "spctl" and any(w in ("--master-disable", "--disable") for w in lower[1:]):
+        return "switches off macOS's check on downloaded apps (spctl --master-disable)"
+    if prog == "xattr" and any(w in ("-d", "--delete") for w in lower[1:]) and any("com.apple.quarantine" in w for w in lower[1:]):
+        return "removes the download quarantine check (xattr -d com.apple.quarantine)"
+    if prog == "set-executionpolicy" and any(w in ("unrestricted", "bypass") for w in lower[1:]):
+        return "switches off PowerShell script execution policy (Set-ExecutionPolicy)"
+    if prog == "reg" and lower[1:2] == ["add"] and "enablelua" in lower and any(
+        lower[i] in ("/d", "-d") and i + 1 < len(lower) and lower[i + 1] == "0"
+        for i in range(len(lower))
+    ):
+        return "switches off Windows User Account Control (UAC)"
+    if any(t == "/etc/sudoers" or t.startswith(("/etc/sudoers/", "/etc/sudoers.d/")) for t in _redirected(words)):
+        return "modifies sudo privileges (/etc/sudoers)"
+    if prog == "chmod" and any(re.search(r"^[ugoa]*\+s\b|^[1-7][0-7]{3}$", w.lower()) for w in lower[1:]):
+        return "sets the SUID bit for privilege escalation (chmod +s)"
+    return None
+
+
 def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Command], list[str]]:
     """One simple command (already split into words). -> (commands, hidden-reasons)."""
     words = words[1:] if words[:1] == ["{"] else words       # a group, `{ curl URL > x.sh; } && bash x.sh`
@@ -1027,6 +1049,9 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         return [cmd], []
     if prog == "set-mppreference" and any("disablerealtimemonitoring" in w for w in lower[1:]) and any(v in lower for v in ("$true", "1", "true")):
         cmd.kind, cmd.why = "irreversible", "switches off Windows Defender real-time monitoring (Set-MpPreference)"
+        return [cmd], []
+    if (why := _os_protection_bypass(prog, words, lower)):
+        cmd.kind, cmd.why = "irreversible", why
         return [cmd], []
     if prog in ("shutdown", "reboot", "halt", "poweroff", "stop-computer", "restart-computer") \
             or (prog == "init" and lower[1:2] in (["0"], ["6"])):
