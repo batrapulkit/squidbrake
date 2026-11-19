@@ -706,6 +706,35 @@ def _docker_control_reason(prog: str, lower: list[str], sub: list[str]) -> str |
             clean_mount = mount_val.strip("'\"")
             if re.search(r"\b(source|src)=/(,|$)", clean_mount):
                 return "gives the container control of this machine (the whole disk mounted)"
+
+
+def _tunnel_reason(prog: str, words: list[str], lower: list[str]) -> str | None:
+    """A tunnel puts whatever runs on this machine on a public address."""
+    sub = [w for w in lower[1:] if not w.startswith("-")][:2]
+    if prog == "ngrok" and sub[:1] in (["http"], ["tcp"], ["tls"], ["start"], ["tunnel"]):
+        return "opens a local service to the internet (ngrok)"
+    if prog == "cloudflared":
+        if any(w == "--url" or w.startswith("--url=") for w in lower) or sub[:2] == ["tunnel", "run"]:
+            return "opens a local service to the internet (cloudflared)"
+        if sub[:1] == ["tunnel"] and sub[1:2] not in (["list"], ["info"], ["delete"], ["cleanup"], ["token"], ["ingress"]):
+            if any(w.startswith("--url") for w in lower):
+                return "opens a local service to the internet (cloudflared)"
+    if prog in ("lt", "localtunnel"):
+        if not any(w in ("--version", "-v", "--help", "-h") for w in lower):
+            return f"opens a local service to the internet ({prog})"
+    if prog == "tailscale" and sub[:1] == ["funnel"]:
+        return "opens a local service to the internet (tailscale funnel)"
+    if prog == "ssh":
+        for w in words[1:]:
+            if not w.startswith("-"):
+                continue
+            if w == "-R" or w.startswith("-R") or (re.fullmatch(r"-[A-Za-z]+", w) and "R" in w):
+                return "opens a local service to the internet (ssh -R)"
+            if w.lower().startswith(("-o=remoteforward", "-oremoteforward")) or w.lower() == "remoteforward":
+                return "opens a local service to the internet (ssh -R)"
+        for i, w in enumerate(words[1:], 1):
+            if w == "-o" and i + 1 < len(words) and words[i + 1].lower().startswith("remoteforward"):
+                return "opens a local service to the internet (ssh -R)"
     return None
 
 
@@ -899,6 +928,11 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
             return [cmd], []
         if sub == ["delete"]:
             cmd.kind, cmd.why = "irreversible", f"deletes files on a remote ({' '.join(words[:3])})"
+            return [cmd], []
+    # ---- opening a local service to the internet (ngrok, cloudflared, ssh -R, localtunnel, tailscale funnel)
+    if (why := _tunnel_reason(prog, words, lower)):
+        cmd.kind, cmd.why = "irreversible", why
+        if (remote := _remote_command(prog, words)) is None:
             return [cmd], []
     # ---- a command sent to another machine or container: read that command too
     if (remote := _remote_command(prog, words)) is not None and depth < 4:
