@@ -757,6 +757,28 @@ def _os_protection_bypass(prog: str, words: list[str], lower: list[str]) -> str 
     # set-user-ID or set-group-ID: +s, or a 4-digit mode starting 2-7 (1777 is the sticky bit, as /tmp has it)
     if prog == "chmod" and any(re.search(r"^[ugoa]*\+s\b|^[2-7][0-7]{3}$", w.lower()) for w in lower[1:]):
         return "sets the SUID bit for privilege escalation (chmod +s)"
+
+
+def _outbound_messages(prog: str, words: list[str], lower: list[str]) -> str | None:
+    """Sending messages outside the team (email, SMS, public issue/PR comments)."""
+    if prog == "gh":
+        gh_words = _gh_command(words)
+        gh_lower = [w.lower() for w in gh_words]
+        if gh_lower[:2] in (["issue", "comment"], ["pr", "comment"]):
+            return f"sends a message outside the team (gh {' '.join(gh_words[:2])})"
+    elif prog == "sendmail":
+        if not any(w in ("-bp", "-bv") for w in lower[1:]):
+            return "sends a message outside the team (sendmail)"
+    elif prog == "swaks":
+        return "sends a message outside the team (swaks)"
+    elif prog == "twilio":
+        if any("messages:create" in w for w in lower[1:]):
+            return "sends a message outside the team (twilio)"
+    elif prog in ("mail", "mailx"):
+        has_send_flag = any(w in ("-s", "-c", "-b", "-r", "-a") for w in lower[1:])
+        has_recipient = any("@" in w for w in words[1:] if not w.startswith("-"))
+        if has_send_flag or has_recipient:
+            return "sends a message outside the team (mail)"
     return None
 
 
@@ -1142,6 +1164,9 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         cmd.kind, cmd.why = "irreversible", why
         return [cmd], []
     if (why := _local_account_change(prog, lower)):
+        cmd.kind, cmd.why = "irreversible", why
+        return [cmd], []
+    if (why := _outbound_messages(prog, words, lower)):
         cmd.kind, cmd.why = "irreversible", why
         return [cmd], []
     if prog == "truncate" or prog in ("clear-content", "clc") or (prog == "mv" and any(w in ("/dev/null", "nul") for w in lower[1:])) \
