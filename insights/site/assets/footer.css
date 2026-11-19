@@ -1,0 +1,17 @@
+/* The site footer: every page links it, so the footer looks and reads the same everywhere. */
+footer.sf{display:block;padding:44px 0 36px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem;line-height:1.5}
+.sf-about{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px 40px;padding-bottom:30px;margin-bottom:30px;border-bottom:1px solid var(--line)}
+.sf-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:28px 28px}
+.sf .brand{display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:1.2rem;letter-spacing:-.03em;color:var(--ink);text-decoration:none}
+.sf .brand svg{width:30px;height:30px}
+.sf-about p{margin:0;flex:1 1 380px;max-width:70ch}
+.sf .sf-h{margin:0 0 10px;font:500 .72rem var(--mono,ui-monospace,monospace);letter-spacing:.1em;text-transform:uppercase;color:var(--ink)}
+.sf ul{list-style:none;margin:0;padding:0}
+.sf li{margin:0 0 8px}
+.sf a{color:var(--muted);text-decoration:none;transition:color .15s}
+.sf a:hover{color:var(--ink)}
+.sf .ph-badge{display:inline-block;line-height:0}.sf .ph-badge img{max-width:100%;height:auto}
+.sf-bot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px 24px;margin-top:34px;padding-top:20px;border-top:1px solid var(--line);font-size:.84rem}
+.sf-bot .agents{font:400 .78rem var(--mono,ui-monospace,monospace)}
+@media (max-width:980px){.sf-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:700px){.sf-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:24px 20px}}
