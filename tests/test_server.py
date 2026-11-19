@@ -1193,6 +1193,43 @@ def test_atlassian_example_policy():
         assert decide(name)[0] == "deny", name
 
 
+def test_playwright_example_policy():
+    rules = Path(__file__).resolve().parents[1] / "examples" / "rules" / "playwright.yaml"
+    p = server.Policy(rules)
+
+    def decide(name):
+        return p.evaluate(kind="mcp", name=name, source=None, client="test", session_id=None, input={})
+
+    for name in (
+        "playwright.browser_navigate",
+        "playwright.browser_snapshot",
+        "playwright.browser_take_screenshot",
+        "playwright.browser_console_messages",
+        "playwright.browser_network_requests",
+        "playwright.browser_wait_for",
+    ):
+        assert decide(name)[0] == "allow", name
+
+    for name in (
+        "playwright.browser_click",
+        "playwright.browser_type",
+        "playwright.browser_fill_form",
+        "playwright.browser_press_key",
+        "playwright.browser_file_upload",
+        "playwright.browser_evaluate",
+        "playwright.browser_run_code_unsafe",
+        "playwright.browser_cookie_list",
+        "playwright.browser_mouse_click_xy",
+    ):
+        assert decide(name)[0] == "review", name
+
+    # Nothing is blocked outright, and a tool this pack does not list still waits for a person.
+    assert decide("playwright.browser_some_future_tool")[0] == "review"
+    # The pack never changes what another app's tools do.
+    assert decide("github.browser_click")[0] == "review"
+    assert decide("playwright_other.browser_snapshot")[0] == "review"
+
+
 def test_filesystem_example_policy():
     rules = Path(__file__).resolve().parents[1] / "examples" / "rules" / "filesystem.yaml"
     p = server.Policy(rules)
