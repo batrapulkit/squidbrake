@@ -144,6 +144,15 @@ def test_catastrophic(line):
     "setenforce 0",
     "Set-MpPreference -DisableRealtimeMonitoring $true",
 
+    # Switching off OS protection (#206)
+    "csrutil disable",
+    "spctl --master-disable",
+    "xattr -d com.apple.quarantine app.dmg",
+    "Set-ExecutionPolicy Unrestricted -Force",
+    r"reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System /v EnableLUA /t REG_DWORD /d 0 /f",
+    "echo 'x ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers",
+    "chmod u+s /bin/bash",
+
     # Skipping git hooks (#172)
     "git commit --no-verify -m x",
     "git push --no-verify",
@@ -356,12 +365,22 @@ def test_no_false_alarm(line):
     "tailscale status",
     "ssh user@host",
     "ssh -L 5432:localhost:5432 bastion",
+
+
+    # OS protection inspection (#206)
+    "csrutil status",
+    "spctl --status",
+    "xattr -l app.dmg",
+    "Get-ExecutionPolicy",
+    "sudo -l",
+    "chmod 755 script.sh",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
 
 
 def test_summary_explains():
+    assert "downloaded apps" in commands.read("spctl --master-disable").summary()
     assert "home folder" in commands.read("rm -rf ~/").summary()
     assert "whole drive" in commands.read("rmdir /s /q d:\\").summary()
     assert "remote" in commands.read("git push --force").summary()
