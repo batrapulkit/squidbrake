@@ -754,7 +754,8 @@ def _os_protection_bypass(prog: str, words: list[str], lower: list[str]) -> str 
         return "switches off Windows User Account Control (UAC)"
     if any(t == "/etc/sudoers" or t.startswith(("/etc/sudoers/", "/etc/sudoers.d/")) for t in _redirected(words)):
         return "modifies sudo privileges (/etc/sudoers)"
-    if prog == "chmod" and any(re.search(r"^[ugoa]*\+s\b|^[1-7][0-7]{3}$", w.lower()) for w in lower[1:]):
+    # set-user-ID or set-group-ID: +s, or a 4-digit mode starting 2-7 (1777 is the sticky bit, as /tmp has it)
+    if prog == "chmod" and any(re.search(r"^[ugoa]*\+s\b|^[2-7][0-7]{3}$", w.lower()) for w in lower[1:]):
         return "sets the SUID bit for privilege escalation (chmod +s)"
     return None
 

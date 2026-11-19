@@ -675,3 +675,9 @@ def test_startup_changes_wait_for_a_person(line):
 def test_startup_queries_and_lookalikes_are_not_persistence_changes(line):
     reading = commands.read(line)
     assert reading.kind in ("read_only", "other"), reading.summary()
+
+
+def test_chmod_sticky_bit_is_not_suid():
+    assert commands.read("chmod 1777 /tmp/shared").kind != "irreversible"      # the sticky bit, as /tmp has it
+    assert commands.read("chmod 4755 ./tool").kind == "irreversible"
+    assert commands.read("chmod u+s ./tool").kind == "irreversible"
