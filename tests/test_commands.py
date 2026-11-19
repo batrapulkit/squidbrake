@@ -79,6 +79,7 @@ def test_catastrophic(line):
     "gh pr merge 12 --admin", "gh pr merge 12 --admin=true",
     "gh pr merge 12 --admin=1", "gh pr merge 12 --admin=T",
     "gh repo edit --visibility=public",
+    "gh repo archive o/r -y",
     "aws rds modify-db-instance --db-instance-identifier prod-db --backup-retention-period 0 --apply-immediately",
     "aws rds modify-db-cluster --db-cluster-identifier c --no-deletion-protection",
     "aws s3api put-bucket-versioning --bucket b --versioning-configuration Status=Suspended",
@@ -132,6 +133,7 @@ def test_catastrophic(line):
     "heroku apps:destroy --app x --confirm x",
     "firebase firestore:delete --all-collections",
     "bq rm -r -f dataset",
+    "railway down -y",
 
     # Commands that switch off protection (#26)
     "ufw disable",
@@ -325,6 +327,9 @@ def test_no_false_alarm(line):
     "podman ps",
     "cdk diff",
     "cdk synth",
+    "railway status",
+    "railway logs",
+    "gh repo view o/r",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
@@ -357,6 +362,8 @@ def test_summary_explains():
     assert "etcd" in commands.read("etcdctl del --prefix /").summary()
     assert "containers" in commands.read("podman system reset -f").summary()
     assert "infrastructure" in commands.read("cdk destroy --force").summary()
+    assert "takes the latest deployment down" in commands.read("railway down -y").summary()
+    assert "makes a repository read-only for everyone" in commands.read("gh repo archive o/r -y").summary()
 
 
 def test_account_reasons_dont_repeat_the_password():
