@@ -144,6 +144,24 @@ def test_catastrophic(line):
     "setenforce 0",
     "Set-MpPreference -DisableRealtimeMonitoring $true",
 
+    # Switching off OS protection (#206)
+    "csrutil disable",
+    "spctl --master-disable",
+    "xattr -d com.apple.quarantine app.dmg",
+    "Set-ExecutionPolicy Unrestricted -Force",
+    r"reg add HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System /v EnableLUA /t REG_DWORD /d 0 /f",
+    "echo 'x ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers",
+    "chmod u+s /bin/bash",
+
+
+    # Sending a message outside the team (#208)
+    "sendmail ceo@example.com < msg.txt",
+    "mail -s hi team@example.com < body.txt",
+    "swaks --to a@example.com --body x",
+    "twilio api:core:messages:create --to +1 --from +2 --body hi",
+    "gh issue comment 5 --body hi",
+    "gh pr comment 5 --body hi",
+
     # Skipping git hooks (#172)
     "git commit --no-verify -m x",
     "git push --no-verify",
@@ -187,6 +205,18 @@ def test_catastrophic(line):
     "rclone sync ./empty remote:bucket",
     "rclone purge remote:bucket",
     "gsutil rsync -d . gs://bucket",
+    # Containers that get control of this machine (#209)
+    "docker run --privileged -v /:/host alpine",
+    "docker run --pid=host -it alpine",
+    "docker run -v /var/run/docker.sock:/var/run/docker.sock alpine",
+
+
+    # Opening a local service to the internet (#207)
+    "ngrok http 3000",
+    "cloudflared tunnel --url http://localhost:3000",
+    "ssh -R 80:localhost:3000 serveo.net",
+    "lt --port 3000",
+    "tailscale funnel 3000",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -330,12 +360,47 @@ def test_no_false_alarm(line):
     "railway status",
     "railway logs",
     "gh repo view o/r",
+
+
+    # Containers without elevated control (#209)
+    "docker run alpine echo hi",
+    "docker run -v $(pwd):/app -w /app node npm test",
+    "docker ps",
+
+
+    # Everyday networking and tunnel commands (#207)
+    "ngrok version",
+    "cloudflared tunnel list",
+    "tailscale status",
+    "ssh user@host",
+    "ssh -L 5432:localhost:5432 bastion",
+
+
+    # OS protection inspection (#206)
+    "csrutil status",
+    "spctl --status",
+    "xattr -l app.dmg",
+    "Get-ExecutionPolicy",
+    "sudo -l",
+    "chmod 755 script.sh",
+
+
+    # Messages and comments inspection (#208)
+    "gh issue view 5",
+    "gh pr view 5",
+    "gh issue list",
+    "twilio api:core:messages:list",
+    "mail",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
 
 
 def test_summary_explains():
+    assert "downloaded apps" in commands.read("spctl --master-disable").summary()
+
+
+    assert "sends a message outside the team" in commands.read("gh issue comment 5 --body hi").summary()
     assert "home folder" in commands.read("rm -rf ~/").summary()
     assert "whole drive" in commands.read("rmdir /s /q d:\\").summary()
     assert "remote" in commands.read("git push --force").summary()
@@ -364,6 +429,14 @@ def test_summary_explains():
     assert "infrastructure" in commands.read("cdk destroy --force").summary()
     assert "takes the latest deployment down" in commands.read("railway down -y").summary()
     assert "makes a repository read-only for everyone" in commands.read("gh repo archive o/r -y").summary()
+
+
+    assert "gives the container control of this machine" in commands.read("docker run --privileged -v /:/host alpine").summary()
+    assert "the Docker socket" in commands.read("docker run -v /var/run/docker.sock:/var/run/docker.sock alpine").summary()
+
+
+    assert "opens a local service to the internet" in commands.read("ngrok http 3000").summary()
+    assert "opens a local service to the internet (ssh -R)" == commands.read("ssh -R 80:localhost:3000 serveo.net").summary()
 
 
 def test_account_reasons_dont_repeat_the_password():
@@ -622,3 +695,9 @@ def test_startup_changes_wait_for_a_person(line):
 def test_startup_queries_and_lookalikes_are_not_persistence_changes(line):
     reading = commands.read(line)
     assert reading.kind in ("read_only", "other"), reading.summary()
+
+
+def test_chmod_sticky_bit_is_not_suid():
+    assert commands.read("chmod 1777 /tmp/shared").kind != "irreversible"      # the sticky bit, as /tmp has it
+    assert commands.read("chmod 4755 ./tool").kind == "irreversible"
+    assert commands.read("chmod u+s ./tool").kind == "irreversible"
