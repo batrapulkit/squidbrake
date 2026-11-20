@@ -187,6 +187,18 @@ def test_catastrophic(line):
     "rclone sync ./empty remote:bucket",
     "rclone purge remote:bucket",
     "gsutil rsync -d . gs://bucket",
+    # Containers that get control of this machine (#209)
+    "docker run --privileged -v /:/host alpine",
+    "docker run --pid=host -it alpine",
+    "docker run -v /var/run/docker.sock:/var/run/docker.sock alpine",
+
+
+    # Opening a local service to the internet (#207)
+    "ngrok http 3000",
+    "cloudflared tunnel --url http://localhost:3000",
+    "ssh -R 80:localhost:3000 serveo.net",
+    "lt --port 3000",
+    "tailscale funnel 3000",
 ])
 def test_irreversible(line):
     assert kind(line) == "irreversible", commands.read(line).summary()
@@ -330,6 +342,20 @@ def test_no_false_alarm(line):
     "railway status",
     "railway logs",
     "gh repo view o/r",
+
+
+    # Containers without elevated control (#209)
+    "docker run alpine echo hi",
+    "docker run -v $(pwd):/app -w /app node npm test",
+    "docker ps",
+
+
+    # Everyday networking and tunnel commands (#207)
+    "ngrok version",
+    "cloudflared tunnel list",
+    "tailscale status",
+    "ssh user@host",
+    "ssh -L 5432:localhost:5432 bastion",
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
@@ -364,6 +390,14 @@ def test_summary_explains():
     assert "infrastructure" in commands.read("cdk destroy --force").summary()
     assert "takes the latest deployment down" in commands.read("railway down -y").summary()
     assert "makes a repository read-only for everyone" in commands.read("gh repo archive o/r -y").summary()
+
+
+    assert "gives the container control of this machine" in commands.read("docker run --privileged -v /:/host alpine").summary()
+    assert "the Docker socket" in commands.read("docker run -v /var/run/docker.sock:/var/run/docker.sock alpine").summary()
+
+
+    assert "opens a local service to the internet" in commands.read("ngrok http 3000").summary()
+    assert "opens a local service to the internet (ssh -R)" == commands.read("ssh -R 80:localhost:3000 serveo.net").summary()
 
 
 def test_account_reasons_dont_repeat_the_password():
