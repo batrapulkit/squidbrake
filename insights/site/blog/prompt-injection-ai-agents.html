@@ -148,7 +148,7 @@ details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--mut
     <p class="byline">By <a href="/about">Pulkit Batra</a> · <time datetime="2026-10-29">29 October 2026</time> · 4 min read</p>
     <img class="hero-img" src="/assets/blog/prompt-injection-ai-agents.png" width="1200" height="630" alt="Prompt injection: stop the exfiltration">
 
-    <p class="lead">You can't reliably stop a language model from following instructions hidden in text it reads. Every serious attempt to filter prompt injection has been bypassed. What you can control is what happens next: the tool call that sends your data somewhere. This guide walks through the incidents, why the usual defences fall short, and the check that catches the pattern they share.</p>
+    <p class="lead">You can't reliably stop a language model from following instructions hidden in text it reads. Every serious attempt to filter prompt injection has been bypassed. What you can control is what happens next: the tool call that sends your data somewhere. This guide walks through the incidents, why the usual defenses fall short, and the check that catches the pattern they share.</p>
     <div class="tldr"><p>In short</p><ul><li>Indirect prompt injection hides instructions in content an agent reads: issues, tickets, emails, web pages.</li><li>It becomes a leak when an agent has private data, reads untrusted content and can send data out: the lethal trifecta.</li><li>Filters on the prompt help but are probabilistic. Check the outbound action instead.</li><li>The tell: the destination appears in untrusted content, not in what the user asked.</li></ul></div>
     <nav class="toc" aria-label="On this page"><p>On this page</p><ol><li><a href="#direct-vs-indirect-prompt-injection">Direct vs indirect prompt injection</a></li><li><a href="#the-lethal-trifecta">The lethal trifecta</a></li><li><a href="#real-incidents">Real incidents</a></li><li><a href="#why-filters-alone-don-t-hold">Why filters alone don't hold</a></li><li><a href="#the-check-that-catches-the-pattern">The check that catches the pattern</a></li><li><a href="#a-short-checklist">A short checklist</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
 
@@ -203,10 +203,10 @@ practical control is the last step: where is this sending data, and who chose th
 follows outside content.</figcaption></figure>
 
     <h2 id="why-filters-alone-don-t-hold">Why filters alone don't hold</h2>
-    <p>Most prompt-injection defences inspect text: a classifier on the input, a system prompt telling the model to
+    <p>Most prompt-injection defenses inspect text: a classifier on the input, a system prompt telling the model to
       ignore embedded instructions, delimiters around untrusted content. They lower the rate. They don't get it to zero,
       because the thing doing the inspecting is also a model reading attacker-controlled text. Researchers routinely
-      publish bypasses within days of a new defence.</p>
+      publish bypasses within days of a new defense.</p>
     <p>An attack has to end in an action to do damage: a PR, an email, a <code>curl</code>, a payment. That step is
       structured, and structured things can be checked deterministically.</p>
 
