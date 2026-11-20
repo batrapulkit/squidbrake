@@ -672,6 +672,94 @@ def _local_account_change(prog: str, lower: list[str]) -> str | None:
     return None
 
 
+def _docker_control_reason(prog: str, lower: list[str], sub: list[str]) -> str | None:
+    """A container started with --privileged, the host's process namespace, the whole disk mounted,
+    or the Docker socket can take over the machine it runs on."""
+    action = f"{prog} {' '.join(sub[:1])}" if sub else f"{prog} run"
+    if "--privileged" in lower or any(w.startswith("--privileged=") for w in lower):
+        return f"gives the container control of this machine ({action} --privileged)"
+    if "--pid=host" in lower or any(
+        lower[i] == "--pid" and i + 1 < len(lower) and lower[i + 1] == "host"
+        for i in range(len(lower))
+    ):
+        return f"gives the container control of this machine ({action} --pid=host)"
+    if any("docker.sock" in w for w in lower):
+        return "gives the container control of this machine (the Docker socket)"
+    for i, w in enumerate(lower):
+        val = ""
+        if w in ("-v", "--volume") and i + 1 < len(lower):
+            val = lower[i + 1]
+        elif w.startswith("--volume=") or w.startswith("-v="):
+            val = w.split("=", 1)[1]
+        if val:
+            parts = val.split(":")
+            if len(parts) >= 2:
+                host_path = parts[0].strip().strip("'\"")
+                if host_path in ("/", "//"):
+                    return "gives the container control of this machine (the whole disk mounted)"
+        mount_val = ""
+        if w == "--mount" and i + 1 < len(lower):
+            mount_val = lower[i + 1]
+        elif w.startswith("--mount="):
+            mount_val = w.split("=", 1)[1]
+        if mount_val:
+            clean_mount = mount_val.strip("'\"")
+            if re.search(r"\b(source|src)=/(,|$)", clean_mount):
+                return "gives the container control of this machine (the whole disk mounted)"
+
+
+def _tunnel_reason(prog: str, words: list[str], lower: list[str]) -> str | None:
+    """A tunnel puts whatever runs on this machine on a public address."""
+    sub = [w for w in lower[1:] if not w.startswith("-")][:2]
+    if prog == "ngrok" and sub[:1] in (["http"], ["tcp"], ["tls"], ["start"], ["tunnel"]):
+        return "opens a local service to the internet (ngrok)"
+    if prog == "cloudflared":
+        if any(w == "--url" or w.startswith("--url=") for w in lower) or sub[:2] == ["tunnel", "run"]:
+            return "opens a local service to the internet (cloudflared)"
+        if sub[:1] == ["tunnel"] and sub[1:2] not in (["list"], ["info"], ["delete"], ["cleanup"], ["token"], ["ingress"]):
+            if any(w.startswith("--url") for w in lower):
+                return "opens a local service to the internet (cloudflared)"
+    if prog in ("lt", "localtunnel"):
+        if not any(w in ("--version", "-v", "--help", "-h") for w in lower):
+            return f"opens a local service to the internet ({prog})"
+    if prog == "tailscale" and sub[:1] == ["funnel"]:
+        return "opens a local service to the internet (tailscale funnel)"
+    if prog == "ssh":
+        for w in words[1:]:
+            if not w.startswith("-"):
+                continue
+            if w == "-R" or w.startswith("-R") or (re.fullmatch(r"-[A-Za-z]+", w) and "R" in w):
+                return "opens a local service to the internet (ssh -R)"
+            if w.lower().startswith(("-o=remoteforward", "-oremoteforward")) or w.lower() == "remoteforward":
+                return "opens a local service to the internet (ssh -R)"
+        for i, w in enumerate(words[1:], 1):
+            if w == "-o" and i + 1 < len(words) and words[i + 1].lower().startswith("remoteforward"):
+                return "opens a local service to the internet (ssh -R)"
+
+
+def _os_protection_bypass(prog: str, words: list[str], lower: list[str]) -> str | None:
+    """Disabling operating system security controls: SIP, Gatekeeper, quarantine, execution policy, UAC, sudoers, SUID."""
+    if prog == "csrutil" and lower[1:2] == ["disable"]:
+        return "switches off System Integrity Protection (csrutil disable)"
+    if prog == "spctl" and any(w in ("--master-disable", "--disable") for w in lower[1:]):
+        return "switches off macOS's check on downloaded apps (spctl --master-disable)"
+    if prog == "xattr" and any(w in ("-d", "--delete") for w in lower[1:]) and any("com.apple.quarantine" in w for w in lower[1:]):
+        return "removes the download quarantine check (xattr -d com.apple.quarantine)"
+    if prog == "set-executionpolicy" and any(w in ("unrestricted", "bypass") for w in lower[1:]):
+        return "switches off PowerShell script execution policy (Set-ExecutionPolicy)"
+    if prog == "reg" and lower[1:2] == ["add"] and "enablelua" in lower and any(
+        lower[i] in ("/d", "-d") and i + 1 < len(lower) and lower[i + 1] == "0"
+        for i in range(len(lower))
+    ):
+        return "switches off Windows User Account Control (UAC)"
+    if any(t == "/etc/sudoers" or t.startswith(("/etc/sudoers/", "/etc/sudoers.d/")) for t in _redirected(words)):
+        return "modifies sudo privileges (/etc/sudoers)"
+    # set-user-ID or set-group-ID: +s, or a 4-digit mode starting 2-7 (1777 is the sticky bit, as /tmp has it)
+    if prog == "chmod" and any(re.search(r"^[ugoa]*\+s\b|^[2-7][0-7]{3}$", w.lower()) for w in lower[1:]):
+        return "sets the SUID bit for privilege escalation (chmod +s)"
+    return None
+
+
 def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Command], list[str]]:
     """One simple command (already split into words). -> (commands, hidden-reasons)."""
     words = words[1:] if words[:1] == ["{"] else words       # a group, `{ curl URL > x.sh; } && bash x.sh`
@@ -863,6 +951,11 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         if sub == ["delete"]:
             cmd.kind, cmd.why = "irreversible", f"deletes files on a remote ({' '.join(words[:3])})"
             return [cmd], []
+    # ---- opening a local service to the internet (ngrok, cloudflared, ssh -R, localtunnel, tailscale funnel)
+    if (why := _tunnel_reason(prog, words, lower)):
+        cmd.kind, cmd.why = "irreversible", why
+        if (remote := _remote_command(prog, words)) is None:
+            return [cmd], []
     # ---- a command sent to another machine or container: read that command too
     if (remote := _remote_command(prog, words)) is not None and depth < 4:
         where, line = remote
@@ -926,6 +1019,8 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         elif sub[:1] == ["push"] or sub == ["image", "push"]:
             cmd.kind, cmd.why = "irreversible", \
                 f"pushes an image to a registry, overwriting the tag for everyone who pulls it ({' '.join(words[:3])})"
+        elif (why := _docker_control_reason(prog, lower, sub)):
+            cmd.kind, cmd.why = "irreversible", why
         return [cmd], []
 
     # ---- API calls that delete (curl -X DELETE, GraphQL mutations like volumeDelete / deleteRepository)
@@ -1032,6 +1127,9 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         return [cmd], []
     if prog == "set-mppreference" and any("disablerealtimemonitoring" in w for w in lower[1:]) and any(v in lower for v in ("$true", "1", "true")):
         cmd.kind, cmd.why = "irreversible", "switches off Windows Defender real-time monitoring (Set-MpPreference)"
+        return [cmd], []
+    if (why := _os_protection_bypass(prog, words, lower)):
+        cmd.kind, cmd.why = "irreversible", why
         return [cmd], []
     if prog in ("shutdown", "reboot", "halt", "poweroff", "stop-computer", "restart-computer") \
             or (prog == "init" and lower[1:2] in (["0"], ["6"])):
