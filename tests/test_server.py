@@ -1958,3 +1958,51 @@ def test_telegram_long_message_fits(monkeypatch):
     shown = html.unescape(got["json"]["text"].replace("<b>", "").replace("</b>", ""))   # Telegram counts after parsing
     assert len(shown) <= 4096 and shown.endswith("…")
 
+
+def test_gdrive_example_policy():
+    rules = Path(__file__).resolve().parents[1] / "examples" / "rules" / "gdrive.yaml"
+    p = server.Policy(rules)
+
+    def decide(name):
+        return p.evaluate(kind="mcp", name=name, source=None, client="test", session_id=None, input={})
+
+    for name in (
+        "gdrive.search",
+        "gdrive.listFolder",
+        "gdrive.listSharedDrives",
+        "gdrive.readTextFile",
+        "gdrive.readGoogleDoc",
+        "gdrive.getGoogleSheetContent",
+        "gdrive.listPermissions",
+    ):
+        assert decide(name)[0] == "allow", name
+
+    for name in (
+        "gdrive.createTextFile",
+        "gdrive.updateTextFile",
+        "gdrive.createFolder",
+        "gdrive.moveItem",
+        "gdrive.renameItem",
+        "gdrive.copyFile",
+        "gdrive.shareFile",
+        "gdrive.addPermission",
+        "gdrive.removePermission",
+        "gdrive.uploadFile",
+        "gdrive.downloadFile",
+        "gdrive.insertText",
+        "gdrive.createGoogleDoc",
+    ):
+        assert decide(name)[0] == "review", name
+
+    for name in (
+        "gdrive.deleteItem",
+        "gdrive.empty_trash",
+        "gdrive.trash_file",
+        "gdrive.delete_file",
+    ):
+        assert decide(name)[0] == "deny", name
+
+    # A tool this pack does not list waits for a person, and other apps' tools are not touched by it.
+    assert decide("gdrive.some_future_tool")[0] == "review"
+    assert decide("github.deleteItem")[0] == "review"
+    assert decide("gdrive_other.search")[0] == "review"
