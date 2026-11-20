@@ -1,6 +1,13 @@
 <!doctype html>
 <html lang="en">
 <head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-5SHCVGFS');</script>
+<!-- End Google Tag Manager -->
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Human-in-the-loop approval for AI agents: what to ask about</title>
@@ -76,6 +83,9 @@ footer a:hover{color:var(--ink)}
 <style>ol.steps{list-style:none;counter-reset:s;padding:0;margin:18px 0 26px;display:grid;gap:10px}ol.steps li{counter-increment:s;position:relative;margin:0;padding:15px 18px 15px 60px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}ol.steps li::before{content:counter(s);position:absolute;left:16px;top:14px;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font:600 .9rem/30px var(--sans);text-align:center}.hero-img{display:block;width:100%;height:auto;border-radius:14px;margin:6px 0 26px;box-shadow:0 0 0 1px var(--line)}.stat b{color:var(--accent)}</style>
 <script defer data-domain="squidbrake.com" src="https://plausible.io/js/script.tagged-events.js"></script>
 <script src="/assets/touch.js"></script>
+
+
+<link rel="stylesheet" href="/assets/footer.css">
 </head>
 <body>
 <div class="wrap">
@@ -155,7 +165,17 @@ footer a:hover{color:var(--ink)}
   </main>
 
 
-  <footer><span>© 2026 Squidbrake, Inc.</span><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a><span><a href="/">Home</a> · <a href="/docs">Docs</a> · <a href="/security">Security</a> · <a href="/pricing">Pricing</a> · <a href="/about">About</a> · <a href="/benchmark">Benchmark</a> · <a href="/blog">Blog</a> · <a href="/changelog">Changelog</a> · <a href="mailto:pulkit@squidbrake.com">pulkit@squidbrake.com</a></span></footer>
+  <footer class="sf">
+    <div class="sf-about"><a class="brand" href="/" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>Squidbrake</a><p>Squidbrake is open-source change control for AI agents. Routine actions by Claude Code, Cursor, Codex and MCP tools run on their own, risky changes wait for a person, and catastrophic ones are blocked. Every decision lands in a tamper-evident audit log.</p><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" loading="lazy" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a></div>
+    <div class="sf-grid">
+      <nav class="sf-col" aria-label="Product"><p class="sf-h">Product</p><ul><li><a href="/#how">How it works</a></li><li><a href="/docs">Quickstart and docs</a></li><li><a href="/pricing">Pricing</a></li><li><a href="/security">Security and compliance</a></li><li><a href="/benchmark">Benchmark: 16 real incidents</a></li><li><a href="/changelog">Changelog</a></li><li><a href="/signup">Try Squidbrake</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Guides"><p class="sf-h">Guides</p><ul><li><a href="/blog/ai-agent-governance-framework">AI agent governance</a></li><li><a href="/blog/least-privilege-ai-agents">Least privilege for AI agents</a></li><li><a href="/blog/ai-agent-audit-trail">AI agent audit trail</a></li><li><a href="/blog/ai-agent-kill-switch">AI agent kill switch</a></li><li><a href="/blog/human-in-the-loop-approval-for-ai-agents">Human-in-the-loop approval</a></li><li><a href="/blog/ai-agent-guardrails">AI agent guardrails</a></li><li><a href="/blog/prompt-injection-ai-agents">Prompt injection in AI agents</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Coding agents"><p class="sf-h">Coding agents</p><ul><li><a href="/blog/claude-code-enterprise-security">Claude Code for teams</a></li><li><a href="/blog/claude-code-dangerously-skip-permissions">Claude Code skip-permissions</a></li><li><a href="/blog/yolo-mode-claude-code-cursor-codex">YOLO mode: Claude Code, Cursor, Codex</a></li><li><a href="/blog/claude-code-deleted-my-files">Claude Code deleted my files</a></li><li><a href="/blog/ai-agent-git-force-push">Stop agents force-pushing</a></li><li><a href="/blog/ai-coding-agent-policy-template">AI coding agent policy template</a></li><li><a href="/blog/vibe-coding-security-checklist">Vibe coding security</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Compliance"><p class="sf-h">Compliance</p><ul><li><a href="/blog/soc-2-ai-agents">SOC 2 for AI agents</a></li><li><a href="/blog/eu-ai-act-article-14-human-oversight-ai-agents">EU AI Act Article 14</a></li><li><a href="/blog/owasp-top-10-agentic-applications">OWASP Top 10 for agents</a></li><li><a href="/blog/mcp-security-checklist">MCP security checklist</a></li><li><a href="/blog/ai-agent-deleted-production-database">AI agent deleted a prod database</a></li><li><a href="/blog/squidbrake-vs-kontext">Squidbrake vs Kontext</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Company"><p class="sf-h">Company</p><ul><li><a href="/about">About</a></li><li><a href="/blog">Blog</a></li><li><a href="mailto:pulkit@squidbrake.com">Contact</a></li><li><a href="https://github.com/batrapulkit/squidbrake" target="_blank" rel="noopener">GitHub</a></li><li><a href="https://pypi.org/project/squidbrake/" target="_blank" rel="noopener">PyPI</a></li><li><a href="https://www.linkedin.com/company/squidbrake" target="_blank" rel="noopener">LinkedIn</a></li></ul></nav>
+    </div>
+    <div class="sf-bot"><span>© 2026 Squidbrake, Inc.</span><span class="agents">For AI agents: <a href="/llms.txt">llms.txt</a> · <a href="/index.md">site as markdown</a> · <a href="/sitemap.xml">sitemap</a></span><a href="/security">Security and privacy</a></div>
+  </footer>
 </div>
 <script src="/assets/try.js" defer></script>
 <script src="/assets/menu.js" defer></script>

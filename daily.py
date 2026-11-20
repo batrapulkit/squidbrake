@@ -168,19 +168,19 @@ def build(r: dict, catches: list[dict], day: str, dashboard: str = "", *, day_nu
                         for c in catches]}
 
 
-SUBJECTS = {   # a few of each, in turn by day, so the inbox doesn't see the same line every evening
-    "new": ["Psst… your dashboard is still waiting for its first agent 🦗",
-            "Your Squidbrake dashboard is lonely 🥺 (2 minutes fixes that)",
-            "Your AI agents haven't met their brake yet 🦑"],
-    "miss": ["We miss you 💌 (and so does your dashboard)",
-             "Your agents took the day off. Here's a true story while they're out 📰",
-             "Quiet day? Here's what happened to someone without a brake 😬"],
-    "calm": ["✅ {n} actions, zero drama",
-             "🌤️ A calm day: {n} agent actions, nothing needed stopping",
-             "😌 {n} things your agents did today, all fine"],
-    "saves": ["🛑 {k} close call{s} today. Handled.",
-              "🦑 Squidbrake saved your day {k} time{s}",
-              "😮‍💨 Your agents tried something risky today. Here's what we did"],
+SUBJECTS = {   # a few of each, in turn by day. Plain and specific: emoji and teasers read as promotions to spam filters
+    "new": ["Connect your first agent to Squidbrake (2 minutes)",
+            "Your Squidbrake dashboard is ready for its first agent",
+            "Squidbrake: one step left to check your AI agents"],
+    "miss": ["Squidbrake daily: no agent actions today",
+             "Squidbrake daily: a quiet day, and a real incident to read",
+             "Squidbrake daily: what happened to a team without approvals"],
+    "calm": ["Squidbrake daily: {n} agent actions, nothing needed stopping",
+             "Squidbrake daily: {n} actions, all routine",
+             "Squidbrake daily: a calm day, {n} actions"],
+    "saves": ["Squidbrake daily: {k} risky action{s} stopped",
+              "Squidbrake daily: {k} action{s} held or blocked today",
+              "Squidbrake daily: your agents tried {k} risky thing{s}"],
 }
 
 

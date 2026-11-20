@@ -1,14 +1,15 @@
 """
 Usage stats: which `squidbrake` commands run, and counts of what the gateway checked, held and blocked.
 They are always on. The first time you run `squidbrake` in a terminal it says so once (and asks, optionally, where
-you heard about Squidbrake). Scripts, CI, `--yes` and the agent hooks send nothing until that first run happened.
+you heard about Squidbrake). Run with no terminal (an agent or a script ran it, or `--yes`), it writes the same
+notice to stderr once and sends; the optional questions wait for the first run in a terminal.
 
 Registration: a pip install that isn't in a named pilot asks for your name and work email the first time you run a
 `squidbrake` command in a terminal, and the command runs once you've given them (see require_registration). They go
 to the Squidbrake team, with the coding agents installed here, so they know who uses it. A script, a gateway in
 Docker or a service can give them as SQUIDBRAKE_NAME and SQUIDBRAKE_EMAIL; the hooks and CI are never stopped.
-A gateway that starts without one (Docker, a background service) writes the same notice to its log and then shares
-its counts (gateway_start); never in CI or with the off switches.
+A gateway (Docker, a background service) sends a start event each time it starts, and the first time writes the
+notice to its log and shares its counts (gateway_start). Never in CI, never from the agent hooks, never with the off switches.
 
     squidbrake telemetry status      exactly what is sent
     squidbrake register EMAIL        tell the Squidbrake team who you are (optional; asks first; also asked once on
@@ -48,7 +49,7 @@ SHIPPED_KEY = "phc_muPqCNPamFR8iPaewdgVWqdcrGburJSXeySGHqXatZnU"   # PostHog > P
 POSTHOG_KEY = os.getenv("SQUIDBRAKE_POSTHOG_KEY", SHIPPED_KEY)
 POSTHOG_HOST = os.getenv("SQUIDBRAKE_POSTHOG_HOST", "https://us.i.posthog.com")
 QUIET = {"hook", "agent-hook", "shell-guard", "proxy", "telemetry", "register"}  # never ask, never send
-COMMANDS = {"start", "setup", "connect", "doctor", "lockdown", "evidence", "undo", "pilot", "add-key", "keys", "verify"}
+COMMANDS = {"start", "setup", "connect", "doctor", "lockdown", "evidence", "undo", "pilot", "add-key", "keys", "verify", "gateway"}
 WHAT_IS_SENT = __doc__.split("What is sent, once each time you run a command:")[1].strip()
 # the gateway's counts go where `squidbrake connect all` sends them (connect.py), as the community "pilot"
 COMMUNITY_SERVER, COMMUNITY_CODE = "https://pilots.squidbrake.com", "community-opt-in-ins-a42929"
@@ -238,6 +239,14 @@ def gateway_start(version: str, say=print) -> bool:
     (someone who left with `squidbrake pilot leave` isn't joined again). Returns whether it joined now."""
     if _switched_off():
         return False
+    cfg = load()
+    if cfg.get("enabled") is False:
+        return False
+    if POSTHOG_KEY:     # every start, so a gateway-only install is counted (and seen coming back) like a CLI one
+        if "id" not in cfg:
+            cfg["id"] = str(uuid.uuid4())
+            _save(cfg)
+        _send("gateway_start", cfg["id"], _props("gateway", version, cfg.get("ref") or ref_from_env()))
     try:
         import pilot
         home = _pilot_dir()
@@ -245,10 +254,7 @@ def gateway_start(version: str, say=print) -> bool:
             return False
     except Exception:     # never break a gateway start over this
         return False
-    cfg = load()
-    if cfg.get("enabled") is False:
-        return False
-    # telemetry.json is left alone, so a later first run in a terminal still asks its optional questions (and an
+    # telemetry.json keeps no "enabled", so a later first run in a terminal still asks its optional questions (and an
     # email given then moves these counts onto that person's pilot: _share_counts). Offline: the next start tries again.
     say(NOTICE + "\nTurn it off: SQUIDBRAKE_TELEMETRY=0 or DO_NOT_TRACK=1, then restart.")
     joined = _share_counts(True, version, cfg.get("ref") or ref_from_env())
@@ -369,12 +375,17 @@ def maybe(argv: list[str], version: str) -> None:
     if command in QUIET or _switched_off():
         return
     cfg = load()
-    if "enabled" not in cfg:
-        # not during `pilot join` either: the installer runs it, and a founder with their own code must land in
-        # their pilot, not in the community one
-        if command == "pilot" or not _interactive() or "--yes" in argv or any(a in ("-h", "--help") for a in argv):
-            return
+    # no questions during `pilot join` either: the installer runs it, and a founder with their own code must land in
+    # their pilot, not in the community one
+    can_ask = (command != "pilot" and _interactive() and "--yes" not in argv
+               and not any(a in ("-h", "--help") for a in argv))
+    if can_ask and ("enabled" not in cfg or (cfg.get("quiet") and cfg.get("enabled"))):
         cfg = _first_run(cfg, version)
+    elif "enabled" not in cfg:
+        # no terminal (an agent or a script ran it): say it on stderr, send, and ask the questions in a terminal later
+        print("\n" + NOTICE + "\nTurn it off: SQUIDBRAKE_TELEMETRY=0 or DO_NOT_TRACK=1.\n", file=sys.stderr)
+        cfg = {**cfg, "id": cfg.get("id") or str(uuid.uuid4()), "enabled": True, "quiet": True}
+        _save(cfg)
     if cfg.get("enabled") and cfg.get("counts_joined") is False and cfg.get("counts_retry") != _today():
         # joining the counts failed (offline, server down): try again, once a day, until it works.
         # Someone who later left (squidbrake pilot leave) has counts_joined True, so they're never joined again.

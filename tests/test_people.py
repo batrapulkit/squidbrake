@@ -72,6 +72,6 @@ def test_every_public_page_counts_visits_and_keeps_first_touch():
     pages = [p for p in [*site.glob("*.html"), *(site / "blog").glob("*.html")] if p.name != "card.html"]
     pages += [ROOT / "insights" / n for n in ("signup.html", "team.html", "get.html")]
     for p in pages:
-        t = p.read_text()
+        t = p.read_text(encoding="utf-8")
         assert "plausible.io/js/" in t and "/assets/touch.js" in t, p.name
-    assert "plausible" not in (ROOT / "insights" / "start.html").read_text()   # its address holds the setup code
+    assert "plausible" not in (ROOT / "insights" / "start.html").read_text(encoding="utf-8")   # its address holds the setup code

@@ -2572,9 +2572,12 @@ def send_email(cfg: dict, subject: str, text: str, html: str | None = None) -> b
         return False
     import smtplib
     from email.message import EmailMessage
+    import email.utils
     msg = EmailMessage()
     msg["Subject"] = subject[:200]
     msg["From"] = cfg.get("smtp_from") or cfg.get("smtp_user") or "squidbrake@localhost"
+    msg["Date"] = email.utils.formatdate(usegmt=True)        # spam filters distrust mail without these
+    msg["Message-ID"] = email.utils.make_msgid(domain=(msg["From"].rsplit("@", 1)[-1].strip("> ") or None))
     msg["To"] = ", ".join(a.strip() for a in str(cfg["email_to"]).split(",") if a.strip())
     msg.set_content(text)
     if html:
