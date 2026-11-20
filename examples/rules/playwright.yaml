@@ -1,0 +1,81 @@
+# Example policy for the Playwright MCP server (@playwright/mcp), wrapped with `connect.py wrap --app playwright`.
+# Tool names use the `<app>.<tool>` form: `playwright.browser_navigate`, `playwright.browser_click`, ...
+# Checked against the tool list in the microsoft/playwright-mcp README (v0.0.86), including the opt-in
+# network, storage, vision and testing tools. Every pattern starts with `playwright.`, so this pack never
+# changes what another app's tools do.
+#
+# Looking at a page runs on its own: navigating, taking a snapshot or screenshot, reading the console and
+# the network requests. Anything that acts on a page waits for a person. Nothing is blocked outright:
+# a browser has no operation that is only ever harmful, and what a click or a form submit does depends on
+# the page. Submitting a form (clicking its button, pressing Enter in a field) can place an order or send a
+# message, so it waits for a person rather than being blocked.
+default: review
+default_reason: Playwright browser actions require approval
+
+rules:
+  - id: allow-playwright-reads
+    action: allow
+    reason: Looking at the page, without changing it
+    match:
+      name:
+        - "playwright.browser_navigate"
+        - "playwright.browser_navigate_back"
+        - "playwright.browser_snapshot"
+        - "playwright.browser_take_screenshot"
+        - "playwright.browser_console_messages"
+        - "playwright.browser_network_requests"
+        - "playwright.browser_network_request"
+        - "playwright.browser_find"
+        - "playwright.browser_wait_for"
+        - "playwright.browser_tabs"
+        - "playwright.browser_resize"
+        - "playwright.browser_hover"
+        - "playwright.browser_close"
+        - "playwright.browser_get_config"
+        - "playwright.browser_route_list"
+
+  - id: review-playwright-script
+    action: review
+    reason: Running JavaScript or Playwright code on the page can do anything the page can, including reading its data and sending requests
+    match:
+      name:
+        - "playwright.browser_evaluate"
+        - "playwright.browser_run_code_unsafe"
+
+  - id: review-playwright-upload
+    action: review
+    reason: Uploading a file sends a file from this machine to the website
+    match:
+      name: ["playwright.browser_file_upload"]
+
+  - id: review-playwright-session-data
+    action: review
+    reason: Cookies, local storage and the storage state can hold session tokens, and changing them can sign in or out as someone
+    match:
+      name:
+        - "playwright.browser_cookie_*"
+        - "playwright.browser_localstorage_*"
+        - "playwright.browser_sessionstorage_*"
+        - "playwright.browser_storage_state"
+        - "playwright.browser_set_storage_state"
+
+  - id: review-playwright-input
+    action: review
+    reason: Typing, filling a form or pressing a key can submit it, and a submitted form can place an order or send a message
+    match:
+      name:
+        - "playwright.browser_type"
+        - "playwright.browser_fill_form"
+        - "playwright.browser_press_key"
+        - "playwright.browser_select_option"
+
+  - id: review-playwright-click
+    action: review
+    reason: A click can submit a form, confirm a purchase or delete something
+    match:
+      name:
+        - "playwright.browser_click"
+        - "playwright.browser_drag"
+        - "playwright.browser_drop"
+        - "playwright.browser_handle_dialog"
+        - "playwright.browser_mouse_*"
