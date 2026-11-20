@@ -548,6 +548,15 @@ def test_all_time_usage_counts_every_day_ever_received(insights, tmp_path, monke
     week = next(p for p in insights.get("/v1/admin/overview", headers=admin).json()["pilots"] if p["code"] == code)
     assert week["week"]["events"] == 7                                             # the overview is unchanged
 
+    # deleting the pilot keeps what its agents did in the all-time totals (as "Deleted pilots")
+    before = a["pilots_total"]["events"]
+    assert insights.delete(f"/v1/admin/pilots/{code}", headers=admin).json() == {"deleted": code}
+    after = insights.get("/v1/admin/all-time", headers=admin).json()
+    assert after["pilots_total"]["events"] == before
+    gone = next(p for p in after["pilots"] if p["code"] == insights_app.DELETED_PILOTS)
+    assert gone["events"] >= 37 and gone["company"] == "Deleted pilots"
+    assert not any(p["code"] == code for p in insights.get("/v1/admin/overview", headers=admin).json()["pilots"])
+
 
 def test_signup_needs_a_work_email_and_gives_the_local_setup_page(insights):
     import app as insights_app

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-5SHCVGFS');</script>
+<!-- End Google Tag Manager -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Claude Code deleted my files: how to get them back</title>
+<meta name="description" content="Claude Code deleted files and /rewind didn&#x27;t help? Why checkpoints miss rm, five places your files may still be, and how to stop it happening again.">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+<meta name="author" content="Pulkit Batra">
+<link rel="canonical" href="https://squidbrake.com/blog/claude-code-deleted-my-files">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://squidbrake.com/blog/claude-code-deleted-my-files">
+<meta property="og:site_name" content="Squidbrake">
+<meta property="og:title" content="Claude Code deleted my files: how to get them back">
+<meta property="og:description" content="Claude Code deleted files and /rewind didn&#x27;t help? Why checkpoints miss rm, five places your files may still be, and how to stop it happening again.">
+<meta property="og:image" content="https://squidbrake.com/assets/blog/claude-code-deleted-my-files.png">
+<meta property="article:published_time" content="2026-11-16">
+<meta property="article:author" content="https://squidbrake.com/about">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Claude Code deleted my files: how to get them back">
+<meta name="twitter:description" content="Claude Code deleted files and /rewind didn&#x27;t help? Why checkpoints miss rm, five places your files may still be, and how to stop it happening again.">
+<meta name="twitter:image" content="https://squidbrake.com/assets/blog/claude-code-deleted-my-files.png">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "BlogPosting", "headline": "Claude Code deleted my files: how to get them back, and stop it next time", "description": "Claude Code deleted files and /rewind didn't help? Why checkpoints miss rm, five places your files may still be, and how to stop it happening again.", "url": "https://squidbrake.com/blog/claude-code-deleted-my-files", "mainEntityOfPage": "https://squidbrake.com/blog/claude-code-deleted-my-files", "datePublished": "2026-11-16", "dateModified": "2026-11-16", "image": "https://squidbrake.com/assets/blog/claude-code-deleted-my-files.png", "inLanguage": "en", "keywords": "claude code deleted my files, claude code rewind, claude code checkpoints, recover deleted files claude code, claude code rm -rf", "articleSection": "Claude Code", "wordCount": 561, "author": {"@type": "Person", "@id": "https://squidbrake.com/about#pulkit", "name": "Pulkit Batra", "url": "https://squidbrake.com/about"}, "publisher": {"@type": "Organization", "@id": "https://squidbrake.com/#org", "name": "Squidbrake", "url": "https://squidbrake.com/", "logo": "https://squidbrake.com/assets/logo-512.png"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://squidbrake.com/"}, {"@type": "ListItem", "position": 2, "name": "Blog", "item": "https://squidbrake.com/blog"}, {"@type": "ListItem", "position": 3, "name": "Claude Code deleted my files: how to get them back, and stop it next time", "item": "https://squidbrake.com/blog/claude-code-deleted-my-files"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Can Claude Code's /rewind restore deleted files?", "acceptedAnswer": {"@type": "Answer", "text": "Only files changed through Claude Code's own edit tools. Anthropic's docs say changes made by bash commands, such as rm or mv, aren't tracked by checkpoints, so /rewind can't restore them."}}, {"@type": "Question", "name": "Where do files deleted with rm go?", "acceptedAnswer": {"@type": "Answer", "text": "Nowhere you can open: rm doesn't use the trash. Check git, your editor's local history and your OS backup first, then a recovery tool, and stop writing to that disk until you have."}}, {"@type": "Question", "name": "How do I stop Claude Code deleting files?", "acceptedAnswer": {"@type": "Answer", "text": "Use a PreToolUse hook that parses each command and holds or blocks deletes outside the project. Hooks run in every permission mode, including --dangerously-skip-permissions."}}, {"@type": "Question", "name": "Does git protect me from an AI agent deleting files?", "acceptedAnswer": {"@type": "Answer", "text": "Committed files, yes: git restore brings them back. Uncommitted work and ignored files, such as .env, aren't in git, so commit before you let an agent clean up."}}]}]}</script>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preload" href="/assets/fonts/host-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/fonts/fonts.css">
+<style>
+:root{
+  --bg:#E6EBE2; --surface:#F4F6F1; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5;
+  --go:#237447; --stop:#C0301C; --hold:#A5560C; --accent:#F2622E; --accent-hover:#E4541F;
+  --code-bg:#1E2A23; --code-ink:#E6EDE4; --code-muted:#93A196;
+  --sans:"Host Grotesk","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:4px}
+.wrap{width:min(1120px,100% - 32px);margin-inline:auto}
+main p,main li,main dd,main>h1{max-width:80ch}   /* the page uses the width, a line of text stays readable */
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 0;border-bottom:1px solid var(--line)}
+.brand{display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:1.2rem;letter-spacing:-0.03em;text-decoration:none}
+.brand svg{width:32px;height:32px}
+header nav{display:flex;gap:20px;font-size:.95rem}
+header nav a{color:var(--muted);text-decoration:none}
+header nav a:hover{color:var(--ink)}
+main{padding:56px 0 80px}
+.kicker{margin:0 0 14px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-weight:500;font-size:clamp(2.2rem,6vw,3.4rem);line-height:1;letter-spacing:-0.05em;margin:0 0 18px}
+.lead{color:var(--muted);font-size:1.1rem;margin:0 0 40px;max-width:52ch}
+h2{display:flex;align-items:baseline;gap:12px;font-weight:500;font-size:1.6rem;letter-spacing:-0.035em;margin:56px 0 12px}
+h2 .n{font:400 .9rem var(--mono);color:var(--muted)}
+p{margin:0 0 14px}
+.muted{color:var(--muted)}
+code{font:400 .9em var(--mono)}
+p code,li code{background:var(--surface);padding:1px 5px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line)}
+pre{margin:0 0 18px;padding:18px 20px;border-radius:10px;background:var(--code-bg);color:var(--code-ink);font:400 .86rem/1.6 var(--mono);overflow-x:auto}
+pre .c{color:var(--code-muted)}
+pre .d{color:#FF8A75}
+pre .h{color:#F7B267}
+.file{display:block;margin:0 0 -6px;padding:8px 20px 14px;border-radius:10px 10px 0 0;background:var(--code-bg);color:var(--code-muted);font:400 .76rem var(--mono)}
+.file+pre{border-radius:0 0 10px 10px}
+.note{margin:18px 0;padding:14px 18px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0;font-size:.95rem}
+ul{padding-left:1.2em;margin:0 0 14px}
+li{margin:4px 0}
+footer{padding:28px 0 40px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem;display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between}
+footer a{text-decoration:none}
+footer a:hover{color:var(--ink)}
+@media (max-width:560px){ header nav a:not(:last-child){display:none} main{padding:36px 0 56px} pre{font-size:.78rem;padding:14px} }
+.ph-badge{display:inline-block;line-height:0}.ph-badge img{max-width:100%;height:auto}
+</style>
+<style>.posts{list-style:none;padding:0;margin:0}.posts li{padding:22px 0;border-bottom:1px solid var(--line)}.posts a{color:var(--ink);font-size:1.3rem;font-weight:500;letter-spacing:-0.02em}.posts p{margin:6px 0 0;color:var(--muted)}.posts time,.byline{font:400 .82rem var(--mono);color:var(--muted)}article h2{display:block}article li{margin:6px 0}.cta-box{margin:48px 0 0;padding:20px 22px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}.cta-box p{margin:0}.cmp{width:100%;border-collapse:collapse;margin:8px 0 0;font-size:.95rem}.cmp th,.cmp td{text-align:left;vertical-align:top;padding:10px 12px 10px 0;border-bottom:1px solid var(--line)}.cmp th{font-weight:500}.cmp td:first-child{color:var(--muted)}.tbl{overflow-x:auto}@media (max-width:560px){.tbl .cmp:has(th:nth-child(4)){min-width:540px}}</style>
+<style>
+.toc{margin:0 0 36px;padding:16px 20px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);max-width:80ch}
+.toc p{margin:0 0 6px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.toc ol{margin:0;padding-left:1.2em}.toc li{margin:2px 0}.toc a{text-decoration:none}.toc a:hover{text-decoration:underline}
+.tldr{margin:0 0 32px;padding:18px 22px;border-radius:12px;border-left:3px solid var(--accent);background:var(--surface);max-width:80ch}
+.tldr p{margin:0 0 6px;font-weight:500}.tldr ul{margin:0}
+figure.fig{margin:28px 0 30px;padding:20px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+figure.fig .scroll{overflow-x:auto}
+figure.fig svg{display:block;width:100%;min-width:560px;height:auto;font-family:var(--sans)}
+figure.fig figcaption{margin:12px 0 0;color:var(--muted);font-size:.9rem;max-width:80ch}
+.fig .bx{fill:var(--bg);stroke:var(--line);stroke-width:1.5}
+.fig .bx-go{fill:var(--bg);stroke:var(--go);stroke-width:2}
+.fig .bx-hold{fill:var(--bg);stroke:var(--hold);stroke-width:2}
+.fig .bx-stop{fill:var(--bg);stroke:var(--stop);stroke-width:2}
+.fig .bx-acc{fill:var(--bg);stroke:var(--accent);stroke-width:2}
+.fig .bx-off{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:5 5}
+.fig .t{fill:var(--ink);font-size:15px;font-weight:500}
+.fig .s{fill:var(--muted);font-size:12.5px}
+.fig .m{fill:var(--muted);font:400 11.5px var(--mono);letter-spacing:.06em}
+.fig .ln{stroke:var(--muted);stroke-width:1.5;fill:none}
+.fig .ah{fill:var(--muted)}
+.fig .go{fill:var(--go)}.fig .hold{fill:var(--hold)}.fig .stop{fill:var(--stop)}.fig .acc{fill:var(--accent)}.fig .mut{fill:var(--muted)}
+.fig .bar{fill:var(--muted)}.fig .bar-hi{fill:var(--accent)}.fig .grid{stroke:var(--line);stroke-width:1}
+.fig .ring-a{fill:var(--go);fill-opacity:.13;stroke:var(--go);stroke-width:1.5}
+.fig .ring-b{fill:var(--hold);fill-opacity:.13;stroke:var(--hold);stroke-width:1.5}
+.fig .ring-c{fill:var(--accent);fill-opacity:.13;stroke:var(--accent);stroke-width:1.5}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:24px 0 30px}
+.stat{padding:16px 18px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+.stat b{display:block;font-size:1.9rem;font-weight:500;letter-spacing:-0.04em;line-height:1.1}
+.stat span{color:var(--muted);font-size:.88rem}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;font:400 .76rem var(--mono);white-space:nowrap;box-shadow:inset 0 0 0 1px currentColor}
+.pill.go{color:var(--go)}.pill.hold{color:var(--hold)}.pill.stop{color:var(--stop)}
+.faq details{padding:14px 0;border-bottom:1px solid var(--line);max-width:80ch}
+.faq summary{cursor:pointer;font-weight:500}
+.faq details p{margin:10px 0 0}
+.related{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0 0;padding:0;list-style:none}
+.related li{margin:0}
+.related a{display:block;height:100%;padding:14px 16px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);text-decoration:none}
+.related a:hover{box-shadow:inset 0 0 0 1px var(--ink)}
+.related b{display:block;font-weight:500}.related span{color:var(--muted);font-size:.88rem}
+article code{overflow-wrap:anywhere}
+details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+</style>
+<style>ol.steps{list-style:none;counter-reset:s;padding:0;margin:18px 0 26px;display:grid;gap:10px}ol.steps li{counter-increment:s;position:relative;margin:0;padding:15px 18px 15px 60px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}ol.steps li::before{content:counter(s);position:absolute;left:16px;top:14px;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font:600 .9rem/30px var(--sans);text-align:center}.hero-img{display:block;width:100%;height:auto;border-radius:14px;margin:6px 0 26px;box-shadow:0 0 0 1px var(--line)}.stat b{color:var(--accent)}</style>
+<link rel="stylesheet" href="/assets/footer.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>Squidbrake</a>
+    <nav aria-label="Docs"><a href="/#how">How it works</a><a href="/security">Security</a><a href="/pricing">Pricing</a><a href="/about">About</a><a href="/blog">Blog</a><a href="/changelog">Changelog</a><a href="/signup"><b>Try now</b></a></nav>
+  </header>
+
+  <main>
+    <p class="kicker">Claude Code</p>
+    <article>
+    <h1>Claude Code deleted my files: how to get them back, and stop it next time</h1>
+    <p class="byline">By <a href="/about">Pulkit Batra</a> · <time datetime="2026-11-16">16 November 2026</time> · 6 min read</p>
+    <img class="hero-img" src="/assets/blog/claude-code-deleted-my-files.png" width="1200" height="630" alt="Claude Code deleted my files. Now what?">
+    <p class="lead">You asked Claude Code to tidy up, and a folder you needed is gone. The first thing most people try is <code>/rewind</code>, and the first surprise is that it often can't help. Here is why, where your files may still be, and how to make sure the next cleanup can't take them.</p>
+    <div class="tldr"><p>In short</p><ul><li><code>/rewind</code> restores edits made through Claude Code's file tools. It doesn't restore what a shell command like <code>rm</code> or <code>mv</code> removed.</li><li>Check, in order: git, your editor's local history, the OS backup (File History or Time Machine), then a file recovery tool.</li><li>Stop writing to the disk until you've looked: new files can overwrite what a recovery tool could still find.</li><li>Next time: hold deletes for a person, and keep a copy of what an allowed delete removes.</li></ul></div>
+    <nav class="toc" aria-label="On this page"><p>On this page</p><ol><li><a href="#why-rewind-didnt-work">Why /rewind didn&#x27;t bring them back</a></li><li><a href="#where-your-files-may-still-be">Where your files may still be</a></li><li><a href="#how-to-stop-it-next-time">How to stop it next time</a></li><li><a href="#doing-it-with-squidbrake">Doing it with Squidbrake</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+
+    <h2 id="why-rewind-didnt-work">Why /rewind didn't bring them back</h2>
+    <p>Claude Code takes a checkpoint before each of its own edits, and <code>/rewind</code> (or Esc twice) rolls those edits back. Anthropic's <a href="https://code.claude.com/docs/en/checkpointing" target="_blank" rel="noopener">checkpointing docs</a> are clear about the limit: changes made by bash commands aren't tracked. When the agent deletes something with <code>rm</code>, moves it with <code>mv</code>, or overwrites it with a script, the checkpoint has nothing to restore.</p>
+    <p>That's the usual case. Agents clean up with shell commands, because one <code>rm -rf</code> is faster than twenty file edits. In the <a href="https://www.docker.com/blog/coding-agent-horror-stories-the-rm-rf-incident/" target="_blank" rel="noopener">December 2025 incident</a> a developer lost their home folder to a cleanup command that ended in <code>~/</code>, and no checkpoint covered it.</p>
+
+    <h2 id="where-your-files-may-still-be">Where your files may still be</h2>
+    <p>Work through these in order. Stop at the first one that has your files.</p>
+    <ol class="steps">
+      <li><b>Git.</b> If the files were ever committed, <code>git status</code> shows them as deleted and <code>git restore &lt;path&gt;</code> brings them back. If a <code>git reset --hard</code> took them, <code>git reflog</code> lists the commit you were on. Files you staged but never committed can sometimes be found with <code>git fsck --lost-found</code>.</li>
+      <li><b>Your editor's history.</b> VS Code's <em>Timeline</em> view and JetBrains' <em>Local History</em> keep copies of files you had open, even ones never committed.</li>
+      <li><b>The operating system's backup.</b> Windows: right-click the folder, <em>Restore previous versions</em> (File History). macOS: Time Machine. Linux: whatever snapshots your filesystem takes, such as btrfs or ZFS.</li>
+      <li><b>The trash.</b> Usually empty: <code>rm</code> deletes straight away and never uses it. Check anyway if the agent used a GUI tool or <code>trash</code>.</li>
+      <li><b>A recovery tool.</b> On an SSD, deleted files are often wiped soon after deletion (TRIM), so this is the long shot. Stop installing and building on that disk until you've tried.</li>
+    </ol>
+
+    <h2 id="how-to-stop-it-next-time">How to stop it next time</h2>
+    <p>A hook runs before every tool call, whatever permission mode Claude Code is in, so it's the place to catch a delete before it happens:</p>
+    <ul>
+      <li><b>Read the command, not the text.</b> Matching the string <code>rm -rf</code> misses <code>find . -delete</code>, a script the agent just wrote, and the home folder hidden at the end of a long line. The hook has to parse the command and work out what it would remove.</li>
+      <li><b>Hold deletes outside the project.</b> Deleting <code>build/</code> is routine. Deleting your home folder, a drive, or anything outside the repo should wait for a person.</li>
+      <li><b>Keep a copy of what an allowed delete removes.</b> Then you can undo a mistake you approved.</li>
+      <li><b>Commit before you let the agent clean up.</b> It's the cheapest backup there is.</li>
+    </ul>
+
+    <h2 id="doing-it-with-squidbrake">Doing it with Squidbrake</h2>
+    <p>Squidbrake connects to Claude Code as a hook. Every command is parsed before it runs. Deleting your home folder or a whole drive is blocked outright. Commands that can't be undone, like a force push or a delete through a cloud API, wait for a person to approve them on their phone, Slack, Teams or email.</p>
+    <p>When a delete is allowed, Squidbrake first copies what it would remove: the files <code>rm -r</code> names, the untracked files <code>git clean</code> would delete, the uncommitted changes <code>git reset --hard</code> would discard. <code>squidbrake undo</code> lists those copies, and <code>squidbrake undo ID</code> puts one back. Build outputs like <code>node_modules</code> aren't copied, because the next build makes them again.</p>
+
+    <h2 id="faq">FAQ</h2>
+    <div class="faq"><details><summary>Can Claude Code&#x27;s /rewind restore deleted files?</summary><p>Only files changed through Claude Code&#x27;s own edit tools. Anthropic&#x27;s docs say changes made by bash commands, such as rm or mv, aren&#x27;t tracked by checkpoints, so /rewind can&#x27;t restore them.</p></details><details><summary>Where do files deleted with rm go?</summary><p>Nowhere you can open: rm doesn&#x27;t use the trash. Check git, your editor&#x27;s local history and your OS backup first, then a recovery tool, and stop writing to that disk until you have.</p></details><details><summary>How do I stop Claude Code deleting files?</summary><p>Use a PreToolUse hook that parses each command and holds or blocks deletes outside the project. Hooks run in every permission mode, including --dangerously-skip-permissions.</p></details><details><summary>Does git protect me from an AI agent deleting files?</summary><p>Committed files, yes: git restore brings them back. Uncommitted work and ignored files, such as .env, aren&#x27;t in git, so commit before you let an agent clean up.</p></details></div>
+    <div class="cta-box"><p><strong>Try it on your own agents.</strong> <code>pipx install squidbrake</code>, then
+      <code>squidbrake connect all</code>. Start in shadow mode: nothing is blocked in week one, you see what would have been.
+      <a href="/docs">Quickstart</a> · <a href="/benchmark">Benchmark</a> · <a href="/#demo">Book a demo</a></p></div>
+
+    <h2 id="related">Related guides</h2>
+    <ul class="related"><li><a href="/blog/claude-code-dangerously-skip-permissions"><b>Claude Code --dangerously-skip-permissions: how to use it safely</b><span>What Claude Code&#x27;s --dangerously-skip-permissions flag (YOLO mode) skips, what still runs, and five ways to keep auto mode without losing files or data.</span></a></li><li><a href="/blog/yolo-mode-claude-code-cursor-codex"><b>YOLO mode in Claude Code, Cursor and Codex, compared (2026)</b><span>Claude Code auto mode and skip-permissions, Cursor auto-run, Codex --yolo: what each skips, what still protects you, and a safe setup for each.</span></a></li><li><a href="/blog/ai-agent-deleted-production-database"><b>How an AI agent deleted a prod database and how to stop it</b><span>Replit&#x27;s agent wiped a production database during a code freeze. What happened, why permissions didn&#x27;t catch it, and the controls that would have.</span></a></li></ul>
+    </article>
+  </main>
+
+
+  <footer class="sf">
+    <div class="sf-about"><a class="brand" href="/" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>Squidbrake</a><p>Squidbrake is open-source change control for AI agents. Routine actions by Claude Code, Cursor, Codex and MCP tools run on their own, risky changes wait for a person, and catastrophic ones are blocked. Every decision lands in a tamper-evident audit log.</p><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" loading="lazy" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a></div>
+    <div class="sf-grid">
+      <nav class="sf-col" aria-label="Product"><p class="sf-h">Product</p><ul><li><a href="/#how">How it works</a></li><li><a href="/docs">Quickstart and docs</a></li><li><a href="/pricing">Pricing</a></li><li><a href="/security">Security and compliance</a></li><li><a href="/benchmark">Benchmark: 16 real incidents</a></li><li><a href="/changelog">Changelog</a></li><li><a href="/signup">Try Squidbrake</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Guides"><p class="sf-h">Guides</p><ul><li><a href="/blog/ai-agent-governance-framework">AI agent governance</a></li><li><a href="/blog/least-privilege-ai-agents">Least privilege for AI agents</a></li><li><a href="/blog/ai-agent-audit-trail">AI agent audit trail</a></li><li><a href="/blog/ai-agent-kill-switch">AI agent kill switch</a></li><li><a href="/blog/human-in-the-loop-approval-for-ai-agents">Human-in-the-loop approval</a></li><li><a href="/blog/ai-agent-guardrails">AI agent guardrails</a></li><li><a href="/blog/prompt-injection-ai-agents">Prompt injection in AI agents</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Coding agents"><p class="sf-h">Coding agents</p><ul><li><a href="/blog/claude-code-enterprise-security">Claude Code for teams</a></li><li><a href="/blog/claude-code-dangerously-skip-permissions">Claude Code skip-permissions</a></li><li><a href="/blog/yolo-mode-claude-code-cursor-codex">YOLO mode: Claude Code, Cursor, Codex</a></li><li><a href="/blog/claude-code-deleted-my-files">Claude Code deleted my files</a></li><li><a href="/blog/ai-agent-git-force-push">Stop agents force-pushing</a></li><li><a href="/blog/ai-coding-agent-policy-template">AI coding agent policy template</a></li><li><a href="/blog/vibe-coding-security-checklist">Vibe coding security</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Compliance"><p class="sf-h">Compliance</p><ul><li><a href="/blog/soc-2-ai-agents">SOC 2 for AI agents</a></li><li><a href="/blog/eu-ai-act-article-14-human-oversight-ai-agents">EU AI Act Article 14</a></li><li><a href="/blog/owasp-top-10-agentic-applications">OWASP Top 10 for agents</a></li><li><a href="/blog/mcp-security-checklist">MCP security checklist</a></li><li><a href="/blog/ai-agent-deleted-production-database">AI agent deleted a prod database</a></li><li><a href="/blog/squidbrake-vs-kontext">Squidbrake vs Kontext</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Company"><p class="sf-h">Company</p><ul><li><a href="/about">About</a></li><li><a href="/blog">Blog</a></li><li><a href="mailto:pulkit@squidbrake.com">Contact</a></li><li><a href="https://github.com/batrapulkit/squidbrake" target="_blank" rel="noopener">GitHub</a></li><li><a href="https://pypi.org/project/squidbrake/" target="_blank" rel="noopener">PyPI</a></li><li><a href="https://www.linkedin.com/company/squidbrake" target="_blank" rel="noopener">LinkedIn</a></li></ul></nav>
+    </div>
+    <div class="sf-bot"><span>© 2026 Squidbrake, Inc.</span><span class="agents">For AI agents: <a href="/llms.txt">llms.txt</a> · <a href="/index.md">site as markdown</a> · <a href="/sitemap.xml">sitemap</a></span><a href="/security">Security and privacy</a></div>
+  </footer>
+</div>
+<script src="/assets/try.js" defer></script>
+<script src="/assets/menu.js" defer></script>
+</body>
+</html>

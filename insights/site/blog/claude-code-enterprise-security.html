@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Claude Code enterprise security: a rollout checklist</title>
+<meta name="description" content="Rolling Claude Code out to a team? Managed settings, allow, ask and deny rules, turning off bypass mode, hooks, sandboxing, MCP allowlists and an audit trail.">
+<meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1">
+<meta name="author" content="Karishma Sinha">
+<link rel="canonical" href="https://squidbrake.com/blog/claude-code-enterprise-security">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://squidbrake.com/blog/claude-code-enterprise-security">
+<meta property="og:site_name" content="Squidbrake">
+<meta property="og:title" content="Claude Code enterprise security: a rollout checklist">
+<meta property="og:description" content="Rolling Claude Code out to a team? Managed settings, allow, ask and deny rules, turning off bypass mode, hooks, sandboxing, MCP allowlists and an audit trail.">
+<meta property="og:image" content="https://squidbrake.com/assets/blog/claude-code-enterprise-security.png">
+<meta property="article:published_time" content="2026-11-17">
+<meta property="article:author" content="https://squidbrake.com/about">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Claude Code enterprise security: a rollout checklist">
+<meta name="twitter:description" content="Rolling Claude Code out to a team? Managed settings, allow, ask and deny rules, turning off bypass mode, hooks, sandboxing, MCP allowlists and an audit trail.">
+<meta name="twitter:image" content="https://squidbrake.com/assets/blog/claude-code-enterprise-security.png">
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "BlogPosting", "headline": "Securing Claude Code for your team: managed settings, permissions, hooks and approvals", "description": "Rolling Claude Code out to a team? Managed settings, allow, ask and deny rules, turning off bypass mode, hooks, sandboxing, MCP allowlists and an audit trail.", "url": "https://squidbrake.com/blog/claude-code-enterprise-security", "mainEntityOfPage": "https://squidbrake.com/blog/claude-code-enterprise-security", "datePublished": "2026-11-17", "dateModified": "2026-11-17", "image": "https://squidbrake.com/assets/blog/claude-code-enterprise-security.png", "inLanguage": "en", "keywords": "claude code enterprise security, claude code managed settings, claude code permissions, claude code security best practices, claude code for teams, deploy claude code securely", "articleSection": "Claude Code", "wordCount": 1029, "author": {"@type": "Person", "@id": "https://squidbrake.com/about#karishma", "name": "Karishma Sinha", "url": "https://squidbrake.com/about"}, "publisher": {"@type": "Organization", "@id": "https://squidbrake.com/#org", "name": "Squidbrake", "url": "https://squidbrake.com/", "logo": "https://squidbrake.com/assets/logo-512.png"}}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "Home", "item": "https://squidbrake.com/"}, {"@type": "ListItem", "position": 2, "name": "Blog", "item": "https://squidbrake.com/blog"}, {"@type": "ListItem", "position": 3, "name": "Securing Claude Code for your team: managed settings, permissions, hooks and approvals", "item": "https://squidbrake.com/blog/claude-code-enterprise-security"}]}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Where do Claude Code managed settings go?", "acceptedAnswer": {"@type": "Answer", "text": "In a managed-settings.json file in a system directory pushed by MDM, in OS-level MDM policies, or as server-managed settings from the claude.ai admin console. Run /status to see which source applies."}}, {"@type": "Question", "name": "Can developers override Claude Code managed settings?", "acceptedAnswer": {"@type": "Answer", "text": "Not from their own settings files or the --settings flag: managed keys sit at the top. A few security keys honour a stricter value from a lower level. Someone with admin rights on the machine can still change system files, so pair this with MDM."}}, {"@type": "Question", "name": "How do I stop developers using --dangerously-skip-permissions?", "acceptedAnswer": {"@type": "Answer", "text": "Set permissions.disableBypassPermissionsMode to \"disable\" in managed settings. Project and local files can't switch a session into bypass mode."}}, {"@type": "Question", "name": "Does Claude Code have an audit log for teams?", "acceptedAnswer": {"@type": "Answer", "text": "Each machine keeps its own session history, and Claude Code can export usage and events over OpenTelemetry. For a record of who approved which action across the team, add a gateway that records decisions."}}]}]}</script>
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+<link rel="icon" type="image/png" sizes="48x48" href="/assets/favicon-48.png">
+<link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+<link rel="preload" href="/assets/fonts/host-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/fonts/fonts.css">
+<style>
+:root{
+  --bg:#E6EBE2; --surface:#F4F6F1; --ink:#1E2A23; --muted:#56625A; --line:#C9D2C5;
+  --go:#237447; --stop:#C0301C; --hold:#A5560C; --accent:#F2622E; --accent-hover:#E4541F;
+  --code-bg:#1E2A23; --code-ink:#E6EDE4; --code-muted:#93A196;
+  --sans:"Host Grotesk","Helvetica Neue",Helvetica,Arial,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+}
+:root[data-theme="dark"]{ --bg:#121A15; --surface:#1A241E; --ink:#E6EDE4; --muted:#A3B0A6; --line:#2B3830; --go:#5CC98A; --stop:#FF6A55; --hold:#E9A15A; --code-bg:#0B110D; color-scheme:dark; }
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+a{color:inherit}
+:focus-visible{outline:2px solid currentColor;outline-offset:3px;border-radius:4px}
+.wrap{width:min(1120px,100% - 32px);margin-inline:auto}
+main p,main li,main dd,main>h1{max-width:80ch}   /* the page uses the width, a line of text stays readable */
+header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:22px 0;border-bottom:1px solid var(--line)}
+.brand{display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:1.2rem;letter-spacing:-0.03em;text-decoration:none}
+.brand svg{width:32px;height:32px}
+header nav{display:flex;gap:20px;font-size:.95rem}
+header nav a{color:var(--muted);text-decoration:none}
+header nav a:hover{color:var(--ink)}
+main{padding:56px 0 80px}
+.kicker{margin:0 0 14px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1{font-weight:500;font-size:clamp(2.2rem,6vw,3.4rem);line-height:1;letter-spacing:-0.05em;margin:0 0 18px}
+.lead{color:var(--muted);font-size:1.1rem;margin:0 0 40px;max-width:52ch}
+h2{display:flex;align-items:baseline;gap:12px;font-weight:500;font-size:1.6rem;letter-spacing:-0.035em;margin:56px 0 12px}
+h2 .n{font:400 .9rem var(--mono);color:var(--muted)}
+p{margin:0 0 14px}
+.muted{color:var(--muted)}
+code{font:400 .9em var(--mono)}
+p code,li code{background:var(--surface);padding:1px 5px;border-radius:4px;box-shadow:inset 0 0 0 1px var(--line)}
+pre{margin:0 0 18px;padding:18px 20px;border-radius:10px;background:var(--code-bg);color:var(--code-ink);font:400 .86rem/1.6 var(--mono);overflow-x:auto}
+pre .c{color:var(--code-muted)}
+pre .d{color:#FF8A75}
+pre .h{color:#F7B267}
+.file{display:block;margin:0 0 -6px;padding:8px 20px 14px;border-radius:10px 10px 0 0;background:var(--code-bg);color:var(--code-muted);font:400 .76rem var(--mono)}
+.file+pre{border-radius:0 0 10px 10px}
+.note{margin:18px 0;padding:14px 18px;border-left:3px solid var(--accent);background:var(--surface);border-radius:0 8px 8px 0;font-size:.95rem}
+ul{padding-left:1.2em;margin:0 0 14px}
+li{margin:4px 0}
+footer{padding:28px 0 40px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem;display:flex;flex-wrap:wrap;gap:12px 24px;justify-content:space-between}
+footer a{text-decoration:none}
+footer a:hover{color:var(--ink)}
+@media (max-width:560px){ header nav a:not(:last-child){display:none} main{padding:36px 0 56px} pre{font-size:.78rem;padding:14px} }
+.ph-badge{display:inline-block;line-height:0}.ph-badge img{max-width:100%;height:auto}
+</style>
+<style>.posts{list-style:none;padding:0;margin:0}.posts li{padding:22px 0;border-bottom:1px solid var(--line)}.posts a{color:var(--ink);font-size:1.3rem;font-weight:500;letter-spacing:-0.02em}.posts p{margin:6px 0 0;color:var(--muted)}.posts time,.byline{font:400 .82rem var(--mono);color:var(--muted)}article h2{display:block}article li{margin:6px 0}.cta-box{margin:48px 0 0;padding:20px 22px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}.cta-box p{margin:0}.cmp{width:100%;border-collapse:collapse;margin:8px 0 0;font-size:.95rem}.cmp th,.cmp td{text-align:left;vertical-align:top;padding:10px 12px 10px 0;border-bottom:1px solid var(--line)}.cmp th{font-weight:500}.cmp td:first-child{color:var(--muted)}.tbl{overflow-x:auto}@media (max-width:560px){.tbl .cmp:has(th:nth-child(4)){min-width:540px}}</style>
+<style>
+.toc{margin:0 0 36px;padding:16px 20px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);max-width:80ch}
+.toc p{margin:0 0 6px;font:400 .78rem var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.toc ol{margin:0;padding-left:1.2em}.toc li{margin:2px 0}.toc a{text-decoration:none}.toc a:hover{text-decoration:underline}
+.tldr{margin:0 0 32px;padding:18px 22px;border-radius:12px;border-left:3px solid var(--accent);background:var(--surface);max-width:80ch}
+.tldr p{margin:0 0 6px;font-weight:500}.tldr ul{margin:0}
+figure.fig{margin:28px 0 30px;padding:20px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+figure.fig .scroll{overflow-x:auto}
+figure.fig svg{display:block;width:100%;min-width:560px;height:auto;font-family:var(--sans)}
+figure.fig figcaption{margin:12px 0 0;color:var(--muted);font-size:.9rem;max-width:80ch}
+.fig .bx{fill:var(--bg);stroke:var(--line);stroke-width:1.5}
+.fig .bx-go{fill:var(--bg);stroke:var(--go);stroke-width:2}
+.fig .bx-hold{fill:var(--bg);stroke:var(--hold);stroke-width:2}
+.fig .bx-stop{fill:var(--bg);stroke:var(--stop);stroke-width:2}
+.fig .bx-acc{fill:var(--bg);stroke:var(--accent);stroke-width:2}
+.fig .bx-off{fill:none;stroke:var(--muted);stroke-width:1.5;stroke-dasharray:5 5}
+.fig .t{fill:var(--ink);font-size:15px;font-weight:500}
+.fig .s{fill:var(--muted);font-size:12.5px}
+.fig .m{fill:var(--muted);font:400 11.5px var(--mono);letter-spacing:.06em}
+.fig .ln{stroke:var(--muted);stroke-width:1.5;fill:none}
+.fig .ah{fill:var(--muted)}
+.fig .go{fill:var(--go)}.fig .hold{fill:var(--hold)}.fig .stop{fill:var(--stop)}.fig .acc{fill:var(--accent)}.fig .mut{fill:var(--muted)}
+.fig .bar{fill:var(--muted)}.fig .bar-hi{fill:var(--accent)}.fig .grid{stroke:var(--line);stroke-width:1}
+.fig .ring-a{fill:var(--go);fill-opacity:.13;stroke:var(--go);stroke-width:1.5}
+.fig .ring-b{fill:var(--hold);fill-opacity:.13;stroke:var(--hold);stroke-width:1.5}
+.fig .ring-c{fill:var(--accent);fill-opacity:.13;stroke:var(--accent);stroke-width:1.5}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:24px 0 30px}
+.stat{padding:16px 18px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}
+.stat b{display:block;font-size:1.9rem;font-weight:500;letter-spacing:-0.04em;line-height:1.1}
+.stat span{color:var(--muted);font-size:.88rem}
+.pill{display:inline-block;padding:1px 9px;border-radius:999px;font:400 .76rem var(--mono);white-space:nowrap;box-shadow:inset 0 0 0 1px currentColor}
+.pill.go{color:var(--go)}.pill.hold{color:var(--hold)}.pill.stop{color:var(--stop)}
+.faq details{padding:14px 0;border-bottom:1px solid var(--line);max-width:80ch}
+.faq summary{cursor:pointer;font-weight:500}
+.faq details p{margin:10px 0 0}
+.related{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin:14px 0 0;padding:0;list-style:none}
+.related li{margin:0}
+.related a{display:block;height:100%;padding:14px 16px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);text-decoration:none}
+.related a:hover{box-shadow:inset 0 0 0 1px var(--ink)}
+.related b{display:block;font-weight:500}.related span{color:var(--muted);font-size:.88rem}
+article code{overflow-wrap:anywhere}
+details.data{margin:10px 0 0}details.data summary{cursor:pointer;color:var(--muted);font-size:.9rem}
+</style>
+<style>ol.steps{list-style:none;counter-reset:s;padding:0;margin:18px 0 26px;display:grid;gap:10px}ol.steps li{counter-increment:s;position:relative;margin:0;padding:15px 18px 15px 60px;border-radius:14px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line)}ol.steps li::before{content:counter(s);position:absolute;left:16px;top:14px;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font:600 .9rem/30px var(--sans);text-align:center}.hero-img{display:block;width:100%;height:auto;border-radius:14px;margin:6px 0 26px;box-shadow:0 0 0 1px var(--line)}.stat b{color:var(--accent)}</style>
+<link rel="stylesheet" href="/assets/footer.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="brand" href="/" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>Squidbrake</a>
+    <nav aria-label="Docs"><a href="/#how">How it works</a><a href="/security">Security</a><a href="/pricing">Pricing</a><a href="/about">About</a><a href="/blog">Blog</a><a href="/changelog">Changelog</a><a href="/signup"><b>Try now</b></a></nav>
+  </header>
+
+  <main>
+    <p class="kicker">Claude Code</p>
+    <article>
+    <h1>Securing Claude Code for your team: managed settings, permissions, hooks and approvals</h1>
+    <p class="byline">By <a href="/about">Karishma Sinha</a> · <time datetime="2026-11-17">17 November 2026</time> · 6 min read</p>
+    <img class="hero-img" src="/assets/blog/claude-code-enterprise-security.png" width="1200" height="630" alt="Claude Code for teams: tests run, a push to main is held, skip-permissions mode is turned off by policy">
+    <p class="lead">One engineer using Claude Code makes their own choices. Fifty engineers need a floor nobody can lower by accident. Claude Code has most of the pieces built in: managed settings, permission rules, hooks and a sandbox. Here's the order we'd turn them on, and the two gaps you'll still need to cover.</p>
+    <div class="tldr"><p>In short</p><ul><li>Put the policy in managed settings. Nothing in a user or project file overrides a managed key.</li><li>Deny reads of secrets, ask before pushes and infrastructure changes, and turn off bypass mode.</li><li>Use hooks for checks the permission rules can't express, and limit hooks to the ones IT deploys.</li><li>Built-in prompts ask the person at the keyboard. For a second person's sign-off and one record across machines, add a gateway.</li></ul></div>
+    <nav class="toc" aria-label="On this page"><p>On this page</p><ol><li><a href="#managed-settings">1. Put the policy in managed settings</a></li><li><a href="#permission-rules">2. Write allow, ask and deny rules</a></li><li><a href="#bypass-mode">3. Turn off bypass mode</a></li><li><a href="#hooks">4. Add hooks for what rules can&#x27;t express</a></li><li><a href="#sandbox-and-mcp">5. Sandbox Bash and allowlist MCP servers</a></li><li><a href="#the-gaps">6. The two gaps: a second person, and one record</a></li><li><a href="#with-squidbrake">Closing them with Squidbrake</a></li><li><a href="#faq">FAQ</a></li></ol></nav>
+    
+    <h2 id="managed-settings">1. Put the policy in managed settings</h2>
+    <p>Claude Code reads settings from user, project, local and managed sources. <a href="https://code.claude.com/docs/en/settings" target="_blank" rel="noopener">Managed settings</a> sit at the top: nothing in a developer's own files or a <code>--settings</code> flag overrides a managed key. They arrive three ways:</p>
+<ul>
+<li>a <code>managed-settings.json</code> file in a system directory, pushed by your MDM (Jamf, Intune);</li>
+<li>OS-level MDM policies;</li>
+<li>server-managed settings from the claude.ai admin console, which also reach cloud sessions.</li>
+</ul>
+<p>Developers can run <code>/status</code> to see which managed source applies to them.</p>
+    
+    <h2 id="permission-rules">2. Write allow, ask and deny rules</h2>
+    <p>Permission rules name a tool and what it may do. Deny wins over ask, and ask over allow. A reasonable team floor:</p>
+<span class="file">managed-settings.json</span>
+<pre>{
+  "permissions": {
+    "disableBypassPermissionsMode": "disable",
+    "deny": ["Read(./.env)", "Read(./.env.*)", "Read(~/.aws/**)", "Read(~/.ssh/**)"],
+    "ask":  ["Bash(git push *)", "Bash(terraform *)", "Bash(kubectl *)"]
+  }
+}</pre>
+<p>Two details worth knowing: <code>deny</code> and <code>ask</code> rules in a committed project file apply straight away, while <code>allow</code> rules wait until each developer trusts the folder. And with <code>allowManagedPermissionRulesOnly</code>, managed settings become the only source of permission rules.</p>
+<div class="note">Settings keys change between releases. Check the <a href="https://code.claude.com/docs/en/settings" target="_blank" rel="noopener">settings reference</a> before you deploy, and test the file on one machine with <code>/status</code>.</div>
+    
+    <h2 id="bypass-mode">3. Turn off bypass mode</h2>
+    <p><code>--dangerously-skip-permissions</code> skips every prompt. <code>permissions.disableBypassPermissionsMode</code> stops anyone entering that mode, and project or local files can't switch a session into auto or bypass mode. Our post on <a href="/blog/claude-code-dangerously-skip-permissions">skip-permissions</a> covers when the flag is reasonable, such as inside a throwaway container.</p>
+    
+    <h2 id="hooks">4. Add hooks for what rules can&#x27;t express</h2>
+    <p>Permission rules match patterns. They can't tell that <code>make clean</code> runs <code>rm -rf</code>, or that this delete comes right after backups were turned off. A <code>PreToolUse</code> hook sees every tool call before it runs and can allow, deny or ask. Set <code>allowManagedHooksOnly</code> so only the hooks your organisation deploys run, and a repository can't add its own.</p>
+    
+    <h2 id="sandbox-and-mcp">5. Sandbox Bash and allowlist MCP servers</h2>
+    <ul>
+<li><b>Sandbox.</b> The <code>sandbox</code> setting isolates Bash commands from the filesystem and network on macOS, Linux and WSL2.</li>
+<li><b>MCP.</b> <code>allowedMcpServers</code> and <code>deniedMcpServers</code> control which servers people can add; <code>allowManagedMcpServersOnly</code> makes the managed list the only one. Our <a href="/blog/mcp-security-checklist">MCP security checklist</a> covers the rest.</li>
+</ul>
+    
+    <h2 id="the-gaps">6. The two gaps: a second person, and one record</h2>
+    <p>Claude Code's prompts ask the developer at the keyboard, who is also the person who asked for the change. That's fine for most actions. For a push to <code>main</code>, a production migration or a <code>terraform destroy</code>, change control usually means someone else approves. And each laptop keeps its own history, so there's no single record across the team. Claude Code can export usage and events over OpenTelemetry, which helps with monitoring, but it isn't an approval.</p>
+    
+    <h2 id="with-squidbrake">Closing them with Squidbrake</h2>
+    <p>Squidbrake connects to Claude Code as a hook (or the Claude Code plugin) and checks every tool call against one team policy. Risky actions wait for a second person on their phone, Slack, Teams or email, with what the action will change shown first. Every decision lands in one tamper-evident record.</p>
+<pre>squidbrake lockdown --url https://gateway.yourcompany.com --out squidbrake-lockdown</pre>
+<p><code>squidbrake lockdown</code> writes the managed-settings files for Claude Code, Codex, Gemini CLI and Cursor, with a README saying where each goes on macOS, Linux and Windows. Push them with your MDM: each agent must run Squidbrake's hook, and skip-permissions and <code>--yolo</code> are off. The <a href="https://github.com/batrapulkit/squidbrake/blob/main/docs/mdm.md" target="_blank" rel="noopener">fleet rollout guide</a> covers Jamf and Intune.</p>
+    
+    <h2 id="faq">FAQ</h2>
+    <div class="faq"><details><summary>Where do Claude Code managed settings go?</summary><p>In a managed-settings.json file in a system directory pushed by MDM, in OS-level MDM policies, or as server-managed settings from the claude.ai admin console. Run /status to see which source applies.</p></details><details><summary>Can developers override Claude Code managed settings?</summary><p>Not from their own settings files or the --settings flag: managed keys sit at the top. A few security keys honour a stricter value from a lower level. Someone with admin rights on the machine can still change system files, so pair this with MDM.</p></details><details><summary>How do I stop developers using --dangerously-skip-permissions?</summary><p>Set permissions.disableBypassPermissionsMode to &quot;disable&quot; in managed settings. Project and local files can&#x27;t switch a session into bypass mode.</p></details><details><summary>Does Claude Code have an audit log for teams?</summary><p>Each machine keeps its own session history, and Claude Code can export usage and events over OpenTelemetry. For a record of who approved which action across the team, add a gateway that records decisions.</p></details></div>
+    <div class="cta-box"><p><strong>Try it on your own agents.</strong> <code>pipx install squidbrake</code>, then
+      <code>squidbrake connect all</code>. Start in shadow mode: nothing is blocked in week one, you see what would have been.
+      <a href="/docs">Quickstart</a> · <a href="/benchmark">Benchmark</a> · <a href="/#demo">Book a demo</a></p></div>
+    
+    <h2 id="related">Related guides</h2>
+    <ul class="related"><li><a href="/blog/claude-code-dangerously-skip-permissions"><b>Claude Code --dangerously-skip-permissions: how to use it safely</b><span>What Claude Code&#x27;s --dangerously-skip-permissions flag (YOLO mode) skips, what still runs, and five ways to keep auto mode without losing files or data.</span></a></li><li><a href="/blog/yolo-mode-claude-code-cursor-codex"><b>YOLO mode in Claude Code, Cursor and Codex, compared (2026)</b><span>Claude Code auto mode and skip-permissions, Cursor auto-run, Codex --yolo: what each skips, what still protects you, and a safe setup for each.</span></a></li><li><a href="/blog/ai-coding-agent-policy-template"><b>AI coding agent policy: a template for engineering teams (2026)</b><span>A copy-ready AI coding agent policy for engineering teams: approved tools, data rules, what agents may do alone, what needs a person, and how to enforce it.</span></a></li></ul>
+    </article>
+  </main>
+
+
+  <footer class="sf">
+    <div class="sf-about"><a class="brand" href="/" aria-label="Squidbrake home"><svg viewBox="0 0 64 64" aria-hidden="true"><path fill="currentColor" d="M16 30V21.5C16 12.4 23.2 5 32 5C40.8 5 48 12.4 48 21.5V30Z"/><g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"><path d="M23 34V48.2C23 51.4 21.7 53.9 19.6 55.8"/><path d="M32 34V44.6"/><path d="M41 34V48.2C41 51.4 42.3 53.9 44.4 55.8"/></g><circle fill="currentColor" cx="32" cy="52.6" r="2.9"/><rect fill="#F2622E" x="11" y="24.5" width="42" height="11" rx="5.5"/><circle fill="#2FD574" cx="41.2" cy="30" r="2.5"/></svg>Squidbrake</a><p>Squidbrake is open-source change control for AI agents. Routine actions by Claude Code, Cursor, Codex and MCP tools run on their own, risky changes wait for a person, and catastrophic ones are blocked. Every decision lands in a tamper-evident audit log.</p><a class="ph-badge" href="https://www.producthunt.com/products/squidbrake?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-squidbrake" target="_blank" rel="noopener noreferrer"><picture><source media="(prefers-color-scheme: dark)" srcset="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=dark&amp;t=1791704247916"><img alt="Squidbrake - Change control for AI agents: sign-off, undo and a record | Product Hunt" width="250" height="54" loading="lazy" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1275992&amp;theme=light&amp;t=1791704247916"></picture></a></div>
+    <div class="sf-grid">
+      <nav class="sf-col" aria-label="Product"><p class="sf-h">Product</p><ul><li><a href="/#how">How it works</a></li><li><a href="/docs">Quickstart and docs</a></li><li><a href="/pricing">Pricing</a></li><li><a href="/security">Security and compliance</a></li><li><a href="/benchmark">Benchmark: 16 real incidents</a></li><li><a href="/changelog">Changelog</a></li><li><a href="/signup">Try Squidbrake</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Guides"><p class="sf-h">Guides</p><ul><li><a href="/blog/ai-agent-governance-framework">AI agent governance</a></li><li><a href="/blog/least-privilege-ai-agents">Least privilege for AI agents</a></li><li><a href="/blog/ai-agent-audit-trail">AI agent audit trail</a></li><li><a href="/blog/ai-agent-kill-switch">AI agent kill switch</a></li><li><a href="/blog/human-in-the-loop-approval-for-ai-agents">Human-in-the-loop approval</a></li><li><a href="/blog/ai-agent-guardrails">AI agent guardrails</a></li><li><a href="/blog/prompt-injection-ai-agents">Prompt injection in AI agents</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Coding agents"><p class="sf-h">Coding agents</p><ul><li><a href="/blog/claude-code-enterprise-security">Claude Code for teams</a></li><li><a href="/blog/claude-code-dangerously-skip-permissions">Claude Code skip-permissions</a></li><li><a href="/blog/yolo-mode-claude-code-cursor-codex">YOLO mode: Claude Code, Cursor, Codex</a></li><li><a href="/blog/claude-code-deleted-my-files">Claude Code deleted my files</a></li><li><a href="/blog/ai-agent-git-force-push">Stop agents force-pushing</a></li><li><a href="/blog/ai-coding-agent-policy-template">AI coding agent policy template</a></li><li><a href="/blog/vibe-coding-security-checklist">Vibe coding security</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Compliance"><p class="sf-h">Compliance</p><ul><li><a href="/blog/soc-2-ai-agents">SOC 2 for AI agents</a></li><li><a href="/blog/eu-ai-act-article-14-human-oversight-ai-agents">EU AI Act Article 14</a></li><li><a href="/blog/owasp-top-10-agentic-applications">OWASP Top 10 for agents</a></li><li><a href="/blog/mcp-security-checklist">MCP security checklist</a></li><li><a href="/blog/ai-agent-deleted-production-database">AI agent deleted a prod database</a></li><li><a href="/blog/squidbrake-vs-kontext">Squidbrake vs Kontext</a></li></ul></nav>
+      <nav class="sf-col" aria-label="Company"><p class="sf-h">Company</p><ul><li><a href="/about">About</a></li><li><a href="/blog">Blog</a></li><li><a href="mailto:pulkit@squidbrake.com">Contact</a></li><li><a href="https://github.com/batrapulkit/squidbrake" target="_blank" rel="noopener">GitHub</a></li><li><a href="https://pypi.org/project/squidbrake/" target="_blank" rel="noopener">PyPI</a></li><li><a href="https://www.linkedin.com/company/squidbrake" target="_blank" rel="noopener">LinkedIn</a></li></ul></nav>
+    </div>
+    <div class="sf-bot"><span>© 2026 Squidbrake, Inc.</span><span class="agents">For AI agents: <a href="/llms.txt">llms.txt</a> · <a href="/index.md">site as markdown</a> · <a href="/sitemap.xml">sitemap</a></span><a href="/security">Security and privacy</a></div>
+  </footer>
+</div>
+<script src="/assets/try.js" defer></script>
+<script src="/assets/menu.js" defer></script>
+</body>
+</html>

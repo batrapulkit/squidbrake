@@ -27,6 +27,8 @@ def hosted():
     with ia.db() as c:
         for code in CODES:
             ia._forget(c, code)
+            for table in ("days", "catches", "installs"):     # a deleted pilot's counts are kept: clear this test's own
+                c.execute(f"DELETE FROM {table} WHERE install_id=?", (f"i-{code}",))
         for code, sub in zip(CODES, ("busy", "quiet", "newbie", "offco")):
             c.execute("INSERT INTO pilots (code, company, created_at, hosted, subdomain, state, email) "
                       "VALUES (?,?,?,1,?,'running',?)", (code, code, ia.now(), sub, f"founder@{sub}.example"))
@@ -44,6 +46,8 @@ def hosted():
     with ia.db() as c:
         for code in CODES:
             ia._forget(c, code)
+            for table in ("days", "catches", "installs"):     # a deleted pilot's counts are kept: clear this test's own
+                c.execute(f"DELETE FROM {table} WHERE install_id=?", (f"i-{code}",))
 
 
 def test_every_hosted_owner_gets_one_email_a_day(hosted):
@@ -66,6 +70,21 @@ def test_every_hosted_owner_gets_one_email_a_day(hosted):
     assert "Meanwhile, somewhere without a brake" in ours["founder@quiet.example"][2]
     new = ours["founder@newbie.example"]
     assert new[0] in ia.daily.SUBJECTS["new"] and "/start/daily-new" in new[2] and "Connect my first agent" in new[2]
+
+
+def test_a_quiet_dashboard_gets_the_email_for_three_days_then_weekly(hosted):
+    # nothing to report (never connected, or no actions today): a daily nag would teach the inbox it's spam
+    ia, _ = hosted
+    from datetime import timedelta
+    for age, expect in ((1, True), (4, False), (7, True), (9, False), (14, True)):
+        with ia.db() as c:
+            c.execute("DELETE FROM daily_sent WHERE code IN ('daily-quiet', 'daily-new', 'daily-busy')")
+            for code in ("daily-quiet", "daily-new", "daily-busy"):
+                c.execute("UPDATE pilots SET created_at=? WHERE code=?", ((EVENING - timedelta(days=age)).isoformat(), code))
+        got = []
+        ia.maybe_send_daily(EVENING, lambda to, s, t, h, off: got.append(to) or True)
+        assert ("founder@quiet.example" in got) is expect and ("founder@newbie.example" in got) is expect, age
+        assert "founder@busy.example" in got, age                     # a day with actions always gets its email
 
 
 def test_stop_these_emails_link(hosted):

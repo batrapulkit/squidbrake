@@ -90,17 +90,37 @@ def test_hooks_never_say_or_send(sent, monkeypatch, argv):
     assert sent == [] and telemetry.load() == {}
 
 
-def test_scripts_ci_and_do_not_track_never_say_or_send(sent, monkeypatch):
+def test_ci_and_do_not_track_never_say_or_send(sent, monkeypatch):
     answers(monkeypatch)
-    monkeypatch.setattr(telemetry, "_interactive", lambda: False)
-    telemetry.maybe(["doctor"], "1")
-    monkeypatch.setattr(telemetry, "_interactive", lambda: True)
-    telemetry.maybe(["connect", "all", "--yes"], "1")
     for var, val in (("CI", "true"), ("DO_NOT_TRACK", "1"), ("SQUIDBRAKE_TELEMETRY", "0")):
         monkeypatch.setenv(var, val)
         telemetry.maybe(["doctor"], "1")
+        telemetry.maybe(["connect", "all", "--yes"], "1")
+        assert telemetry.gateway_start("1", lambda s: None) is False
         monkeypatch.delenv(var)
     assert sent == [] and telemetry.load() == {}
+
+
+def test_an_agent_or_script_run_says_it_on_stderr_and_sends_and_a_terminal_asks_later(sent, monkeypatch, capsys):
+    """Most installs are run by a coding agent or an install script: count them, ask nothing, join no counts."""
+    answers(monkeypatch)                                                  # any question would hang a script
+    monkeypatch.setattr(telemetry, "_interactive", lambda: False)
+    telemetry.maybe(["connect", "all"], "1")
+    telemetry.maybe(["pilot", "join", "CODE"], "1")
+    err = capsys.readouterr().err
+    assert err.count("Never your commands") == 1 and "SQUIDBRAKE_TELEMETRY=0" in err   # said once
+    assert [b["properties"]["command"] for b in sent] == ["connect", "pilot"]
+    assert sent[0]["distinct_id"] == sent[1]["distinct_id"] and joins == []
+    first_id = sent[0]["distinct_id"]
+
+    monkeypatch.setattr(telemetry, "_interactive", lambda: True)
+    telemetry.maybe(["connect", "all", "--yes"], "1")                     # --yes: still no questions
+    assert telemetry.load()["quiet"] is True
+    answers(monkeypatch, "2")                                             # the terminal: where from = GitHub
+    telemetry.maybe(["doctor"], "1")
+    cfg = telemetry.load()
+    assert cfg["ref"] == "github" and "quiet" not in cfg and cfg["id"] == first_id   # same install, asked once
+    assert joins == [("/v1/pilot/join", telemetry.COMMUNITY_CODE)]
 
 
 def test_without_a_posthog_key_only_counts_are_shared(sent, monkeypatch):
@@ -273,8 +293,10 @@ def test_a_gateway_with_no_terminal_first_run_says_so_in_its_log_and_shares_coun
     said = []
     assert telemetry.gateway_start("1", said.append) is True
     assert joins == [("/v1/pilot/join", telemetry.COMMUNITY_CODE)] and "SQUIDBRAKE_TELEMETRY=0" in said[0]
-    assert not (tmp_path / "telemetry.json").exists()     # a later terminal first run still asks its questions
+    assert "enabled" not in telemetry.load()              # a later terminal first run still asks its questions
     assert telemetry.gateway_start("1", said.append) is False and len(joins) == 1 and len(said) == 1   # once
+    assert [(b["event"], b["properties"]["command"]) for b in sent] == [("gateway_start", "gateway")] * 2   # every start
+    assert sent[0]["distinct_id"] == sent[1]["distinct_id"] == telemetry.load()["id"]
 
 
 def test_a_gateway_start_respects_off_switches_and_a_leave(sent, monkeypatch, tmp_path):

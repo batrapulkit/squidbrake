@@ -2,7 +2,7 @@
 
 > Squidbrake is change control for AI agents: agents propose, people approve. It checks every tool call an AI agent makes against your rules and what the agent already did, and allows it, holds it for a second person (with what it will change shown first, such as rows deleted or resources destroyed), or blocks it, before the call runs. Approved deletes can be undone, and decisions land in a tamper-evident log with a one-page evidence pack for auditors. Decisions come from rules, not an LLM.
 
-Squidbrake runs where you run it: a laptop, Docker, or your own cloud. It is backed by Entrepreneurs First.
+Squidbrake runs where you run it: a laptop, Docker, or your own cloud. It is backed by Entrepreneur First.
 
 ## Start here
 
@@ -25,6 +25,18 @@ Coding agents (Claude Code, Cursor, Codex, Gemini CLI, VS Code Copilot, Antigrav
 
 ## Guides
 
+- [AI agent governance: a practical framework for teams putting agents in production](https://squidbrake.com/blog/ai-agent-governance-framework): A practical AI agent governance framework: inventory, identity, least privilege, approvals, a kill switch, an audit trail and a weekly review.
+- [Audit trails for AI agents: what to log, and how to make the record tamper-evident](https://squidbrake.com/blog/ai-agent-audit-trail): What an AI agent audit trail should record (who asked, what ran, who approved), why traces aren't enough, and how to make the log tamper-evident.
+- [Securing Claude Code for your team: managed settings, permissions, hooks and approvals](https://squidbrake.com/blog/claude-code-enterprise-security): Rolling Claude Code out to a team? Managed settings, allow, ask and deny rules, turning off bypass mode, hooks, sandboxing, MCP allowlists and an audit trail.
+- [Least privilege for AI agents: credentials, tools and what an agent should never hold](https://squidbrake.com/blog/least-privilege-ai-agents): AI agents inherit whatever credentials sit on the machine. How to apply least privilege: per-agent identities, scoped tokens, secrets out of reach and fewer tools.
+- [AI agent kill switch: how to stop a runaway agent, and what to set up before you need one](https://squidbrake.com/blog/ai-agent-kill-switch): When an AI agent loops, burns budget or starts deleting things, how do you stop it fast? Kill switches, spend limits, circuit breakers and what to check after.
+- [AI coding agent policy: a template for engineering teams (2026)](https://squidbrake.com/blog/ai-coding-agent-policy-template): A copy-ready AI coding agent policy for engineering teams: approved tools, data rules, what agents may do alone, what needs a person, and how to enforce it.
+- [Claude Code deleted my files: how to get them back, and stop it next time](https://squidbrake.com/blog/claude-code-deleted-my-files)
+- [YOLO mode in Claude Code, Cursor and Codex, compared (2026)](https://squidbrake.com/blog/yolo-mode-claude-code-cursor-codex)
+- [9 seconds: how a token an AI agent found deleted a production database and its backups](https://squidbrake.com/blog/ai-agent-found-a-token-pocketos)
+- [Vibe coding security: 10 checks before you ship (2026)](https://squidbrake.com/blog/vibe-coding-security-checklist)
+- [Stop AI agents force-pushing to main: branch protection, hooks and approvals](https://squidbrake.com/blog/ai-agent-git-force-push)
+- [Approval fatigue: why asking about every agent action makes you less safe](https://squidbrake.com/blog/ai-agent-approval-fatigue)
 - [How an AI agent deleted a production database, and how to stop it](https://squidbrake.com/blog/ai-agent-deleted-production-database)
 - [Human-in-the-loop approval for AI agents](https://squidbrake.com/blog/human-in-the-loop-approval-for-ai-agents)
 - [MCP security checklist](https://squidbrake.com/blog/mcp-security-checklist)

@@ -710,10 +710,10 @@ def create_pilot(p: PilotIn, request: Request):
 
 
 def _forget(c, code: str) -> None:
-    ids = [r[0] for r in c.execute("SELECT install_id FROM installs WHERE code=?", (code,))]
-    c.executemany("DELETE FROM days WHERE install_id=?", [(i,) for i in ids])
-    c.executemany("DELETE FROM catches WHERE install_id=?", [(i,) for i in ids])
-    c.execute("DELETE FROM installs WHERE code=?", (code,))
+    """A deleted pilot goes, with its keys and computers. What its agents did stays: the day counts and catches are
+    history (counts and program names only), so the all-time totals don't shrink when a pilot is deleted. Its installs
+    are marked as left, so nothing counts them as in use."""
+    c.execute("UPDATE installs SET left_at=COALESCE(left_at, ?) WHERE code=?", (now(), code))
     c.execute("DELETE FROM app_links WHERE code=?", (code,))
     c.execute("DELETE FROM devices WHERE code=?", (code,))
     c.execute("DELETE FROM daily_sent WHERE code=?", (code,))
@@ -1219,6 +1219,9 @@ def rule_approvals(caught: list[dict]) -> list[dict]:
     return out
 
 
+DELETED_PILOTS = "deleted-pilots"      # all_time's row for the counts of pilots that were deleted
+
+
 @app.get("/v1/admin/all-time", dependencies=[Depends(admin)])
 def all_time():
     """Every day's counts ever received, per pilot and in total (the overview shows the last 14 days)."""
@@ -1230,9 +1233,12 @@ def all_time():
                                         "days": set(), **{k: 0 for k in SUMS}} for p in pilots}
     by_day: dict[str, int] = {}
     for iid, day, counts in days:
-        row = per.get(code_of.get(iid))
-        if row is None:
+        code = code_of.get(iid)
+        if code is None:
             continue
+        # a deleted pilot's days still count, together, as one row
+        row = per.get(code) or per.setdefault(DELETED_PILOTS, {"code": DELETED_PILOTS, "company": "Deleted pilots",
+                                                              "community": False, "days": set(), **{k: 0 for k in SUMS}})
         cnt = json.loads(counts)
         if row["code"] != COMMUNITY_CODE:
             by_day[day] = by_day.get(day, 0) + cnt.get("events", 0)
@@ -2423,10 +2429,12 @@ SITE_PAGES = {"": "index.html", "docs": "docs.html", "security": "security.html"
 if (SITE / "blog").is_dir():
     SITE_PAGES |= {f"blog/{p.stem}": f"blog/{p.name}" for p in (SITE / "blog").glob("*.html") if p.stem != "index"}
 CLEAN = {v: k for k, v in SITE_PAGES.items() if v.endswith(".html")}   # docs.html -> /docs: one address per page
-# Inline scripts and styles are part of every page; everything else is listed. Calendly is the booking widget.
+# Inline scripts and styles are part of every page; everything else is listed. Calendly is the booking widget,
+# Google Tag Manager (GTM-5SHCVGFS) loads tags that send to Google Analytics.
 SITE_CSP = ("default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://assets.calendly.com "
-            "https://plausible.io; style-src 'self' 'unsafe-inline' https://assets.calendly.com; img-src 'self' data: https:; "
-            "font-src 'self'; connect-src 'self' https://plausible.io; frame-src https://calendly.com; "
+            "https://plausible.io https://*.googletagmanager.com; style-src 'self' 'unsafe-inline' https://assets.calendly.com; img-src 'self' data: https:; "
+            "font-src 'self'; connect-src 'self' https://plausible.io https://*.googletagmanager.com https://*.google-analytics.com "
+            "https://*.analytics.google.com; frame-src https://calendly.com; "
             "frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'")
 SECURITY_HEADERS = {"Strict-Transport-Security": "max-age=31536000", "X-Content-Type-Options": "nosniff",
                     "Referrer-Policy": "strict-origin-when-cross-origin"}
@@ -2531,12 +2539,16 @@ def daily_off_token(code: str) -> str:
 
 def send_mail(to: str, subject: str, text: str, html_body: str, unsubscribe: str) -> bool:
     """One email through INSIGHTS_SMTP_*. Never raises."""
+    import email.utils
     import smtplib
     from email.message import EmailMessage
     msg = EmailMessage()
     msg["Subject"], msg["To"] = subject[:200], to
     msg["From"] = SMTP["from"] or SMTP["user"]
     msg["List-Unsubscribe"] = f"<{unsubscribe}>"
+    msg["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"    # Gmail and Yahoo unsubscribe without opening a page
+    msg["Date"] = email.utils.formatdate(usegmt=True)
+    msg["Message-ID"] = email.utils.make_msgid(domain=(msg["From"].rsplit("@", 1)[-1].strip("> ") or None))
     msg.set_content(text)
     msg.add_alternative(html_body, subtype="html")
     try:
@@ -2618,7 +2630,7 @@ def maybe_send_daily(now_utc: datetime | None = None, send=None) -> int:
         return 0
     sent = 0
     with db() as c:
-        pilots = c.execute("SELECT code, email, subdomain, state, tz FROM pilots WHERE hosted=1 AND email IS NOT NULL "
+        pilots = c.execute("SELECT code, email, subdomain, state, tz, created_at FROM pilots WHERE hosted=1 AND email IS NOT NULL "
                            "AND email != '' AND COALESCE(daily_off, 0) = 0 AND state IN ('running', 'sleeping')").fetchall()
     for p in pilots:
         local = t.astimezone(_zone(p["tz"]))
@@ -2639,6 +2651,11 @@ def maybe_send_daily(now_utc: datetime | None = None, send=None) -> int:
         d = daily.build(got["report"], got["catches"], f"{local:%A} {local.day} {local:%B}", dash,
                         day_number=local.toordinal(), ever_used=got["ever_used"], connect_url=start, unsubscribe=off,
                         zone=local.tzinfo)
+        if d["nudge"]:      # a quiet day: every day for the first three, then once a week, so it isn't a daily nag
+            age = (local.date() - datetime.fromisoformat(p["created_at"]).astimezone(local.tzinfo).date()).days \
+                if p["created_at"] else 0
+            if age >= 3 and age % 7:
+                continue
         if not dash and d["nudge"]:
             d["nudge"]["cta"] = (d["nudge"]["cta"][0], start)
         sent += bool(send(p["email"], daily.subject(d), daily.text(d), daily.html(d), off))
@@ -2658,7 +2675,7 @@ if SMTP["host"] and ADMIN_KEY:           # the key signs each email's "stop thes
     threading.Thread(target=_daily_loop, daemon=True).start()
 
 
-@app.get("/daily-off/{code}", response_class=HTMLResponse, include_in_schema=False)
+@app.api_route("/daily-off/{code}", methods=["GET", "POST"], response_class=HTMLResponse, include_in_schema=False)
 def daily_off(code: str, t: str = ""):
     if not hmac.compare_digest(t, daily_off_token(code)):
         raise HTTPException(404)
