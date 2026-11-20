@@ -358,7 +358,8 @@ def test_team_request_form(insights):
     asha = next(r for r in rows if r["name"] == "Asha")
     assert asha["source"] == "cli" and asha["done"] == 0
     assert next(r for r in rows if r["name"] == "Odd")["source"] == ""   # only known link names are kept
-    assert set(asha) == {"id", "created_at", "name", "email", "company", "team_size", "agents", "note", "source", "done"}
+    assert set(asha) == {"id", "created_at", "name", "email", "company", "team_size", "agents", "note", "source", "done",
+                         "attribution"}
 
     assert insights.post(f"/v1/admin/team-requests/{asha['id']}", json={"done": True}).status_code == 401
     assert insights.post(f"/v1/admin/team-requests/{asha['id']}", headers=admin, json={"done": True}).status_code == 200
