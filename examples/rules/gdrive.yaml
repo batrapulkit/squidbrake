@@ -1,0 +1,113 @@
+# Example policy for a Google Drive MCP server, wrapped with `connect.py wrap --app gdrive`.
+# Tool names use the `<app>.<tool>` form: `gdrive.search`, `gdrive.moveItem`, ...
+# Checked against @piotr-agier/google-drive-mcp v2.13.0 (docs/tools.md in its repository), the most used
+# Drive MCP server with tools for files, folders and sharing. Servers differ in naming: other Drive servers
+# have a smaller tool list, so check yours against it. Every pattern starts with `gdrive.`, so this pack
+# never changes what another app's tools do.
+#
+# Searching and reading files and folders runs on its own. Anything that creates, edits, moves, renames
+# or shares waits for a person, and so does anything that touches files on this machine. Deleting is
+# blocked. In that server `deleteItem` only moves an item to the trash, but a trashed item is gone from
+# the folder, from search and from everyone it was shared with until someone restores it, and an agent
+# has no need to do it. If you want it to wait for a person instead, change `block-gdrive-delete` to
+# `action: review`.
+default: review
+default_reason: Google Drive changes require approval
+
+rules:
+  - id: block-gdrive-delete
+    action: deny
+    reason: Deleting a file or folder, or emptying the trash, is not allowed
+    match:
+      name:
+        - "gdrive.deleteItem"
+        - "gdrive.*delete*file*"
+        - "gdrive.*delete*folder*"
+        - "gdrive.*empty*trash*"
+        - "gdrive.*permanent*delete*"
+        - "gdrive.*trash*"
+
+  - id: allow-gdrive-reads
+    action: allow
+    reason: Searching or reading Google Drive, without changing anything
+    match:
+      name:
+        - "gdrive.search"
+        - "gdrive.listFolder"
+        - "gdrive.listSharedDrives"
+        - "gdrive.listPermissions"
+        - "gdrive.getRevisions"
+        - "gdrive.readTextFile"
+        - "gdrive.readGoogleDoc*"
+        - "gdrive.getGoogleDocContent*"
+        - "gdrive.getGoogleDocImage"
+        - "gdrive.getGoogleDocStyleSummary"
+        - "gdrive.getDocumentInfo"
+        - "gdrive.getSpreadsheetInfo"
+        - "gdrive.getGoogleSheetContent"
+        - "gdrive.getGoogleSheetCells"
+        - "gdrive.getGoogleSlidesContent"
+        - "gdrive.getGoogleSlidesSpeakerNotes"
+        - "gdrive.getSlideElementInfo"
+        - "gdrive.listGoogleDocs"
+        - "gdrive.listGoogleSheets"
+        - "gdrive.listSheets"
+        - "gdrive.listDocumentTabs"
+        - "gdrive.listComments"
+        - "gdrive.getComment"
+        - "gdrive.describeGoogleDocRange"
+        - "gdrive.readSmartChips"
+        - "gdrive.authGetStatus"
+        - "gdrive.authListScopes"
+        - "gdrive.authTestFileAccess"
+
+  - id: review-gdrive-sharing
+    action: review
+    reason: Changing who can open a file or folder (adding, changing or removing a permission) requires approval
+    match:
+      name:
+        - "gdrive.shareFile"
+        - "gdrive.addPermission"
+        - "gdrive.updatePermission"
+        - "gdrive.removePermission"
+        - "gdrive.*share*"
+        - "gdrive.*permission*"
+
+  - id: review-gdrive-local-files
+    action: review
+    reason: Uploading or downloading moves files between Google Drive and this machine, so it requires approval
+    match:
+      name:
+        - "gdrive.uploadFile"
+        - "gdrive.downloadFile"
+        - "gdrive.uploadPdfWithSplit"
+        - "gdrive.insertLocalImage"
+        - "gdrive.insertSlidesLocalImage"
+
+  - id: review-gdrive-organising
+    action: review
+    reason: Moving, renaming or copying a file or folder, or changing whether it can be edited, requires approval
+    match:
+      name:
+        - "gdrive.moveItem"
+        - "gdrive.renameItem"
+        - "gdrive.copyFile"
+        - "gdrive.createShortcut"
+        - "gdrive.lockFile"
+        - "gdrive.unlockFile"
+        - "gdrive.restoreRevision"
+
+  - id: review-gdrive-create-and-edit
+    action: review
+    reason: Creating or editing a file, folder, document, sheet or slide requires approval
+    match:
+      name:
+        - "gdrive.create*"
+        - "gdrive.update*"
+        - "gdrive.append*"
+        - "gdrive.insert*"
+        - "gdrive.add*"
+        - "gdrive.format*"
+        - "gdrive.batchUpdate*"
+        - "gdrive.replace*"
+        - "gdrive.findAndReplace*"
