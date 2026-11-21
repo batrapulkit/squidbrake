@@ -49,7 +49,7 @@ def test_without_a_license_the_team_features_ask_for_the_plan(c, org, after_grac
     assert c.post("/v1/team", headers=org["admin"], json={"name": "ravi", "kind": "person"}).status_code == 402
     assert c.post("/v1/team", headers=org["admin"], json={"name": "bot-2", "kind": "agent"}).status_code == 200  # agents: free
     r = c.put("/v1/settings", headers=org["admin"], json={"slack_webhook": "https://hooks.example/y"})
-    assert r.status_code == 402 and "Starter plan" in r.json()["detail"]        # the cheapest plan that has it
+    assert r.status_code == 402 and "Brake plan" in r.json()["detail"]        # the cheapest plan that has it
     assert c.put("/v1/settings", headers=org["admin"], json={"ntfy_topic": "other"}).status_code == 402
     assert c.get("/v1/audit/export.csv", headers=org["admin"]).status_code == 402
     assert c.get("/v1/audit/evidence-pack", headers=org["admin"]).status_code == 402
@@ -88,7 +88,8 @@ def test_squidbrake_com_issues_licenses_the_gateway_accepts(monkeypatch):
 @pytest.mark.parametrize("plan,unlocked,still_locked", [
     ("starter", ["/v1/devices/register/start"], ["/v1/audit/export.csv", "/v1/audit/evidence-pack"]),
     ("pro", ["/v1/audit/export.csv"], ["/v1/audit/evidence-pack"]),
-    ("team", ["/v1/audit/export.csv"], ["/v1/audit/evidence-pack"]),
+    ("crew", ["/v1/audit/export.csv"], ["/v1/audit/evidence-pack"]),
+    ("team", ["/v1/audit/export.csv", "/v1/audit/evidence-pack"], []),       # Fleet: compliance reports
     ("scale", ["/v1/audit/export.csv", "/v1/audit/evidence-pack"], []),
 ])
 def test_each_plan_unlocks_its_own_features(c, org, after_grace, plan, unlocked, still_locked):

@@ -41,15 +41,22 @@ ADMIN_KEY = os.getenv("INSIGHTS_ADMIN_KEY", "")
 PUBLIC_URL = os.getenv("INSIGHTS_PUBLIC_URL", "").rstrip("/")
 CONTACT = os.getenv("INSIGHTS_CONTACT", "")
 CHECKOUT_URL = os.getenv("INSIGHTS_CHECKOUT_URL", "")
-PAID_PLANS = ("starter", "pro", "team", "scale")          # squidbrake.com/pricing; license.py PLANS says what each unlocks
-TRIAL_PLANS = ("team", "scale")                           # 14 days free, no card to start
+PAID_PLANS = ("starter", "pro", "crew", "crewplus", "crewmax", "team", "scale")   # squidbrake.com/pricing; license.py
+TRIAL_PLANS = ("crew", "crewplus", "crewmax", "team", "scale")   # PLANS says what each unlocks. Trial: 14 days, no card
+# The names on the pricing page (license.py NAMES), $ a month, and actions a month (more are billed, never blocked)
+PLAN_NAMES = {"free": "Watch", "starter": "Brake", "pro": "Brake Pro", "crew": "Crew", "crewplus": "Crew Plus",
+              "crewmax": "Crew Max", "team": "Fleet", "scale": "Fleet Max"}
+PLAN_PRICES = {"starter": 9, "pro": 19, "crew": 49, "crewplus": 99, "crewmax": 199, "team": 299, "scale": 499}
+PLAN_ACTIONS = {"free": 2_000, "starter": 5_000, "pro": 10_000, "crew": 25_000, "crewplus": 100_000,
+                "crewmax": 250_000, "team": 250_000, "scale": 500_000}
 PAY_FIRST = ("starter", "pro")      # no dashboard until paid: the start page asks for the card, the webhook starts it
 # A Stripe Payment Link per plan, "starter=https://buy.stripe.com/...,pro=...,team=...,scale=...".
 # INSIGHTS_CHECKOUT_URL on its own is the Team plan's (as before plans). Default: the live links ($9, $19, $299, $499).
-CHECKOUT_URLS = {k.strip(): v.strip() for k, _, v in (x.partition("=") for x in os.getenv("INSIGHTS_CHECKOUT_URLS",
+# INSIGHTS_CHECKOUT_URLS adds plans or replaces them one by one (insights/stripe_setup.py prints the new ones).
+CHECKOUT_URLS = {k.strip(): v.strip() for k, _, v in (x.partition("=") for x in (
                  "starter=https://buy.stripe.com/28EfZh1Lq7Zy0S05zr3Ru0f,pro=https://buy.stripe.com/3cI6oHahW1Ba6ck7Hz3Ru0g,"
-                 "team=https://buy.stripe.com/cNi9ATeyc7Zy7go1jb3Ru0h,scale=https://buy.stripe.com/4gM8wP0Hm0x60S03rj3Ru0i"
-                 ).split(",")) if k.strip() in PAID_PLANS and v.strip()}
+                 "team=https://buy.stripe.com/cNi9ATeyc7Zy7go1jb3Ru0h,scale=https://buy.stripe.com/4gM8wP0Hm0x60S03rj3Ru0i,"
+                 + os.getenv("INSIGHTS_CHECKOUT_URLS", "")).split(",")) if k.strip() in PAID_PLANS and v.strip()}
 
 
 def checkout_url(plan: str | None) -> str:
@@ -1288,7 +1295,7 @@ def monthly_usage(c, months: int) -> list[dict]:
     out: dict[str, dict] = {}
     for r in c.execute("SELECT code, company, email, hosted, plan, mrr FROM pilots").fetchall():
         out[r["code"]] = {"code": r["code"], "company": r["company"], "email": r["email"], "hosted": bool(r["hosted"]),
-                          "plan": r["plan"], "mrr": r["mrr"], "months": {}}
+                          "plan": r["plan"], "mrr": r["mrr"], "allowance": PLAN_ACTIONS.get(r["plan"] or ""), "months": {}}
     for code, day, counts in c.execute(
             "SELECT i.code, d.day, d.counts FROM days d JOIN installs i ON i.install_id = d.install_id "
             "WHERE d.day >= ?", (since,)).fetchall():
@@ -1304,6 +1311,9 @@ def monthly_usage(c, months: int) -> list[dict]:
         m["estimated"] |= "real" not in cnt
         for k in ("events", "held", "blocked"):
             m[k] += _int(cnt.get(k))
+    for p in out.values():                  # extra actions are billed, never blocked: how many this month went over
+        for m in p["months"].values() if p["allowance"] else ():
+            m["over"] = max(0, m["real"] - p["allowance"])
     return [p for p in out.values() if p["months"]]
 
 
@@ -2206,7 +2216,8 @@ class SignupIn(BaseModel):
     agents: list[str] = Field(default_factory=list, max_length=12)
     website: str = Field(default="", max_length=200)   # a field people don't see: bots fill it in
     setup: str = Field(default="local", pattern="^(local|hosted)$")   # on their computer, or a gateway on our server
-    plan: str = Field(default="", pattern="^(|free|starter|pro|team|scale)$")   # a hosted plan (Team, Scale: 14 days free)
+    plan: str = Field(default="", pattern="^(|free|starter|pro|crew|crewplus|crewmax|team|scale)$")   # a hosted plan
+                                                                                   # (TRIAL_PLANS: 14 days free)
     source: str = Field(default="", pattern="^[a-z0-9-]{0,30}$")        # e.g. "invite" from the dashboard's Team page
     new_keys: bool = False     # signed in again because they lost their hosted keys: make new ones (Supabase only)
     attribution: dict = Field(default_factory=dict)     # first touch on the site (_attribution)
@@ -2285,7 +2296,7 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
                    int(bool(sub)), sub, ("requested" if auto else "waiting") if sub else None, plan, trial,
                    now() if auto else None, queued, s.source or None, _attribution(s.attribution)))
     if sub:
-        notify(f"Squidbrake {(s.plan or 'free').capitalize()} sign-up: {s.name.strip()} ({email}), {s.company.strip()}. "
+        notify(f"Squidbrake {PLAN_NAMES.get(s.plan or 'free', s.plan)} sign-up: {s.name.strip()} ({email}), {s.company.strip()}. "
                + ("It starts when they pay." if pay_first else f"It started on its own; see {PUBLIC_URL}/admin" if auto else
                   f"All {HOSTED_MAX} hosted slots are in use, so it's in line and starts when one frees up "
                   f"(delete one, or raise HOSTED_MAX if the server has the memory)."))
@@ -2563,7 +2574,7 @@ async def stripe_webhook(request: Request):
             elif p:
                 c.execute("UPDATE pilots SET paid_once=COALESCE(paid_once, 0)+?, stripe_customer=COALESCE(?, stripe_customer) "
                           "WHERE code=?", (amount, obj.get("customer"), p["code"]))
-            told = (f"Squidbrake payment: {who} paid ${amount:,}{f' for {bought.capitalize()}' if bought in PAID_PLANS else ''}"
+            told = (f"Squidbrake payment: {who} paid ${amount:,}{f' for {PLAN_NAMES[bought]}' if bought in PAID_PLANS else ''}"
                     f"{'/month' if obj.get('mode') == 'subscription' else ' (one-time)'}"
                     f"{'' if p else ' (no pilot matched: set it in the admin)'}.")
         elif ev.get("type") == "customer.subscription.deleted":

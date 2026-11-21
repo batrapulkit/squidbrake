@@ -37,8 +37,16 @@ UPGRADE_URL = "https://squidbrake.com/pricing"
 # What each paid plan unlocks (squidbrake.com/pricing). A license names its plan; one without a known plan is a Team
 # license (every license issued before plans existed says "team").
 PLANS = {"starter": {"phone", "channels"}, "pro": {"phone", "channels", "audit"},
-         "team": {"phone", "channels", "audit", "people"}, "scale": set(FEATURES), "enterprise": set(FEATURES)}
-ORDER = ["starter", "pro", "team", "scale"]
+         "crew": {"phone", "channels", "audit", "people"}, "crewplus": {"phone", "channels", "audit", "people"},
+         "crewmax": {"phone", "channels", "audit", "people"},
+         "team": {"phone", "channels", "audit", "people", "compliance"}, "scale": set(FEATURES),
+         "enterprise": set(FEATURES)}
+ORDER = ["starter", "pro", "crew", "crewplus", "crewmax", "team", "scale"]
+# What each plan is called on the pricing page (the keys above predate the names), and how many people it's for.
+# Enterprise has no limit. insights/app.py has the same names, prices and limits (tests/test_license.py checks).
+NAMES = {"starter": "Brake", "pro": "Brake Pro", "crew": "Crew", "crewplus": "Crew Plus", "crewmax": "Crew Max",
+         "team": "Fleet", "scale": "Fleet Max", "enterprise": "Enterprise"}
+PEOPLE = {"starter": 1, "pro": 1, "crew": 3, "crewplus": 10, "crewmax": 25, "team": 25, "scale": 50}
 
 
 def _b64(s: str) -> bytes:
@@ -106,11 +114,17 @@ def cheapest(feature: str) -> str:
     return next(p for p in ORDER if feature in PLANS[p])
 
 
+def people_limit(data_dir: Path) -> int | None:
+    """How many people this gateway's plan is for; None: no limit (Enterprise, no license, or the grace period)."""
+    return None if in_grace() else PEOPLE.get(plan_of(current(data_dir)) or "")
+
+
 def status(data_dir: Path) -> dict:
     lic = current(data_dir)
     plan = plan_of(lic)
     return {"licensed": lic is not None, "org": lic and lic.get("org"), "expires": lic and lic.get("expires"),
-            "plan": plan, "grace_until": GRACE_UNTIL, "in_grace": in_grace(), "team_features": paid(data_dir),
+            "plan": plan, "plan_name": NAMES.get(plan or ""), "people": PEOPLE.get(plan or ""),
+            "grace_until": GRACE_UNTIL, "in_grace": in_grace(), "team_features": paid(data_dir),
             "features": [FEATURES[f] for f in FEATURES if in_grace() or f in PLANS.get(plan or "", set())],
             "upgrade_url": UPGRADE_URL}
 
@@ -121,4 +135,4 @@ def need(data_dir: Path, feature: str) -> None:
         from fastapi import HTTPException
         plan = cheapest(feature)
         raise HTTPException(402, f"{FEATURES[feature][0].upper()}{FEATURES[feature][1:]} is part of the "
-                                 f"{plan.capitalize()} plan. See the plans: {UPGRADE_URL}")
+                                 f"{NAMES[plan]} plan. See the plans: {UPGRADE_URL}")
