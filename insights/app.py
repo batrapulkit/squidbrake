@@ -1482,9 +1482,18 @@ class SignupIn(BaseModel):
     website: str = Field(default="", max_length=200)   # a field people don't see: bots fill it in
     setup: str = Field(default="local", pattern="^(local|hosted)$")   # on their computer, or a gateway on our server
     plan: str = Field(default="", pattern="^(|team)$")                  # team: a 14-day trial of the hosted Team plan
-    tier: str = Field(default="", pattern="^(|crew|crewplus|crewmax|fleet|fleetmax)$")   # which team plan (TIERS)
+    # which paid plan (plans.py): a team plan with plan=team (a 14-day trial), or Brake / Brake Pro for one person
+    tier: str = Field(default="", pattern="^(|brake|brakepro|crew|crewplus|crewmax|fleet|fleetmax)$")
     source: str = Field(default="", pattern="^[a-z0-9-]{0,30}$")        # e.g. "invite" from the dashboard's Team page
     new_keys: bool = False     # signed in again because they lost their hosted keys: make new ones (Supabase only)
+
+
+def _signup_tier(plan: str, tier: str) -> str | None:
+    """A team sign-up is on a team plan (Crew if it didn't say); Brake and Brake Pro are for one person, without plan."""
+    one_person = tier in ("brake", "brakepro")
+    if plan == "team":
+        return tier if tier and not one_person else "crew"
+    return tier if one_person else None
 
 
 HOSTED_PER_IP_DAY = int(os.getenv("INSIGHTS_HOSTED_PER_IP_DAY", "2"))   # hosted sign-ups a day from one address, without
@@ -1554,7 +1563,7 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
                    f"signup ({s.plan or setup}{' ' + s.tier if s.plan and s.tier else ''})" + (f" from {s.source}" if s.source else "") + " · agents: "
                    + (", ".join(agents) or "-"), now(), email, json.dumps(agents),
                    int(bool(sub)), sub, ("requested" if auto else "waiting") if sub else None, s.plan or None,
-                   (s.tier or "crew") if s.plan == "team" else None, trial,
+                   _signup_tier(s.plan, s.tier), trial,
                    now() if auto else None, queued))
     if sub:
         notify(f"Squidbrake {'Team trial' if s.plan else 'hosted'} sign-up: {s.name.strip()} ({email}), {s.company.strip()}. "
@@ -1671,8 +1680,10 @@ def start_page(code: str, request: Request):
                        if p["hosted"] and (p["note"] or "").startswith("signup") and not (p["mrr"] or p["paid_once"]) else None,
             "plan": p["plan"], "trial_ends": p["trial_ends"],
             "tier": p["tier"], "tier_name": TIERS[p["tier"]][0] if p["tier"] in TIERS else None,
-            "checkout": checkout_link(CHECKOUT_URLS.get(p["tier"] or "", CHECKOUT_URL), code, p["email"])
-                        if p["plan"] == "team" else ""}
+            "tier_price": TIERS[p["tier"]][1] if p["tier"] in TIERS else None, "paying": bool(p["mrr"]),
+            # a team trial falls back to the general link; Brake and Brake Pro only have their own
+            "checkout": checkout_link(CHECKOUT_URLS.get(p["tier"] or "", CHECKOUT_URL if p["plan"] == "team" else ""),
+                                      code, p["email"]) if p["plan"] == "team" or p["tier"] in TIERS else ""}
     return HTMLResponse(PAGE("start.html").replace("__DATA__", json.dumps(data).replace("</", "<\\/")))
 
 

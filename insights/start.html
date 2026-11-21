@@ -173,8 +173,11 @@ function hostedPage() {
 
     ${D.plan === "team" ? `<section class="step" style="border-left:4px solid var(--ok)"><h2>Your ${esc(D.tier_name || "Team")} trial</h2>
       <p>Free until <b>${esc(D.trial_ends || "")}</b>: shared approvals from the dashboard, your phone or Slack, for your
-        whole team. Then $499 a month for one team, cancel any month.
+        whole team. Then $${esc(D.tier_price || 499)} a month, cancel any month.
         ${D.checkout ? `<a href="${esc(D.checkout)}" target="_blank" rel="noopener">Add a card now</a> so it keeps running.` : "We'll email you before it ends."}</p>
+    </section>` : D.tier_name && !D.paying ? `<section class="step" style="border-left:4px solid var(--ok)"><h2>Start ${esc(D.tier_name)}</h2>
+      <p>${esc(D.tier_name)} is $${esc(D.tier_price)} a month for one person, cancel any time.
+        ${D.checkout ? `<a href="${esc(D.checkout)}" target="_blank" rel="noopener">Pay with a card</a> to start it.` : "We'll email you a payment link."}</p>
     </section>` : ""}
     <section class="step" id="s1"><h2><span class="n">1</span> Get your keys</h2>
       <div id="keys"></div>

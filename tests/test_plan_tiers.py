@@ -127,3 +127,29 @@ def test_monthly_usage_shows_the_allowance_and_whats_over_it(insights):
             db.execute("DELETE FROM days WHERE install_id=?", (code + "-i",))
             db.execute("DELETE FROM installs WHERE install_id=?", (code + "-i",))
             app._forget(db, code)
+
+
+def test_brake_signs_up_for_one_person_and_pays_on_its_own_link(insights, monkeypatch):
+    app, cl = insights
+    monkeypatch.setattr(app, "CHECKOUT_URLS", {"brake": "https://buy.stripe.com/brake"})
+    monkeypatch.setattr(app, "CHECKOUT_URL", "https://buy.stripe.com/team")
+    assert app._signup_tier("", "brakepro") == "brakepro" and app._signup_tier("team", "brake") == "crew"
+    assert app._signup_tier("", "crewmax") is None and app._signup_tier("", "") is None
+    r = cl.post("/v1/signup", json={"name": "Ravi", "email": f"ravi-{time.time_ns()}@solo.test", "company": "Solo",
+                                    "setup": "hosted", "tier": "brake"})
+    assert r.status_code == 200, r.text
+    code = r.json()["link"].rsplit("/", 1)[1]
+    try:
+        with app.db() as db:
+            p = db.execute("SELECT plan, tier, trial_ends FROM pilots WHERE code=?", (code,)).fetchone()
+        assert (p["plan"], p["tier"], p["trial_ends"]) == (None, "brake", None)        # paid, no trial
+        page = cl.get(f"/start/{code}").text
+        assert "https://buy.stripe.com/brake?client_reference_id=" in page and "buy.stripe.com/team" not in page
+        monkeypatch.setattr(app, "CHECKOUT_URLS", {})                    # no Brake link yet: never the team one
+        assert "buy.stripe.com" not in cl.get(f"/start/{code}").text
+        with app.db() as db:
+            db.execute("UPDATE pilots SET mrr=9 WHERE code=?", (code,))
+        assert '"paying": true' in cl.get(f"/start/{code}").text
+    finally:
+        with app.db() as db:
+            app._forget(db, code)
