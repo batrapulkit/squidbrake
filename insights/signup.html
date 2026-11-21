@@ -378,7 +378,7 @@ const sb = CONFIG.supabase_url && window.supabase
   : null;
 
 const fail = (msg) => { err.textContent = msg; err.hidden = false; go.disabled = false;
-  go.textContent = PLAN ? "Start my 14-day Team trial" : "Sign up free"; };
+  go.textContent = PLAN ? TRIAL : "Sign up free"; };
 const state = (html) => { card.innerHTML = `<div class="state">${html}</div>`; };
 
 // signed in: a hosted gateway, started on its own (in line if every slot is taken).
@@ -386,10 +386,14 @@ const state = (html) => { card.innerHTML = `<div class="state">${html}</div>`; }
 // No hosted dashboards on this server (CONFIG.hosted false, no HOSTED_DOMAIN): the local setup.
 // ?plan=team (pricing, or the dashboard's "invite your team"): the hosted Team plan, a 14-day trial, no choice to make
 // ?new_keys=1 (the start page's "Lost your keys?"): signed in again, so new keys are made for their dashboard
+// &tier= (the pricing page's buttons): which team plan; Crew when it's missing or unknown
+const TIERS = { crew: "Crew", crewplus: "Crew Plus", crewmax: "Crew Max", fleet: "Fleet", fleetmax: "Fleet Max" };
 const Q = new URLSearchParams(location.search), PLAN = Q.get("plan") === "team" ? "team" : "",
+      TIER = PLAN && TIERS[Q.get("tier")] ? Q.get("tier") : "",
+      TRIAL = `Start my 14-day ${TIERS[TIER] || "Team"} trial`,
       SOURCE = (Q.get("from") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 30),
       NEW_KEYS = Q.get("new_keys") === "1";
-if (PLAN) { go.textContent = "Start my 14-day Team trial"; }
+if (PLAN) { go.textContent = TRIAL; }
 const LOCAL_ONLY = !CONFIG.hosted && !PLAN, PICK = CONFIG.hosted && CONFIG.offer_local && !PLAN && !NEW_KEYS;
 const PRIVACY = `We see your name, email, the agents you picked, and for each action that was blocked or sent for approval:
   the program (e.g. <span class="mono">rm</span>), the rule and what happened. Never your commands, files or prompts.`;
@@ -410,7 +414,8 @@ if (!CONFIG.supabase_url && !LOCAL_ONLY && !PICK) document.getElementById("fine"
   document.getElementById("fine").innerHTML.replace(/Sign up again with the same email: you get your setup page back\./,
     "Use your setup link from last time, or write to pulkit@squidbrake.com.");
 function choose(body, token) {
-  const extra = { source: SOURCE, ...(PLAN ? { plan: PLAN } : {}), ...(NEW_KEYS ? { new_keys: true } : {}) };
+  const extra = { source: SOURCE, ...(PLAN ? { plan: PLAN } : {}), ...(TIER ? { tier: TIER } : {}),
+                  ...(NEW_KEYS ? { new_keys: true } : {}) };
   if (LOCAL_ONLY) return finish({ ...body, ...extra, setup: "local" }, token);
   if (!PICK) return finish({ ...body, ...extra, setup: "hosted" }, token);
   state(`<h2>How do you want to run Squidbrake?</h2><p>Same checks either way. You can switch later.</p>

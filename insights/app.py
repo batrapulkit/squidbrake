@@ -33,23 +33,39 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
+from plans import TIERS  # noqa: E402  (the paid plans; stripe_setup.py uses them too)
+
 HERE = Path(__file__).resolve().parent
 DB = Path(os.getenv("INSIGHTS_DB", HERE / "data" / "insights.db"))
 ADMIN_KEY = os.getenv("INSIGHTS_ADMIN_KEY", "")
 PUBLIC_URL = os.getenv("INSIGHTS_PUBLIC_URL", "").rstrip("/")
 CONTACT = os.getenv("INSIGHTS_CONTACT", "")
 CHECKOUT_URL = os.getenv("INSIGHTS_CHECKOUT_URL", "")
+# One Stripe Payment Link per plan, as JSON {"crew": "https://buy.stripe.com/...", ...} (stripe_setup.py prints it).
+# A plan without one falls back to INSIGHTS_CHECKOUT_URL.
+CHECKOUT_URLS = json.loads(os.getenv("INSIGHTS_CHECKOUT_URLS") or "{}")
+
+
+def tier_for_amount(dollars: int) -> str | None:
+    """The plan a Stripe payment was for, from its amount: a month's price, or a year's (2 months free)."""
+    return next((t for t, (_, price, _, _) in TIERS.items() if dollars in (price, price * 10)), None)
+
+
 # Signs Team plan licenses (license.py in the gateway checks them with the public half). Hex, 32 bytes; only here.
 LICENSE_SECRET = os.getenv("INSIGHTS_LICENSE_SECRET", "")
 
 
-def issue_license(org: str, expires: str) -> str | None:
-    """The same format as license.issue in the gateway: base64url(JSON) "." base64url(Ed25519 signature)."""
+def issue_license(org: str, expires: str, tier: str | None = None) -> str | None:
+    """The same format as license.issue in the gateway: base64url(JSON) "." base64url(Ed25519 signature). With a
+    tier, the license carries that plan's people limit, which the gateway enforces."""
     if not LICENSE_SECRET:
         return None
     import base64
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-    body = json.dumps({"org": org, "plan": "team", "expires": expires}, separators=(",", ":")).encode()
+    terms = {"org": org, "plan": "team", "expires": expires}
+    if tier in TIERS:
+        terms |= {"tier": tier, "people": TIERS[tier][2]}
+    body = json.dumps(terms, separators=(",", ":")).encode()
     sig = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(LICENSE_SECRET)).sign(body)
     enc = lambda b: base64.urlsafe_b64encode(b).decode().rstrip("=")
     return enc(body) + "." + enc(sig)
@@ -59,7 +75,8 @@ def _license_for(p) -> str | None:
     """A hosted gateway's license: until its trial ends, else a year from today (renewed as long as it runs)."""
     year = (datetime.now(timezone.utc).date() + timedelta(days=365)).isoformat()
     paying = "mrr" in p.keys() and (p["mrr"] or 0) > 0
-    return issue_license(p["company"] or p["code"], year if paying or not p["trial_ends"] else p["trial_ends"])  # where a Team plan is paid (e.g. a Stripe payment link)           # shown on start pages, e.g. "WhatsApp +91..., you@x.com"
+    return issue_license(p["company"] or p["code"], year if paying or not p["trial_ends"] else p["trial_ends"],
+                         p["tier"] if "tier" in p.keys() else None)  # where a Team plan is paid (e.g. a Stripe payment link)           # shown on start pages, e.g. "WhatsApp +91..., you@x.com"
 CODE_RE = re.compile(r"^[a-z0-9-]{3,40}$")
 
 app = FastAPI(title="Squidbrake Insights", docs_url=None, redoc_url=None)
@@ -120,6 +137,8 @@ with db() as _c:
                         ("mrr", "INTEGER NOT NULL DEFAULT 0"), ("paying_since", "TEXT"),
                         # self-serve signups (/signup): who, and which agents they said they use
                         ("email", "TEXT"), ("uses_agents", "TEXT"), ("plan", "TEXT"), ("trial_ends", "TEXT"),
+                        # which paid plan (TIERS): from the pricing page's sign-up link, or what they paid for
+                        ("tier", "TEXT"),
                         # Stripe (/v1/stripe/webhook): who pays, and one-time payments such as a paid pilot
                         ("stripe_customer", "TEXT"), ("paid_once", "INTEGER NOT NULL DEFAULT 0"),
                         # New keys asked for (a founder lost theirs): provision.py makes them, then this goes back to 0
@@ -674,7 +693,7 @@ def provision_queue():
         _reclaim_unused(c)
         _start_waiting(c)
         # keys_ready: the keys arrived here (and may since have been shown to the founder and forgotten)
-        rows = c.execute("SELECT code, company, subdomain, state, plan, trial_ends, mrr, rekey, "
+        rows = c.execute("SELECT code, company, subdomain, state, plan, tier, trial_ends, mrr, rekey, "
                          "(admin_key IS NOT NULL OR keys_revealed_at IS NOT NULL) AS keys_ready "
                          "FROM pilots WHERE hosted=1").fetchall()
     return {"domain": HOSTED_DOMAIN, "pilots": [dict(r) | {"keys_ready": bool(r["keys_ready"]), "rekey": bool(r["rekey"]),
@@ -683,17 +702,20 @@ def provision_queue():
 
 
 @app.post("/v1/admin/pilots/{code}/license", dependencies=[Depends(admin)])
-def pilot_license(code: str, days: int = Query(365, ge=1, le=1100)):
-    """A Team plan license for a pilot's own (self-hosted) gateway: `squidbrake license set LICENSE`."""
+def pilot_license(code: str, days: int = Query(365, ge=1, le=1100),
+                  tier: str = Query("", pattern="^(|enterprise|brake|brakepro|crew|crewplus|crewmax|fleet|fleetmax)$")):
+    """A Team plan license for a pilot's own (self-hosted) gateway: `squidbrake license set LICENSE`. Its people limit
+    is the pilot's plan, or `tier` (enterprise: no limit)."""
     with db() as c:
-        p = c.execute("SELECT company FROM pilots WHERE code=?", (code,)).fetchone()
+        p = c.execute("SELECT company, tier FROM pilots WHERE code=?", (code,)).fetchone()
     if not p:
         raise HTTPException(404)
+    tier = None if tier == "enterprise" else tier or p["tier"]
     expires = (datetime.now(timezone.utc).date() + timedelta(days=days)).isoformat()
-    token = issue_license(p["company"], expires)
+    token = issue_license(p["company"], expires, tier)
     if not token:
         raise HTTPException(400, "set INSIGHTS_LICENSE_SECRET on the server to issue licenses")
-    return {"license": token, "org": p["company"], "expires": expires}
+    return {"license": token, "org": p["company"], "expires": expires, "tier": tier}
 
 
 class ProvisionedIn(BaseModel):
@@ -814,9 +836,10 @@ def monthly_usage(c, months: int) -> list[dict]:
     y, m0 = divmod(today.year * 12 + today.month - 1 - (months - 1), 12)
     since = f"{y:04d}-{m0 + 1:02d}-01"
     out: dict[str, dict] = {}
-    for r in c.execute("SELECT code, company, email, hosted, plan, mrr FROM pilots").fetchall():
+    for r in c.execute("SELECT code, company, email, hosted, plan, tier, mrr FROM pilots").fetchall():
         out[r["code"]] = {"code": r["code"], "company": r["company"], "email": r["email"], "hosted": bool(r["hosted"]),
-                          "plan": r["plan"], "mrr": r["mrr"], "months": {}}
+                          "plan": r["plan"], "tier": r["tier"], "mrr": r["mrr"],
+                          "allowance": TIERS[r["tier"]][3] if r["tier"] in TIERS else None, "months": {}}
     for code, day, counts in c.execute(
             "SELECT i.code, d.day, d.counts FROM days d JOIN installs i ON i.install_id = d.install_id "
             "WHERE d.day >= ?", (since,)).fetchall():
@@ -832,6 +855,9 @@ def monthly_usage(c, months: int) -> list[dict]:
         m["estimated"] |= "real" not in cnt
         for k in ("events", "held", "blocked"):
             m[k] += _int(cnt.get(k))
+    for p in out.values():                  # extra actions are billed, never blocked: how many this month went over
+        for m in p["months"].values() if p["allowance"] else ():
+            m["over"] = max(0, m["real"] - p["allowance"])
     return [p for p in out.values() if p["months"]]
 
 
@@ -1456,6 +1482,7 @@ class SignupIn(BaseModel):
     website: str = Field(default="", max_length=200)   # a field people don't see: bots fill it in
     setup: str = Field(default="local", pattern="^(local|hosted)$")   # on their computer, or a gateway on our server
     plan: str = Field(default="", pattern="^(|team)$")                  # team: a 14-day trial of the hosted Team plan
+    tier: str = Field(default="", pattern="^(|crew|crewplus|crewmax|fleet|fleetmax)$")   # which team plan (TIERS)
     source: str = Field(default="", pattern="^[a-z0-9-]{0,30}$")        # e.g. "invite" from the dashboard's Team page
     new_keys: bool = False     # signed in again because they lost their hosted keys: make new ones (Supabase only)
 
@@ -1522,11 +1549,12 @@ def signup(s: SignupIn, request: Request, authorization: str = Header(default=""
                 queued = datetime.fromisoformat(last) + timedelta(microseconds=1)
             queued = queued.isoformat()
         c.execute("INSERT INTO pilots (code, company, contact, note, created_at, email, uses_agents, hosted, subdomain, "
-                  "state, plan, trial_ends, started_at, queued_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  "state, plan, tier, trial_ends, started_at, queued_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                   (code, s.company.strip(), f"{s.name.strip()} · {email}",
-                   f"signup ({s.plan or setup})" + (f" from {s.source}" if s.source else "") + " · agents: "
+                   f"signup ({s.plan or setup}{' ' + s.tier if s.plan and s.tier else ''})" + (f" from {s.source}" if s.source else "") + " · agents: "
                    + (", ".join(agents) or "-"), now(), email, json.dumps(agents),
-                   int(bool(sub)), sub, ("requested" if auto else "waiting") if sub else None, s.plan or None, trial,
+                   int(bool(sub)), sub, ("requested" if auto else "waiting") if sub else None, s.plan or None,
+                   (s.tier or "crew") if s.plan == "team" else None, trial,
                    now() if auto else None, queued))
     if sub:
         notify(f"Squidbrake {'Team trial' if s.plan else 'hosted'} sign-up: {s.name.strip()} ({email}), {s.company.strip()}. "
@@ -1642,7 +1670,9 @@ def start_page(code: str, request: Request):
             "reclaim": {"keys_minutes": RECLAIM_KEYS_MINUTES, "idle_hours": RECLAIM_IDLE_HOURS}
                        if p["hosted"] and (p["note"] or "").startswith("signup") and not (p["mrr"] or p["paid_once"]) else None,
             "plan": p["plan"], "trial_ends": p["trial_ends"],
-            "checkout": checkout_link(CHECKOUT_URL, code, p["email"]) if p["plan"] == "team" else ""}
+            "tier": p["tier"], "tier_name": TIERS[p["tier"]][0] if p["tier"] in TIERS else None,
+            "checkout": checkout_link(CHECKOUT_URLS.get(p["tier"] or "", CHECKOUT_URL), code, p["email"])
+                        if p["plan"] == "team" else ""}
     return HTMLResponse(PAGE("start.html").replace("__DATA__", json.dumps(data).replace("</", "<\\/")))
 
 
@@ -1785,9 +1815,10 @@ async def stripe_webhook(request: Request):
                       if email else None)
             amount = _int(obj.get("amount_total")) // 100
             who = p["company"] if p else (email or "someone")
-            if p and obj.get("mode") == "subscription":
-                c.execute("UPDATE pilots SET mrr=?, paying_since=COALESCE(paying_since, ?), stripe_customer=? WHERE code=?",
-                          (amount, now(), obj.get("customer"), p["code"]))
+            if p and obj.get("mode") == "subscription":     # the plan follows what they paid for (an upgrade too)
+                c.execute("UPDATE pilots SET mrr=?, paying_since=COALESCE(paying_since, ?), stripe_customer=?, "
+                          "tier=COALESCE(?, tier) WHERE code=?",
+                          (amount, now(), obj.get("customer"), tier_for_amount(amount), p["code"]))
             elif p:
                 c.execute("UPDATE pilots SET paid_once=COALESCE(paid_once, 0)+?, stripe_customer=COALESCE(?, stripe_customer) "
                           "WHERE code=?", (amount, obj.get("customer"), p["code"]))

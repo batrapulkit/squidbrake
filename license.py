@@ -27,15 +27,24 @@ FEATURES = {"people": "more than one person", "phone": "approvals on a phone",
             "channels": "Slack, Teams and email", "audit": "audit export and the evidence pack",
             "sso": "sign-in with your company's SSO"}
 UPGRADE_URL = "https://squidbrake.com/signup?plan=team&from=license"
+# The paid plans on squidbrake.com/pricing: tier -> (name, people, actions a month). Enterprise has no tier (no limits).
+# insights/plans.py TIERS keeps the same people and actions, with prices (tests/test_plan_tiers.py checks they match).
+PLANS = {"brake": ("Brake", 1, 5_000), "brakepro": ("Brake Pro", 1, 10_000),
+         "crew": ("Crew", 3, 25_000), "crewplus": ("Crew Plus", 10, 100_000), "crewmax": ("Crew Max", 25, 250_000),
+         "fleet": ("Fleet", 25, 250_000), "fleetmax": ("Fleet Max", 50, 500_000)}
 
 
 def _b64(s: str) -> bytes:
     return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
 
 
-def issue(secret: bytes, org: str, expires: str, plan: str = "team") -> str:
-    """A license for `org` until `expires` (YYYY-MM-DD). Only squidbrake.com holds the secret."""
-    body = json.dumps({"org": org, "plan": plan, "expires": expires}, separators=(",", ":")).encode()
+def issue(secret: bytes, org: str, expires: str, plan: str = "team", tier: str | None = None) -> str:
+    """A license for `org` until `expires` (YYYY-MM-DD), with its tier's people limit. Only squidbrake.com holds the
+    secret."""
+    terms = {"org": org, "plan": plan, "expires": expires}
+    if tier:
+        terms |= {"tier": tier, "people": PLANS[tier][1]}
+    body = json.dumps(terms, separators=(",", ":")).encode()
     enc = lambda b: base64.urlsafe_b64encode(b).decode().rstrip("=")
     return enc(body) + "." + enc(signing.ed25519_sign(secret, body))
 
@@ -73,9 +82,16 @@ def paid(data_dir: Path) -> bool:
     return in_grace() or current(data_dir) is not None
 
 
+def people_limit(data_dir: Path) -> int | None:
+    """How many people the license's plan allows; None means no limit (Enterprise, or a license from before tiers)."""
+    lic = current(data_dir)
+    return lic.get("people") if lic else None
+
+
 def status(data_dir: Path) -> dict:
     lic = current(data_dir)
     return {"licensed": lic is not None, "org": lic and lic.get("org"), "expires": lic and lic.get("expires"),
+            "tier": lic and lic.get("tier"), "people": lic and lic.get("people"),
             "grace_until": GRACE_UNTIL, "in_grace": in_grace(), "team_features": paid(data_dir),
             "features": list(FEATURES.values()), "upgrade_url": UPGRADE_URL}
 

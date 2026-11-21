@@ -171,7 +171,7 @@ function hostedPage() {
       changes wait for your OK, and dangerous commands are blocked. Your dashboard runs on our server, so there's
       nothing to keep open on your laptop.</p>
 
-    ${D.plan === "team" ? `<section class="step" style="border-left:4px solid var(--ok)"><h2>Your Team trial</h2>
+    ${D.plan === "team" ? `<section class="step" style="border-left:4px solid var(--ok)"><h2>Your ${esc(D.tier_name || "Team")} trial</h2>
       <p>Free until <b>${esc(D.trial_ends || "")}</b>: shared approvals from the dashboard, your phone or Slack, for your
         whole team. Then $499 a month for one team, cancel any month.
         ${D.checkout ? `<a href="${esc(D.checkout)}" target="_blank" rel="noopener">Add a card now</a> so it keeps running.` : "We'll email you before it ends."}</p>

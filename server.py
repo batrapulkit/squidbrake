@@ -3554,6 +3554,10 @@ def team_add(m: MemberIn, who: str = Depends(admin)):
         raise HTTPException(402, f"The free plan is for one person. To add your team: {UPGRADE_URL}")
     if m.kind == "person" and any(x["kind"] == "person" for x in keystore.listing()):
         license.need(KEYS_PATH.parent, "people")
+        cap = license.people_limit(KEYS_PATH.parent)
+        if cap and sum(x["kind"] == "person" for x in keystore.listing()) >= cap:
+            raise HTTPException(402, f"Your plan is for up to {cap} people. To add more, move to a bigger plan: "
+                                     f"{UPGRADE_URL}")
     if m.kind == "person":
         approver, roles = _with_access(m.access, m.approver, m.roles, [])
         _check_level_change(who, m.name, [], [r.strip().lower() for r in roles])
