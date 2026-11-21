@@ -261,17 +261,23 @@ footer a { color:var(--muted); }
         </fieldset>
         <fieldset class="full plans-pick" id="plans" hidden><legend>Your plan <a href="/pricing" target="_blank" rel="noopener">Compare plans ↗</a></legend>
           <div class="switch" role="tablist" aria-label="Plans for">
-            <button type="button" role="tab" id="tab-individuals" aria-controls="tiers-individuals" aria-selected="true">Individuals</button>
-            <button type="button" role="tab" id="tab-teams" aria-controls="tiers-teams" aria-selected="false" tabindex="-1">Teams</button>
+            <button type="button" role="tab" id="tab-individuals" aria-controls="tiers-individuals" aria-selected="true">For you</button>
+            <button type="button" role="tab" id="tab-teams" aria-controls="tiers-teams" aria-selected="false" tabindex="-1">For your team</button>
+            <button type="button" role="tab" id="tab-big" aria-controls="tiers-big" aria-selected="false" tabindex="-1">For your company</button>
           </div>
           <div class="tiers" id="tiers-individuals" role="tabpanel" aria-labelledby="tab-individuals">
-            <label class="tier"><input type="radio" name="plan" value="free" checked><b>Free</b><span class="pr">$0</span><span class="q">2,000 actions/mo · watch only</span></label>
-            <label class="tier"><input type="radio" name="plan" value="starter"><b>Starter</b><span class="pr">$9<small>/mo</small></span><span class="q">5,000 actions/mo · approvals</span></label>
-            <label class="tier"><input type="radio" name="plan" value="pro"><b>Pro</b><span class="pr">$19<small>/mo</small></span><span class="q">10,000 actions/mo · audit export</span></label>
+            <label class="tier"><input type="radio" name="plan" value="free" checked><b>Watch</b><span class="pr">$0</span><span class="q">2,000 actions/mo · watch only</span></label>
+            <label class="tier"><input type="radio" name="plan" value="starter"><b>Brake</b><span class="pr">$9<small>/mo</small></span><span class="q">5,000 actions/mo · approvals</span></label>
+            <label class="tier"><input type="radio" name="plan" value="pro"><b>Brake Pro</b><span class="pr">$19<small>/mo</small></span><span class="q">10,000 actions/mo · undo, audit export</span></label>
           </div>
           <div class="tiers" id="tiers-teams" role="tabpanel" aria-labelledby="tab-teams" hidden>
-            <label class="tier"><input type="radio" name="plan" value="team"><b>Team</b><span class="pr">$299<small>/mo</small></span><span class="q">Up to 10 people · 14 days free</span></label>
-            <label class="tier"><input type="radio" name="plan" value="scale"><b>Scale</b><span class="pr">$499<small>/mo</small></span><span class="q">Up to 50 people · 14 days free</span></label>
+            <label class="tier"><input type="radio" name="plan" value="crew"><b>Crew</b><span class="pr">$49<small>/mo</small></span><span class="q">Up to 3 people · 14 days free</span></label>
+            <label class="tier"><input type="radio" name="plan" value="crewplus"><b>Crew Plus</b><span class="pr">$99<small>/mo</small></span><span class="q">Up to 10 people · 14 days free</span></label>
+            <label class="tier"><input type="radio" name="plan" value="crewmax"><b>Crew Max</b><span class="pr">$199<small>/mo</small></span><span class="q">Up to 25 people · 14 days free</span></label>
+          </div>
+          <div class="tiers" id="tiers-big" role="tabpanel" aria-labelledby="tab-big" hidden>
+            <label class="tier"><input type="radio" name="plan" value="team"><b>Fleet</b><span class="pr">$299<small>/mo</small></span><span class="q">Up to 25 people · compliance · 14 days free</span></label>
+            <label class="tier"><input type="radio" name="plan" value="scale"><b>Fleet Max</b><span class="pr">$499<small>/mo</small></span><span class="q">Up to 50 people · SSO · 14 days free</span></label>
             <a class="tier" href="https://calendly.com/pulkitbatra2024/new-meeting-1" target="_blank" rel="noopener"><b>Enterprise</b><span class="pr">Custom</span><span class="q">50+ people · book a call ↗</span></a>
           </div>
           <p class="plan-note" id="plan-note" aria-live="polite"></p>
@@ -473,22 +479,29 @@ const state = (html, at) => {
 // signed in: a hosted gateway, started on its own (in line if every slot is taken).
 // CONFIG.offer_local (INSIGHTS_SIGNUP_LOCAL=1): they pick "On my computer" or hosted, as before.
 // No hosted dashboards on this server (CONFIG.hosted false, no HOSTED_DOMAIN): the local setup.
-// ?plan=free|starter|pro|team|scale (pricing, or the dashboard's "invite your team"): that plan, picked already.
+// ?plan=free|starter|pro|crew|crewplus|crewmax|team|scale (pricing, or the dashboard's "invite your team"): that
+// plan, picked already. The keys predate the names people see: starter is Brake, pro Brake Pro, team Fleet, scale Fleet Max.
 // On a hosted server the form shows the plans (same Individuals / Teams switch as /pricing) and they can change it;
 // the pick is written back into the address, so the emailed sign-in link brings it back with them.
 // Team and Scale start with 14 days free; Starter and Pro start once paid (the next page has the checkout)
 // ?new_keys=1 (the start page's "Lost your keys?"): signed in again, so new keys are made for their dashboard
 const Q = new URLSearchParams(location.search),
-      PAID = ["starter", "pro", "team", "scale"], TRIAL = ["team", "scale"],
+      PAID = ["starter", "pro", "crew", "crewplus", "crewmax", "team", "scale"],
+      TRIAL = ["crew", "crewplus", "crewmax", "team", "scale"],
+      NAMES = { starter: "Brake", pro: "Brake Pro", crew: "Crew", crewplus: "Crew Plus", crewmax: "Crew Max",
+                team: "Fleet", scale: "Fleet Max" },
       SOURCE = (Q.get("from") || "").toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 30),
       NEW_KEYS = Q.get("new_keys") === "1";
 let PLAN = Q.get("tier") === "scale" ? "scale" : (PAID.includes(Q.get("plan")) ? Q.get("plan") : "");
-const title = (p) => p[0].toUpperCase() + p.slice(1);
+const title = (p) => NAMES[p] || p[0].toUpperCase() + p.slice(1);
 const goLabel = () => !PLAN ? "Try now" : TRIAL.includes(PLAN) ? `Start my 14-day ${title(PLAN)} trial` : `Continue to payment`;
 const PLAN_NOTES = {
   "": "Free forever. Watches your agents; only catastrophic commands are blocked. Upgrade any time.",
   starter: "$9/mo. You pay on the next page, then your dashboard starts in about a minute.",
-  pro: "$19/mo, with the audit export. You pay on the next page, then your dashboard starts in about a minute.",
+  pro: "$19/mo, with undo and the audit export. You pay on the next page, then your dashboard starts in about a minute.",
+  crew: "14 days free, no card to start. $49/mo after that, for up to 3 people.",
+  crewplus: "14 days free, no card to start. $99/mo after that, for up to 10 people.",
+  crewmax: "14 days free, no card to start. $199/mo after that, for up to 25 people.",
   team: "14 days free, no card to start. $299/mo after that.",
   scale: "14 days free, no card to start. $499/mo after that.",
 };
@@ -513,7 +526,7 @@ const pick = () => CONFIG.hosted && CONFIG.offer_local && !PLAN && !NEW_KEYS, PI
     go.textContent = goLabel();
     note.textContent = PLAN_NOTES[PLAN];
     // the tag and the line under the heading say what this plan costs, not "free, no card" for a paid one
-    document.getElementById("planTag").lastChild.textContent = " " + (PLAN ? title(PLAN) : "Free");
+    document.getElementById("planTag").lastChild.textContent = " " + (PLAN ? title(PLAN) : "Watch");
     document.getElementById("sub").textContent = TRIAL.includes(PLAN) ? "Your own dashboard, running on our server, in about a minute. 14 days free, no card to start."
       : PLAN ? "Your own dashboard, running on our server, about a minute after you pay."
       : SUB0;
@@ -531,13 +544,14 @@ const pick = () => CONFIG.hosted && CONFIG.offer_local && !PLAN && !NEW_KEYS, PI
     });
     t.addEventListener("keydown", (e) => {
       if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-      tabs[(i + 1) % tabs.length].click(); showTab(tabs[(i + 1) % tabs.length], true);
+      const next = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+      next.click(); showTab(next, true);
     });
   });
   box.querySelectorAll('input[name="plan"]').forEach((r) => r.addEventListener("change", () => set(r.value, true)));
   const start = box.querySelector(`input[value="${PLAN || "free"}"]`);
   start.checked = true;
-  showTab(TRIAL.includes(PLAN) ? tabs[1] : tabs[0]);
+  showTab(tabs.find((t) => document.getElementById(t.getAttribute("aria-controls")).contains(start)) || tabs[0]);
   set(start.value, false);
 })();
 const PRIVACY = `We see your name, email, the agents you picked, and for each action that was blocked or sent for approval:
