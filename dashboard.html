@@ -599,6 +599,17 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
 .plan-note { margin: 0 16px 12px; border-radius: 10px; padding: 10px 12px; font-size: 13px; color: var(--text-primary);
   background: color-mix(in srgb, var(--warning) 14%, var(--surface-1)); border: 1px solid color-mix(in srgb, var(--warning) 45%, var(--border)); }
 .plan-note p { margin: 0 0 6px; } .plan-note .btn { margin-top: 2px; }
+
+/* guided tour: a spotlight over one part of the page and a card that says what it is */
+.tour-hole { position: fixed; z-index: 1000; border-radius: 12px; pointer-events: none;
+  box-shadow: 0 0 0 4px var(--accent), 0 0 0 9999px rgba(8, 12, 20, .58); transition: all .25s ease; }
+.tour-card { position: fixed; z-index: 1001; width: min(340px, calc(100vw - 32px)); padding: 16px; outline: none; }
+.tour-card h3 { margin: 0 0 6px; font-size: 15px; color: var(--text-primary); }
+.tour-card p { margin: 0 0 14px; font-size: 13.5px; line-height: 1.5; color: var(--text-secondary); }
+.tour-card .acts { display: flex; align-items: center; gap: 8px; }
+.tour-card .acts .count { margin-right: auto; font-size: 12px; color: var(--text-muted); }
+@media (max-width: 640px) { .tour-card { left: 16px !important; right: 16px; top: auto !important; bottom: 16px; width: auto; } }
+@media (prefers-reduced-motion: reduce) { .tour-hole { transition: none; } }
 </style>
 </head>
 <body>
@@ -620,6 +631,7 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     <button class="btn" id="phoneBtn" title="Approve from your phone">📱 Phone</button>
     <button class="btn" id="soundBtn" aria-pressed="true" title="Play a chime when an action needs approval">🔊</button>
     <button class="btn" id="notifyBtn" aria-pressed="false">🔔 <span id="notifyText">Alerts off</span></button>
+    <button class="btn" id="tourBtn" title="A short tour of this page">? Tour</button>
     <button class="btn" id="keyBtn" title="Sign in with a different key">⚿ <span id="meName">Key</span></button>
     <button class="btn" id="modeBtn" data-admin hidden aria-pressed="false"
       title="Observe: nothing is blocked or held, only recorded for a report later. Enforce: rules block and hold.">👁 <span id="modeText">Observe off</span></button>
@@ -3325,9 +3337,99 @@ dialog input#stopReason { width: 100%; border: 1px solid var(--border); backgrou
     } catch (err) { toast(err instanceof AuthError ? "Sign in first" : err.message); }
   });
 
+  // ---------- guided tour: runs once for a new person, then from the Tour button
+  const TOUR = [
+    [null, "Welcome to Squidbrake", "Agents propose. People approve. This tour shows where everything is. It takes about a minute."],
+    ["#tiles", "Your totals", "Every agent action in the time range you pick: done, waiting for approval, denied or failed."],
+    ["#approvals", "Waiting for you", "Risky actions stop here until someone approves or rejects them. Press ? for keyboard shortcuts."],
+    ["#phoneBtn", "Approve from your phone", "Scan a code to approve or reject from your phone when you're away from this screen."],
+    ["#notifyBtn", "Alerts", "Turn on browser alerts so you hear about a held action right away."],
+    ["#eventsCard", "Every action", "Every call an agent made, grouped into chains. Click one to see what ran and why."],
+    ["#stopBtn", "Stop agents", "One click blocks every agent action until you turn it back on."],
+    ['#tabs [data-view="team"]', "Team", "Who can approve, and the keys your people and agents use."],
+    ['#tabs [data-view="reports"]', "Reports", "Daily and weekly summaries you can share with your team."],
+    ['#tabs [data-view="settings"]', "Settings", "Rules that decide what runs, what waits and what is blocked."],
+    ["#tourBtn", "That's it", "Run this tour again any time from the Tour button."],
+  ];
+  let tourAt = -1, tourEls = null;
+  const shown = (el) => !!el && el.getClientRects().length > 0;
+  function tourSteps() { return TOUR.filter(([sel]) => !sel || shown(document.querySelector(sel))); }
+  function startTour() {
+    if (tourEls) return;
+    const hole = document.createElement("div"), card = document.createElement("div");
+    hole.className = "tour-hole"; card.className = "card tour-card";
+    card.setAttribute("role", "dialog"); card.setAttribute("aria-labelledby", "tourTitle"); card.setAttribute("aria-describedby", "tourText");
+    card.innerHTML = '<h3 id="tourTitle" aria-live="polite"></h3><p id="tourText"></p><div class="acts">' +
+      '<span class="count" id="tourCount"></span><button class="btn" type="button" id="tourSkip">Skip</button>' +
+      '<button class="btn" type="button" id="tourBack">Back</button><button class="btn primary" type="button" id="tourNext">Next</button></div>';
+    document.body.append(hole, card);
+    tourEls = { hole, card, steps: tourSteps(), back: document.activeElement };
+    card.querySelector("#tourSkip").addEventListener("click", endTour);
+    card.querySelector("#tourBack").addEventListener("click", () => tourGo(tourAt - 1));
+    card.querySelector("#tourNext").addEventListener("click", () => tourGo(tourAt + 1));
+    document.addEventListener("keydown", tourKey, true);
+    window.addEventListener("resize", tourPlace);
+    window.addEventListener("scroll", tourPlace, true);
+    tourGo(0);
+  }
+  function tourGo(i) {
+    const steps = tourEls.steps;
+    if (i >= steps.length) return endTour();
+    tourAt = Math.max(0, i);
+    const [sel, title, text] = steps[tourAt], c = tourEls.card;
+    c.querySelector("#tourTitle").textContent = title;
+    c.querySelector("#tourText").textContent = text;
+    c.querySelector("#tourCount").textContent = `${tourAt + 1} of ${steps.length}`;
+    c.querySelector("#tourBack").hidden = tourAt === 0;
+    c.querySelector("#tourNext").textContent = tourAt === steps.length - 1 ? "Done" : "Next";
+    const el = sel && document.querySelector(sel);
+    if (el) el.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+    tourPlace();
+    c.querySelector("#tourNext").focus({ preventScroll: true });
+  }
+  function tourPlace() {
+    if (!tourEls) return;
+    const { hole, card, steps } = tourEls, sel = steps[tourAt][0], el = sel && document.querySelector(sel);
+    const cw = card.offsetWidth, ch = card.offsetHeight, vw = document.documentElement.clientWidth, vh = innerHeight;
+    if (!el) {   // the welcome step: no spotlight, card in the middle
+      Object.assign(hole.style, { left: vw / 2 + "px", top: vh / 2 + "px", width: "0px", height: "0px", boxShadow: "0 0 0 9999px rgba(8, 12, 20, .58)" });
+      Object.assign(card.style, { left: (vw - cw) / 2 + "px", top: (vh - ch) / 2 + "px" });
+      return;
+    }
+    const r = el.getBoundingClientRect(), pad = 6;
+    Object.assign(hole.style, { boxShadow: "", left: r.left - pad + "px", top: r.top - pad + "px", width: r.width + pad * 2 + "px", height: r.height + pad * 2 + "px" });
+    const below = r.bottom + pad + 12, above = r.top - pad - 12 - ch;
+    const top = below + ch <= vh ? below : above >= 0 ? above : Math.max(16, vh - ch - 16);
+    const left = Math.min(Math.max(16, r.left + r.width / 2 - cw / 2), vw - cw - 16);
+    Object.assign(card.style, { left: left + "px", top: top + "px" });
+  }
+  function tourKey(ev) {
+    if (ev.key === "Escape") endTour();
+    else if (ev.key === "ArrowRight") tourGo(tourAt + 1);
+    else if (ev.key === "ArrowLeft") tourGo(tourAt - 1);
+    else return;
+    ev.preventDefault(); ev.stopPropagation();   // the page's own shortcuts wait until the tour is closed
+  }
+  function endTour() {
+    if (!tourEls) return;
+    tourEls.hole.remove(); tourEls.card.remove();
+    document.removeEventListener("keydown", tourKey, true);
+    window.removeEventListener("resize", tourPlace);
+    window.removeEventListener("scroll", tourPlace, true);
+    const back = tourEls.back; tourEls = null; tourAt = -1;
+    try { localStorage.setItem("sb.tour", "done"); } catch {}
+    if (back && back.focus) back.focus({ preventScroll: true });
+  }
+  function maybeTour() {
+    let done;
+    try { done = localStorage.getItem("sb.tour") === "done"; } catch { done = true; }   // no storage: don't show it on every load
+    if (!done && me && view === "activity" && !document.querySelector("dialog[open]")) startTour();
+  }
+  $("#tourBtn").addEventListener("click", () => { if (view !== "activity") showView("activity"); setTimeout(startTour, 50); });
+
   renderFilters();
   showView(location.hash.slice(1));
-  reload().then(() => { if (linkedEvent) openDrawer(linkedEvent); });
+  reload().then(() => { if (linkedEvent) openDrawer(linkedEvent); else maybeTour(); });
 })();
 </script>
 </body>
