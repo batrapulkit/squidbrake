@@ -37,6 +37,10 @@ def kind(line):
     "sudo /usr/sbin/diskutil eraseDisk APFS X disk2",
     "Format-Volume -DriveLetter D", "Clear-Disk -Number 1 -RemoveData", "Format-Volume D",
     "Get-Partition -DriveLetter D | Format-Volume", "Get-Disk 1 | Clear-Disk",
+    # Whole disks and pools, by other names than mkfs and dd
+    "zpool destroy tank", "sudo zpool destroy -f tank", "blkdiscard /dev/nvme0n1",
+    "sgdisk --zap-all /dev/sda", "sgdisk -Z /dev/sda", "sgdisk -o /dev/sda",
+    "cryptsetup luksErase /dev/sda2", "cryptsetup erase /dev/sda2", "cryptsetup -q luksFormat /dev/sdb1",
 ])
 def test_catastrophic(line):
     assert kind(line) == "catastrophic", commands.read(line).summary()
@@ -59,6 +63,12 @@ def test_catastrophic(line):
     "podman system reset -f",
     "docker compose down -v", "npm publish", "gh repo delete me/repo --yes", "shutdown -h now", "crontab -r",
     "tmutil delete /Volumes/Backup/x", "tmutil delete -d /Volumes/Backup -t 2026-01-01-120000",
+    # Volumes, datasets and backups
+    "zfs destroy -r tank/data", "zfs destroy tank/data@monday", "zfs rollback -r tank/data@monday",
+    "lvremove -f vg0/data", "vgremove vg0", "pvremove /dev/sdb1", "lvm lvremove vg0/data",
+    "btrfs subvolume delete /data/snap", "btrfs sub del /data/snap",
+    "borg delete /backups/repo::monday", "borg prune --keep-daily 7 /backups/repo", "borg -r /backups/repo delete -a monday",
+    "restic forget --prune --keep-last 0", "restic -r /backups forget abc123", "restic forget --keep-daily 7",
     f"{VSS} delete shadows /all /quiet", "reg delete HKLM\\Software\\X /f", "cipher /w:C",
     "Clear-Content important.txt",
     "clc file.txt",
@@ -324,6 +334,14 @@ def test_no_false_alarm(line):
     "aws s3 sync . s3://bucket",
     "robocopy src dst /E",
     "rclone ls remote:bucket",
+    # Storage and backup tools that only look, make or dry-run
+    "zfs list", "zfs snapshot tank/data@monday", "zfs destroy -nv tank/data@monday", "zpool status", "zpool list",
+    "lvs", "vgdisplay", "lvcreate -L 10G -n data vg0", "lsblk", "sgdisk -p /dev/sda", "sgdisk -O /dev/sda",
+    "cryptsetup status cryptroot", "cryptsetup luksDump /dev/sda2",
+    "btrfs subvolume list /", "btrfs subvolume snapshot /data /data/snap", "btrfs filesystem df /",
+    "borg list /backups/repo", "borg create /backups/repo::monday ~/src", "borg delete --dry-run /backups/repo::monday",
+    "borg prune -n --keep-daily 7 /backups/repo",
+    "restic snapshots", "restic backup ~/src", "restic forget --dry-run --keep-last 1", "restic check",
     # External CLI inspection (#173)
     'cqlsh -e "SELECT * FROM ks.t LIMIT 5"',
     "influx bucket list",
@@ -343,6 +361,17 @@ def test_no_false_alarm(line):
 ])
 def test_everyday_work_is_not_held(line):
     assert kind(line) in ("other", "read_only"), commands.read(line).summary()
+
+
+@pytest.mark.parametrize("line, reason", [
+    ("zpool destroy tank", "storage pool"),
+    ("cryptsetup luksErase /dev/sda2", "never be read again"),
+    ("lvremove -f vg0/data", "logical volume"),
+    ("restic forget --prune --keep-last 0", "backup"),
+    ("borg delete /backups/repo::monday", "backup"),
+])
+def test_storage_and_backup_wipes_say_what_is_lost(line, reason):
+    assert reason in commands.read(line).summary()
 
 
 def test_summary_explains():

@@ -709,6 +709,42 @@ def _docker_control_reason(prog: str, lower: list[str], sub: list[str]) -> str |
     return None
 
 
+def _storage_wipe(prog: str, words: list[str], lower: list[str]) -> tuple[str, str] | None:
+    """A storage or backup tool destroying a disk, a pool, a volume or a backup. -> (kind, reason for the approver).
+    A whole disk or pool is catastrophic, like mkfs; one volume, dataset or backup is irreversible. Dry runs and
+    the commands that only look (zfs list, zpool status, lvs, restic snapshots, borg list) are neither."""
+    if prog == "lvm" and len(lower) > 1:                      # lvm lvremove ...
+        prog, words, lower = lower[1], words[1:], lower[1:]
+    sub = [w for w in lower[1:] if not w.startswith("-")]
+    said = " ".join(words[:3])
+    dry = any(w == "--dry-run" or re.fullmatch(r"-[a-z]*n[a-z]*", w) for w in lower[1:])
+    if prog == "zpool" and sub[:1] == ["destroy"]:
+        return "catastrophic", f"destroys a whole storage pool and everything in it ({said})"
+    if prog == "blkdiscard":
+        return "catastrophic", f"discards every block on a disk ({said})"
+    if prog == "sgdisk" and any(w in ("--zap-all", "--zap", "-Z", "-z", "--clear", "-o") for w in words[1:]):
+        return "catastrophic", f"wipes a disk's partition table ({said})"
+    if prog == "cryptsetup" and sub[:1] in (["erase"], ["lukserase"]):
+        return "catastrophic", f"erases the keys of an encrypted disk, so its data can never be read again ({said})"
+    if prog == "cryptsetup" and sub[:1] == ["luksformat"]:
+        return "catastrophic", f"formats a disk as a new encrypted volume ({said})"
+    if prog == "zfs" and sub[:1] == ["destroy"] and not dry:
+        return "irreversible", f"destroys a ZFS dataset or snapshot ({said})"
+    if prog == "zfs" and sub[:1] == ["rollback"]:
+        return "irreversible", f"throws away everything written since a snapshot ({said})"
+    if prog in ("lvremove", "vgremove", "pvremove"):
+        what = {"lvremove": "a logical volume", "vgremove": "a volume group", "pvremove": "a physical volume's label"}[prog]
+        return "irreversible", f"removes {what} and the data on it ({' '.join(words[:2])})"
+    if prog == "btrfs" and len(sub) > 1 and sub[0].startswith("su") and "subvolume".startswith(sub[0])             and sub[1].startswith("d") and "delete".startswith(sub[1]):
+        return "irreversible", f"deletes a Btrfs subvolume or snapshot ({said})"
+    if prog == "borg" and not dry and (sub[:1] in (["delete"], ["prune"])
+                                       or (any(w in ("-r", "--repo") for w in lower[1:]) and sub[1:2] in (["delete"], ["prune"]))):
+        return "irreversible", f"deletes backups ({'borg delete' if 'delete' in sub[:2] else 'borg prune'})"
+    if prog == "restic" and "forget" in sub and not dry:
+        return "irreversible", "deletes backup snapshots (restic forget)"
+    return None
+
+
 def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Command], list[str]]:
     """One simple command (already split into words). -> (commands, hidden-reasons)."""
     words = words[1:] if words[:1] == ["{"] else words       # a group, `{ curl URL > x.sh; } && bash x.sh`
@@ -811,6 +847,9 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
         if prog != "format" or any(re.match(r"^[a-z]:$", w, re.I) for w in lower[1:]):
             cmd.kind, cmd.why = "catastrophic", f"formats or repartitions a disk ({' '.join(words[:3])})"
             return [cmd], []
+    if wipe := _storage_wipe(prog, words, lower):
+        cmd.kind, cmd.why = wipe
+        return [cmd], []
     if prog == "dd" and any(w.startswith("of=/dev/") for w in lower[1:]):
         cmd.kind, cmd.why = "catastrophic", f"writes raw data onto a disk device ({next(w for w in words if w.lower().startswith('of='))})"
         return [cmd], []
