@@ -12,6 +12,7 @@
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/batrapulkit/squidbrake/badge)](https://scorecard.dev/viewer/?uri=github.com/batrapulkit/squidbrake)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](requirements.txt)
 [![MCP](https://img.shields.io/badge/MCP-compatible-8A2BE2.svg)](docs/install.md#2-connect-real-agents)
+[![batrapulkit/squidbrake MCP server](https://glama.ai/mcp/servers/batrapulkit/squidbrake/badges/score.svg)](https://glama.ai/mcp/servers/batrapulkit/squidbrake)
 [![Real incidents replayed: 17 of 20 stopped](https://img.shields.io/badge/real%20incidents%20replayed-17%20of%2020%20stopped-yellow.svg)](incidents/)
 [![Good first issues](https://img.shields.io/github/issues/batrapulkit/squidbrake/good%20first%20issue?label=good%20first%20issues&color=7057ff)](https://github.com/batrapulkit/squidbrake/labels/good%20first%20issue)
 
