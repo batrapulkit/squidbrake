@@ -167,3 +167,16 @@ def test_the_dashboard_pops_up_new_approvals_on_the_desktop():
     assert 'id="notifyBtn"' in page and "Notification.requestPermission()" in page
     assert "notifyQueue();" in page                     # runs on every queue load, which keeps polling in a background tab
     assert "requireInteraction: true" in page and "o.n.close()" in page   # stays up until decided, then goes away
+
+
+def test_every_tour_step_points_at_something_on_the_dashboard():
+    import re
+    page = (ROOT / "dashboard.html").read_text(encoding="utf-8")
+    tour = page[page.index("const TOUR = ["):page.index("];", page.index("const TOUR = ["))]
+    ids = re.findall(r'\["#(\w+)"', tour)
+    views = re.findall(r'data-view="(\w+)"\]', tour)
+    assert len(ids) >= 5 and views
+    for i in ids:
+        assert f'id="{i}"' in page, i   # a renamed element would quietly drop out of the tour
+    for v in views:
+        assert f'data-view="{v}"' in page, v
