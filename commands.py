@@ -709,6 +709,64 @@ def _docker_control_reason(prog: str, lower: list[str], sub: list[str]) -> str |
     return None
 
 
+def _database_reset(prog: str, lower: list[str]) -> str | None:
+    """A framework or database tool wiping a whole database with one word. -> the reason, for the approver.
+    Only the wiping verbs: `artisan migrate`, `alembic upgrade head` and `knex migrate:latest` are everyday work."""
+    args = lower[1:]
+    if prog in ("python", "python3", "py") and args[:1] == ["-m"] and len(args) > 1:    # python -m alembic ...
+        prog, args = args[1], args[2:]
+    elif prog == "php" and args and _program(args[0]) == "artisan":                    # php artisan ...
+        prog, args = "artisan", args[1:]
+    elif prog == "dotnet" and args[:1] == ["ef"]:                                       # dotnet ef ...
+        prog, args = "dotnet-ef", args[1:]
+    elif prog in ("python", "python3", "py") and args and _program(args[0]) == "manage.py":
+        prog, args = "manage.py", args[1:]
+    sub = [w for w in args if not w.startswith("-")]
+    has = lambda *ws: any(w in sub for w in ws)   # noqa: E731
+    what = None
+    if prog == "prisma" and has("db") and has("push") and any(w.startswith("--force-reset") for w in args):
+        what, said = "drops every table and recreates them", "prisma db push --force-reset"
+    elif prog == "artisan" and has("migrate:fresh"):
+        what, said = "drops every table and recreates them", "artisan migrate:fresh"
+    elif prog == "artisan" and has("migrate:refresh", "migrate:reset"):
+        what, said = "rolls back every migration, which drops the tables they made", f"artisan {sub[0]}"
+    elif prog == "artisan" and has("db:wipe"):
+        what, said = "drops every table", "artisan db:wipe"
+    elif prog in ("sequelize", "sequelize-cli") and has("db:drop"):
+        what, said = "drops the database", f"{prog} db:drop"
+    elif prog in ("sequelize", "sequelize-cli") and has("db:migrate:undo:all"):
+        what, said = "rolls back every migration, which drops the tables they made", f"{prog} db:migrate:undo:all"
+    elif prog == "knex" and has("migrate:rollback") and "--all" in args:
+        what, said = "rolls back every migration, which drops the tables they made", "knex migrate:rollback --all"
+    elif prog == "alembic" and "downgrade" in sub and sub[sub.index("downgrade") + 1:][:1] == ["base"]:
+        what, said = "rolls back every migration, which drops the tables they made", "alembic downgrade base"
+    elif prog == "mysqladmin" and has("drop"):
+        what, said = "drops the database", "mysqladmin drop"
+    elif prog == "mongorestore" and "--drop" in args and "--dryrun" not in args:
+        what, said = "drops each collection before restoring over it", "mongorestore --drop"
+    elif prog == "manage.py" and has("reset_db"):
+        what, said = "drops the database and recreates it empty", "manage.py reset_db"
+    elif prog == "manage.py" and sub[:1] == ["migrate"] and sub[-1:] == ["zero"] and len(sub) >= 3:
+        what, said = "rolls back every migration of an app, which drops its tables", "manage.py migrate ... zero"
+    elif prog == "django-admin" and has("flush", "reset_db"):
+        what, said = "empties or drops the database", f"django-admin {sub[0]}"
+    elif prog == "flyway" and has("clean"):
+        what, said = "drops everything in the schema", "flyway clean"
+    elif prog == "liquibase" and has("dropall", "drop-all"):
+        what, said = "drops everything in the schema", "liquibase dropAll"
+    elif prog == "mix" and has("ecto.drop", "ecto.reset"):
+        what, said = "drops the database", f"mix {sub[0]}"
+    elif prog == "dotnet-ef" and sub[:2] == ["database", "drop"]:
+        what, said = "drops the database", "dotnet ef database drop"
+    elif prog == "typeorm" and has("schema:drop"):
+        what, said = "drops every table", "typeorm schema:drop"
+    elif prog == "sqlx" and sub[:2] in (["database", "drop"], ["database", "reset"], ["db", "drop"], ["db", "reset"]):
+        what, said = "drops the database", f"sqlx {sub[0]} {sub[1]}"
+    elif prog == "diesel" and sub[:2] == ["database", "reset"]:
+        what, said = "drops the database and recreates it", "diesel database reset"
+    return f"{what} ({said})" if what else None
+
+
 def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Command], list[str]]:
     """One simple command (already split into words). -> (commands, hidden-reasons)."""
     words = words[1:] if words[:1] == ["{"] else words       # a group, `{ curl URL > x.sh; } && bash x.sh`
@@ -863,6 +921,9 @@ def classify(words: list[str], raw: str = "", depth: int = 0) -> tuple[list[Comm
             or (prog == "prisma" and "migrate" in lower and "reset" in lower) \
             or (prog == "prisma" and "db" in lower and "push" in lower and "accept-data-loss" in text):
         cmd.kind, cmd.why = "irreversible", f"resets or wipes the database ({' '.join(words[:4])})"
+        return [cmd], []
+    if why := _database_reset(prog, lower):
+        cmd.kind, cmd.why = "irreversible", why
         return [cmd], []
 
     # ---- infrastructure and cloud

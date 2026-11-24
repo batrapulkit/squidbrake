@@ -110,6 +110,25 @@ def test_catastrophic(line):
     "pg_restore -c -d prod dump.sql",
     "bunx prisma migrate reset",
 
+    # Framework and database resets (#197)
+    "npx prisma db push --force-reset",
+    "npx sequelize-cli db:drop",
+    "npx knex migrate:rollback --all",
+    "php artisan migrate:fresh --force",
+    "alembic downgrade base",
+    "mysqladmin -u root drop prod",
+    "mongorestore --drop dump/",
+    # The same tools' other ways of saying it, and the same wipe in other frameworks
+    "php artisan migrate:refresh", "php artisan migrate:reset", "php artisan db:wipe --force",
+    "npx sequelize-cli db:migrate:undo:all",
+    "python -m alembic downgrade base",
+    "python manage.py reset_db --noinput", "python manage.py migrate billing zero", "django-admin flush",
+    "flyway -url=jdbc:postgresql://db/prod clean", "liquibase dropAll",
+    "mix ecto.drop", "mix ecto.reset",
+    "dotnet ef database drop -f",
+    "npx typeorm schema:drop -d src/data-source.ts",
+    "sqlx database drop -y", "diesel database reset",
+
     # Publishing to a registry
     "npm unpublish pkg --force",
     "bun publish",
@@ -262,6 +281,24 @@ def test_no_false_alarm(line):
     "rails db:migrate",
     "python manage.py migrate",
     "supabase db diff",
+
+    # The everyday side of the tools in #197
+    "prisma db push",
+    "npx sequelize-cli db:migrate",
+    "npx knex migrate:latest",
+    "php artisan migrate:status",
+    "alembic upgrade head",
+    "mysqladmin -u root status",
+    "mongorestore --dryRun dump/",
+    "mongorestore --drop --dryRun dump/",
+    "php artisan migrate", "php artisan migrate:rollback",
+    "npx sequelize-cli db:migrate:undo", "npx knex migrate:rollback",
+    "alembic downgrade -1", "alembic history",
+    "python manage.py migrate billing 0004", "python manage.py migrate",
+    "flyway migrate", "flyway info", "liquibase update", "liquibase status",
+    "mix ecto.migrate", "mix ecto.rollback",
+    "dotnet ef database update", "dotnet ef migrations add Init",
+    "npx typeorm migration:run", "sqlx migrate run", "sqlx database create", "diesel migration run",
 
     # Building or fetching packages: not publishing
     "poetry build", "uv build", "docker pull org/img", "mvn test", "bun install",
